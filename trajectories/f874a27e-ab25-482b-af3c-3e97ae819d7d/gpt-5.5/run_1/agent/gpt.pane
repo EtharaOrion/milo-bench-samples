@@ -1,0 +1,200 @@
+   193				responseStatusCode, _ := responseFn(resp, w)
+   194				s3err.PostLog(r, responseStatusCode, s3err.ErrNone)
+   195				return
+   196			}
+   197		}
+   198		if resp.StatusCode == http.StatusNotFound {
+   199			s3err.WriteErrorResponse(w, r, s3err.ErrNoSuchKey)
+   200			return
+   201		}
+   202	
+   203		TimeToFirstByte(r.Method, start, r)
+   204		if resp.Header.Get(s3_constants.SeaweedFSIsDirectoryKey) == "true" {
+   205			responseStatusCode, _ := responseFn(resp, w)
+   206			s3err.PostLog(r, responseStatusCode, s3err.ErrNone)
+   207			return
+   208		}
+   209	
+   210		if resp.StatusCode == http.StatusInternalServerError {
+   211			s3err.WriteErrorResponse(w, r, s3err.ErrInternalError)
+   212			return
+   213		}
+   214	
+   215		// when HEAD a directory, it should be reported as no such key
+   216		// https://github.com/seaweedfs/seaweedfs/issues/3457
+   217		if resp.ContentLength == -1 && resp.StatusCode != http.StatusNotModified {
+   218			s3err.WriteErrorResponse(w, r, s3err.ErrNoSuchKey)
+   219			return
+   220		}
+   221	
+   222		if resp.StatusCode == http.StatusBadRequest {
+   223			resp_body, _ := io.ReadAll(resp.Body)
+   224			switch string(resp_body) {
+   225			case "InvalidPart":
+   226				s3err.WriteErrorResponse(w, r, s3err.ErrInvalidPart)
+   227			default:
+   228				s3err.WriteErrorResponse(w, r, s3err.ErrInvalidRequest)
+   229			}
+   230			resp.Body.Close()
+   231			return
+   232		}
+   233	
+   234		setUserMetadataKeyToLowercase(resp)
+   235	
+   236		responseStatusCode, bytesTransferred := responseFn(resp, w)
+   237		BucketTrafficSent(bytesTransferred, r)
+   238	
+   239		s3err.PostLog(r, responseStatusCode, s3err.ErrNone)
+   240	}
+   241	
+   242	func setUserMetadataKeyToLowercase(resp *http.Response) {
+   243		for key, value := range resp.Header {
+   244			if strings.HasPrefix(key, s3_constants.AmzUserMetaPrefix) {
+   245				resp.Header[strings.ToLower(key)] = value
+   246				delete(resp.Header, key)
+   247			}
+   248		}
+   249	}
+   250	
+   251	func passThroughResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {
+   252		for k, v := range proxyResponse.Header {
+   253			w.Header()[k] = v
+   254		}
+   255		if proxyResponse.Header.Get("Content-Range") != "" && proxyResponse.StatusCode == 200 {
+   256			w.WriteHeader(http.StatusPartialContent)
+   257			statusCode = http.StatusPartialContent
+   258		} else {
+   259			statusCode = proxyResponse.StatusCode
+   260		}
+   261		w.WriteHeader(statusCode)
+   262		buf := mem.Allocate(128 * 1024)
+   263		defer mem.Free(buf)
+   264		bytesTransferred, err := io.CopyBuffer(w, proxyResponse.Body, buf)
+   265		if err != nil {
+   266			glog.V(1).Infof("passthrough response read %d bytes: %v", bytesTransferred, err)
+   267		}
+   268		return statusCode, bytesTransferred
+   269	}
+$ cd /workspace/seaweedfs && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('weed/s3api/s3api_object_handlers.go')
+$ s=p.read_text()
+$ s=s.replace('''\tif strings.HasSuffix(r.URL.Path, "/") {\n\t\ts3err.WriteErrorResponse(w, r, s3err.ErrNotImplemented)\n\t\treturn\n\t}\n\n\tdestUrl := s3a.toFilerUrl(bucket, object)\n\n\ts3a.proxyToFiler(w, r, destUrl, false, passThroughResponse)''','''\tdestUrl := s3a.toFilerUrl(bucket, object)\n\tif strings.HasSuffix(r.URL.Path, "/") {\n\t\ts3a.proxyToFiler(w, r, destUrl, false, passThroughEmptyFolderResponse)\n\t\treturn\n\t}\n\n\ts3a.proxyToFiler(w, r, destUrl, false, passThroughResponse)''')
+$ s=s.replace('''func passThroughResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {''','''func passThroughEmptyFolderResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {\n\tfor k, v := range proxyResponse.Header {\n\t\tw.Header()[k] = v\n\t}\n\tw.Header().Set("Content-Length", "0")\n\tw.Header().Set("ETag", `"d41d8cd98f00b204e9800998ecf8427e"`)\n\tw.WriteHeader(http.StatusOK)\n\treturn http.StatusOK, 0\n}\n\nfunc passThroughResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {''')
+$ p.write_text(s)
+$ PY
+$ gofmt -w weed/s3api/s3api_object_handlers.go && go test ./weed/s3api
+cd /workspace/seaweedfs && python3 - <<'PY'
+from pathlib import Path
+p=Path('weed/s3api/s3api_object_handlers.go')
+s=p.read_text()
+s=s.replace('''\tif strings.HasSuffix(r.URL.Path, "/") {\n\t\ts3err.WriteErrorResponse(w, r, s3err.ErrNotImplemented)\n\t\treturn\n\t}\n\n\tdestUrl := s3a.toFilerUrl(bucket, object)\n\n\ts3a.proxyToFiler(w, r, destUrl, false, passThroughResponse)''','''\tdestUrl := s3a.toFilerUrl(bucket, object)\n\tif strings.HasSuffix(r.URL.Path, "/") {\n\t\ts3a.proxyToFiler(w, r, destUrl, false, passThroughEmptyFolderResponse)\n\t\treturn\n\t}\n\n\ts3a.proxyToFiler(w, r, destUrl, false, passThroughResponse)''')
+s=s.replace('''func passThroughResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {''','''func passThroughEmptyFolderResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {\n\tfor k, v := range proxyResponse.Header {\n\t\tw.Header()[k] = v\n\t}\n\tw.Header().Set("Content-Length", "0")\n\tw.Header().Set("ETag", `"d41d8cd98f00b204e9800998ecf8427e"`)\n\tw.WriteHeader(http.StatusOK)\n\treturn http.StatusOK, 0\n}\n\nfunc passThroughResponse(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64) {''')
+p.write_text(s)
+PY
+
+
+
+gofmt -w weed/s3api/s3api_object_handlers.go && go test ./weed/s3api
+$ cd /workspace/seaweedfs && go test ./weed/s3api; echo s3_exit:$?
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+s3_exit:0
+$ cd /workspace/seaweedfs && go test ./weed/topology ./weed/shell ./weed/s3api ./weed/command ./weed/filer/redis2 && go run /tmp/reproduce_seaweedfs_issues.go
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/shell       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/command     0.042s
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis2        [no test files]
+PASS ListCollections excludes normal volumes
+PASS ListCollections includes normal volumes when requested
+PASS safe volume comparator order
+PASS repo CRC64NVME checksum with split writes
+PASS empty CRC64NVME checksum
+$ cd /workspace/seaweedfs && git status --short && git --no-pager diff --stat && git --no-pager diff --check
+M .github/workflows/depsreview.yml
+ M .github/workflows/e2e.yml
+ M .github/workflows/go.yml
+ M docker/Dockerfile.go_build
+ M docker/Dockerfile.rocksdb_dev_env
+ M docker/Dockerfile.rocksdb_large
+ M weed/command/filer.go
+ M weed/command/s3.go
+ M weed/command/scaffold/filer.toml
+ M weed/command/server.go
+ M weed/filer/redis2/redis_cluster_store.go
+ M weed/filer/redis2/redis_sentinel_store.go
+ M weed/filer/redis2/redis_store.go
+ M weed/s3api/auth_signature_v4.go
+ M weed/s3api/chunked_reader_v4.go
+ M weed/s3api/s3api_auth.go
+ M weed/s3api/s3api_object_handlers.go
+ M weed/s3api/s3api_object_handlers_multipart.go
+ M weed/s3api/s3api_object_handlers_put.go
+ M weed/shell/command_volume_list.go
+ M weed/topology/topology.go
+?? weed/filer/redis2/redis_tls.go
+ .github/workflows/depsreview.yml              |   2 +-
+ .github/workflows/e2e.yml                     |   2 +-
+ .github/workflows/go.yml                      |   2 +-
+ docker/Dockerfile.go_build                    |   2 +-
+ docker/Dockerfile.rocksdb_dev_env             |   2 +-
+ docker/Dockerfile.rocksdb_large               |   2 +-
+ weed/command/filer.go                         |   2 ++
+ weed/command/s3.go                            |  10 ++++++++--
+ weed/command/scaffold/filer.toml              |   9 +++++++++
+ weed/command/server.go                        |   6 +++++-
+ weed/filer/redis2/redis_cluster_store.go      |  15 ++++++++++++++-
+ weed/filer/redis2/redis_sentinel_store.go     |  16 ++++++++++++++--
+ weed/filer/redis2/redis_store.go              |  20 ++++++++++++++++----
+ weed/s3api/auth_signature_v4.go               |   7 ++++---
+ weed/s3api/chunked_reader_v4.go               | 113 +++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------
+ weed/s3api/s3api_auth.go                      |   3 ++-
+ weed/s3api/s3api_object_handlers.go           |  15 ++++++++++++---
+ weed/s3api/s3api_object_handlers_multipart.go |  10 +++++++++-
+ weed/s3api/s3api_object_handlers_put.go       |   8 ++++++++
+ weed/shell/command_volume_list.go             |   8 +++++++-
+ weed/topology/topology.go                     |   6 ++++--
+ 21 files changed, 175 insertions(+), 85 deletions(-)
+# finish: Finish SeaweedFS implementation and validation summary
+Implemented additional localized fixes and validation for the SeaweedFS repository.
+
+What was changed:
+- `master_pb.CollectionList` behavior:
+  - Fixed `Topology.ListCollections()` so `includeNormalVolumes` is respected.
+- `volume.list` ordering:
+  - Replaced unsafe `uint32` subtraction sorting with explicit comparisons.
+- S3 aws-chunked / trailer checksum handling:
+  - Corrected CRC64NVME checksum calculation to use the NVME polynomial.
+  - Added support for `STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER`.
+  - Improved trailer checksum parsing, including case-insensitive trailer header matching.
+  - Ensured unsigned streaming uploads are decoded for both normal PUT and multipart PUT paths, including when IAM auth is disabled.
+- S3 folder marker behavior:
+  - `GET` for folder-marker keys ending in `/` now returns a zero-byte object response instead of `NotImplemented`, while still relying on filer existence checks.
+- S3 command options:
+  - Added `s3.ip.bind` for embedded S3 in `weed filer` and `weed server`.
+  - Added `s3.idleTimeout` for embedded S3.
+  - Added standalone `weed s3 -idleTimeout`.
+- Redis2 TLS/mTLS support:
+  - Added TLS config loading for `redis2`, `redis2_sentinel`, and `redis_cluster2` using:
+    - `tls_ca_file`
+    - `tls_client_crt_file`
+    - `tls_client_key_file`
+  - Updated scaffold `filer.toml` with the new Redis2 TLS settings.
+- Build/workflow version bumps:
+  - Updated Docker Go builder images from Go 1.23 to Go 1.24.
+  - Updated Go workflow versions from `^1.13` to `^1.24`.
+  - Updated `actions/dependency-review-action` pin to the v4.3.2 tag SHA.
+
+Validation performed:
+- Created and ran a temporary Go reproduction script covering:
+  - `ListCollections(false,false)` excludes normal volumes.
+  - `ListCollections(true,false)` includes normal volumes.
+  - Safe volume ID ordering with max `uint32` and duplicate IDs.
+  - CRC64NVME known check value, split writes, and empty payload.
+- Final focused validation passed:
+  - `go test ./weed/topology ./weed/shell ./weed/s3api ./weed/command ./weed/filer/redis2`
+  - `go run /tmp/reproduce_seaweedfs_issues.go`
+  - `git diff --check`
+- A full `go test ./...` was attempted earlier; it failed only because `test/s3/basic` expects a local S3 service on `localhost:8333`, which was not running in this environment.
+
+No test files were modified.

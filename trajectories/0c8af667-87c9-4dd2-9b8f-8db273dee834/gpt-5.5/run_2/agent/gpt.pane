@@ -1,0 +1,200 @@
++  onChanged: EventHookOn<void>
++  onCommitted: EventHookOn<SVGElement | undefined>
++  onStart: EventHookOn<void>
++  onEnd: EventHookOn<void>
++  onCanceled: EventHookOn<void>
+ }
+
+ /**
+@@ -45,7 +45,7 @@ export function useDrauu(
+
+   const onChangedHook = createEventHook<void>()
+   const onCanceledHook = createEventHook<void>()
+-  const onCommittedHook = createEventHook<void>()
++  const onCommittedHook = createEventHook<SVGElement | undefined>()
+   const onStartHook = createEventHook<void>()
+   const onEndHook = createEventHook<void>()
+   const canUndo = ref(false)
+@@ -108,7 +108,7 @@ export function useDrauu(
+
+       disposables = [
+         drauuInstance.value.on('canceled', () => onCanceledHook.trigger()),
+-        drauuInstance.value.on('committed', () => onCommittedHook.trigger()),
++        drauuInstance.value.on('committed', node => onCommittedHook.trigger(node)),
+         drauuInstance.value.on('start', () => onStartHook.trigger()),
+         drauuInstance.value.on('end', () => onEndHook.trigger()),
+         drauuInstance.value.on('changed', () => {
+diff --git a/packages/math/usePrecision/index.ts b/packages/math/usePrecision/index.ts
+index 9ff3ba9f..6ed351b8 100644
+--- a/packages/math/usePrecision/index.ts
++++ b/packages/math/usePrecision/index.ts
+@@ -12,6 +12,14 @@ export interface UsePrecisionOptions {
+   math?: 'floor' | 'ceil' | 'round'
+ }
+
++function decimalShift(value: number, exponent: number) {
++  if (!Number.isFinite(value))
++    return value
++
++  const [base, currentExponent = '0'] = `${value}e`.split('e')
++  return Number(`${base}e${Number(currentExponent) + exponent}`)
++}
++
+ /**
+  * Reactively set the precision of a number.
+  *
+@@ -19,13 +27,17 @@ export interface UsePrecisionOptions {
+  */
+ export function usePrecision(
+   value: MaybeRefOrGetter<number>,
+-  digits: MaybeRefOrGetter<number>,
++  digits?: MaybeRefOrGetter<number>,
+   options?: MaybeRefOrGetter<UsePrecisionOptions>,
+ ): ComputedRef<number> {
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++
++    if (_digits == null)
++      return _value
++
++    const method = toValue(options)?.math || 'round'
++    return decimalShift(Math[method](decimalShift(_value, _digits)), -_digits)
+   })
+ }
+# file_editor: Import jsdom and infinite scroll in reproduction
+The file /workspace/vueuse/reproduce.ts has been edited. Here's the result of running `cat -n` on a snippet of /workspace/vueuse/reproduce.ts:
+     1	import { ref, nextTick } from 'vue-demi'
+     2	import { usePrecision } from './packages/math/usePrecision'
+     3	import { JSDOM } from 'jsdom'
+     4	import { UseImage } from './packages/core/useImage/component'
+     5	import { useEventSource } from './packages/core/useEventSource'
+     6	import { useInfiniteScroll } from './packages/core/useInfiniteScroll'
+     7	
+     8	function assertEqual(actual: unknown, expected: unknown, message: string) {
+     9	  if (!Object.is(actual, expected))
+    10	    throw new Error(`${message}: expected ${expected}, got ${actual}`)
+    11	}
+    12	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Add delay and property helpers to reproduction script
+The file /workspace/vueuse/reproduce.ts has been edited. Here's the result of running `cat -n` on a snippet of the edited file:
+    13	function assert(condition: unknown, message: string) {
+    14	  if (!condition)
+    15	    throw new Error(message)
+    16	}
+    17	
+    18	function delay(ms: number) {
+    19	  return new Promise(resolve => setTimeout(resolve, ms))
+    20	}
+    21	
+    22	function defineReadonlyNumber(target: object, key: string, value: number) {
+    23	  Object.defineProperty(target, key, { configurable: true, value })
+    24	}
+    25	
+    26	
+    27	class FakeEventSource extends EventTarget {
+    28	  static CONNECTING = 0
+    29	  static OPEN = 1
+    30	
+Review the changes and make sure they are as expected (correct indentation, no duplicate lines, etc). Edit the file again if necessary.
+# file_editor: Add infinite scroll reproduction assertions
+The file /workspace/vueuse/reproduce.ts has been edited. Here's the result of running `cat -n` on a snippet of the edited file:
+    59	  assertEqual(dynamic.value, 2.35, 'reactive digits should round initially')
+    60	  reactiveDigits.value = 1
+    61	  await nextTick()
+    62	  assertEqual(dynamic.value, 2.3, 'reactive digits should update rounding')
+    63	
+    64	  const dom = new JSDOM('<!doctype html><div id="target"></div>')
+    65	  globalThis.window = dom.window as any
+    66	  globalThis.document = dom.window.document as any
+    67	  globalThis.Window = dom.window.Window as any
+    68	  globalThis.Document = dom.window.Document as any
+    69	  globalThis.getComputedStyle = dom.window.getComputedStyle as any
+    70	
+    71	  const target = dom.window.document.getElementById('target') as HTMLElement
+    72	  defineReadonlyNumber(target, 'clientHeight', 100)
+    73	  defineReadonlyNumber(target, 'scrollHeight', 300)
+    74	  defineReadonlyNumber(target, 'clientWidth', 100)
+    75	  defineReadonlyNumber(target, 'scrollWidth', 100)
+    76	  target.scrollTop = 200
+    77	
+    78	  let loads = 0
+    79	  useInfiniteScroll(target, () => {
+    80	    loads += 1
+    81	    defineReadonlyNumber(target, 'scrollHeight', 400)
+    82	  }, { interval: 0 })
+    83	  target.dispatchEvent(new dom.window.Event('scroll'))
+    84	  await nextTick()
+    85	  await delay(20)
+    86	  assertEqual(loads, 1, 'scrolling to the edge should not repeatedly load after content grows')
+    87	
+    88	
+    89	  const imageProps = UseImage.props as string[]
+    90	  for (const prop of ['alt', 'class', 'crossorigin', 'loading'])
+    91	    assert(imageProps.includes(prop), `UseImage should declare ${prop} as a prop`)
+    92	
+Review the changes and make sure they are as expected (correct indentation, no duplicate lines, etc). Edit the file again if necessary.
+$ cd /workspace/vueuse && ./node_modules/.bin/vite-node --config vitest.config.ts reproduce.ts
+$ cd /workspace/vueuse && rm reproduce.ts && git status --short --ignored=matching | sed -n '1,120p'
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+!! node_modules/
+!! packages/components/node_modules/
+!! packages/core/node_modules/
+!! packages/electron/node_modules/
+!! packages/firebase/node_modules/
+!! packages/integrations/node_modules/
+!! packages/math/node_modules/
+!! packages/metadata/index.json
+!! packages/nuxt/node_modules/
+!! packages/router/node_modules/
+!! packages/rxjs/node_modules/
+!! packages/shared/node_modules/
+$ cd /workspace/vueuse && git status --short
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+# task_tracker: Update tasks before final review
+Task list has been updated with 6 item(s).
+# think: Review issue completeness and edge cases
+Your thought has been logged.
+# task_tracker: Mark all implementation tasks complete
+Task list has been updated with 6 item(s).
+# finish: Finish task with implementation and validation summary
+Implemented the requested non-test changes in `/workspace/vueuse`.
+
+Summary of changes:
+- `useImage`: added support for `alt`, `class`, `crossorigin`, and `loading` in options/component props and applies them to the underlying `Image`.
+- `usePrecision`: improved floating-point rounding via decimal shifting, added support for omitted `digits`, and preserved reactive behavior/options.
+- `useInfiniteScroll`: prevented repeated load loops caused by stale edge state after content grows, and added `canLoadMore` support.
+- `useEventSource`: accepts `string | URL` for the URL argument.
+- `useDrauu`: forwards the `committed` event payload (`SVGElement | undefined`) through `onCommitted`.
+- `createTemplatePromise`: added the Vue 3.3 TypeScript compatibility suppression.
+- Docs/comments: fixed `useCloned` ref `.value` examples, `useManualRefHistory` commit typo, and added an SSR/Nuxt note for `useEventListener`.
+
+Validation performed:
+- Created a temporary TypeScript reproduction script. `ts-node` was not installed in this environment (`command not found`), so I ran it with the repository’s working `vite-node --config vitest.config.ts`; it reproduced the precision failure before the fix and passed afterward with added edge cases.
+- Ran targeted related tests: 6 files, 48 tests passed.
+- Ran full test suite: 146 files, 933 tests passed.
+- Ran full TypeScript typecheck: passed after generating the ignored metadata index required by the repo.
+- Ran ESLint on all changed files: passed.
+
+No test files were modified.

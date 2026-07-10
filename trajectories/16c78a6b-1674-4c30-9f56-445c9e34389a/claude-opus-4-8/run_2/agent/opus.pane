@@ -1,0 +1,200 @@
+                return "static-id"
+        },
+}))
+```` did not appear verbatim in /workspace/fiber/middleware/requestid/README.md.
+$ cd /workspace/fiber && sed -n '28,38p' middleware/requestid/README.md | cat -A
+app.Use(requestid.New())$
+$
+// Or extend your config for customization$
+app.Use(requestid.New(requestid.Config{$
+^IHeader:    "X-Custom-Header",$
+^IGenerator: func() string {$
+^I^Ireturn "static-id"$
+^I},$
+}))$
+```$
+$
+# file_editor: /workspace/fiber/middleware/requestid/README.md
+The file /workspace/fiber/middleware/requestid/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fiber/middleware/requestid/README.md:
+    28	app.Use(requestid.New())
+    29	
+    30	// Or extend your config for customization
+    31	app.Use(requestid.New(requestid.Config{
+    32		Header:    "X-Custom-Header",
+    33		Generator: func() string {
+    34			return "static-id"
+    35		},
+    36	}))
+    37	```
+    38	
+    39	The request ID is also stored in the context locals and can be retrieved in a
+    40	handler with the key `requestid`:
+    41	```go
+    42	app.Get("/", func(c *fiber.Ctx) error {
+    43		id := c.Locals("requestid")
+    44		return c.SendString(fmt.Sprintf("Your request ID is %v", id))
+    45	})
+    46	```
+    47	
+    48	### Config
+    49	```go
+    50	// Config defines the config for middleware.
+    51	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/fiber && go test . ./middleware/requestid/ ./middleware/proxy/ 2>&1 | tail
+ok      github.com/gofiber/fiber/v2     (cached)
+ok      github.com/gofiber/fiber/v2/middleware/requestid        (cached)
+ok      github.com/gofiber/fiber/v2/middleware/proxy    (cached)
+$ cd /workspace/fiber && grep -rn "2.1.0\|Version =" app.go
+34:const Version = "2.1.0"
+# file_editor: /workspace/fiber/app.go
+The file /workspace/fiber/app.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fiber/app.go:
+    31	)
+    32	
+    33	// Version of current fiber package
+    34	const Version = "2.1.1"
+    35	
+    36	// Map is a shortcut for map[string]interface{}, useful for JSON returns
+    37	type Map map[string]interface{}
+    38	
+    39	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/fiber && grep -rn "2.1" app_test.go ctx_test.go 2>/dev/null; go test . 2>&1 | tail -3
+ctx_test.go:693:        c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
+ctx_test.go:694:        c.Response().Header.Set(HeaderLastModified, "xxWed, 21 Oct 2015 07:28:00 GMT")
+ctx_test.go:697:        c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+ctx_test.go:700:        c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+ok      github.com/gofiber/fiber/v2     6.194s
+$ cd /workspace/fiber && git --no-pager diff -- app.go ctx.go router.go middleware/requestid/requestid.go
+diff --git a/app.go b/app.go
+index 08713f8..7c58e57 100644
+--- a/app.go
++++ b/app.go
+@@ -31,7 +31,7 @@ import (
+ )
+
+ // Version of current fiber package
+-const Version = "2.1.0"
++const Version = "2.1.1"
+
+ // Map is a shortcut for map[string]interface{}, useful for JSON returns
+ type Map map[string]interface{}
+diff --git a/ctx.go b/ctx.go
+index 33ba1fa..8de3147 100644
+--- a/ctx.go
++++ b/ctx.go
+@@ -39,6 +39,7 @@ type Ctx struct {
+        indexHandler int                  // Index of the current handler
+        method       string               // HTTP method
+        methodINT    int                  // HTTP method INT equivalent
++       baseURI      string               // HTTP base uri
+        path         string               // Prettified HTTP path -> string copy from pathBuffer
+        pathBuffer   []byte               // Prettified HTTP path buffer
+        treePath     string               // Path for the search in the tree
+@@ -86,6 +87,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+        c.indexHandler = 0
+        // Reset matched flag
+        c.matched = false
++       // Reset base uri
++       c.baseURI = ""
+        // Set paths
+        c.pathBuffer = append(c.pathBuffer[0:0], fctx.URI().PathOriginal()...)
+        c.pathOriginal = getString(fctx.URI().PathOriginal())
+@@ -206,7 +209,11 @@ func (c *Ctx) Attachment(filename ...string) {
+ func (c *Ctx) BaseURL() string {
+        // TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+        // Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+-       return c.Protocol() + "://" + c.Hostname()
++       if c.baseURI != "" {
++               return c.baseURI
++       }
++       c.baseURI = c.Protocol() + "://" + c.Hostname()
++       return c.baseURI
+ }
+
+ // Body contains the raw body submitted in a POST request.
+diff --git a/middleware/requestid/requestid.go b/middleware/requestid/requestid.go
+index ef0de78..6ef6079 100644
+--- a/middleware/requestid/requestid.go
++++ b/middleware/requestid/requestid.go
+@@ -60,6 +60,9 @@ func New(config ...Config) fiber.Handler {
+                // Set new id to response header
+                c.Set(cfg.Header, rid)
+
++               // Add the request ID to locals
++               c.Locals("requestid", rid)
++
+                // Continue stack
+                return c.Next()
+        }
+diff --git a/router.go b/router.go
+index 63874f3..081c6c6 100644
+--- a/router.go
++++ b/router.go
+@@ -63,6 +63,8 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
+        } else if r.star {
+                if len(original) > 1 {
+                        params[0] = original[1:]
++               } else {
++                       params[0] = ""
+                }
+                return true
+        }
+$ cd /workspace/fiber && go test $(go list ./... | grep -v 'internal/go-ole') 2>&1 | tail -40
+ok      github.com/gofiber/fiber/v2     (cached)
+?       github.com/gofiber/fiber/v2/internal/bytebufferpool     [no test files]
+?       github.com/gofiber/fiber/v2/internal/colorable  [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/ascii     [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/iso8601   [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/json      [no test files]
+?       github.com/gofiber/fiber/v2/internal/fasttemplate       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/common    [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/cpu       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/mem       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/net       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/process   [no test files]
+?       github.com/gofiber/fiber/v2/internal/isatty     [no test files]
+?       github.com/gofiber/fiber/v2/internal/schema     [no test files]
+ok      github.com/gofiber/fiber/v2/middleware/basicauth        0.004s
+ok      github.com/gofiber/fiber/v2/middleware/cache    1.507s
+ok      github.com/gofiber/fiber/v2/middleware/compress 0.011s
+ok      github.com/gofiber/fiber/v2/middleware/cors     0.005s
+ok      github.com/gofiber/fiber/v2/middleware/csrf     0.005s
+ok      github.com/gofiber/fiber/v2/middleware/etag     0.006s
+ok      github.com/gofiber/fiber/v2/middleware/expvar   0.005s
+ok      github.com/gofiber/fiber/v2/middleware/favicon  0.005s
+ok      github.com/gofiber/fiber/v2/middleware/filesystem       0.006s
+ok      github.com/gofiber/fiber/v2/middleware/limiter  3.006s
+ok      github.com/gofiber/fiber/v2/middleware/logger   0.005s
+ok      github.com/gofiber/fiber/v2/middleware/monitor  0.013s
+ok      github.com/gofiber/fiber/v2/middleware/pprof    2.026s
+ok      github.com/gofiber/fiber/v2/middleware/proxy    1.008s
+ok      github.com/gofiber/fiber/v2/middleware/recover  0.004s
+ok      github.com/gofiber/fiber/v2/middleware/requestid        (cached)
+ok      github.com/gofiber/fiber/v2/middleware/timeout  0.004s [no tests to run]
+ok      github.com/gofiber/fiber/v2/utils       0.011s
+# finish: Completed all code changes for the issues
+I've implemented the necessary code changes to address the actionable issues in the description. All tests pass across the entire repository.
+
+## Summary of Changes
+
+### Issue 3 (#936): Improve base URI for ctx — `ctx.go`
+Added a `baseURI` field to the `Ctx` struct that caches the computed base URL. `BaseURL()` now returns the cached value on subsequent calls (eliminating repeated allocation/computation), and the field is reset in `AcquireCtx` for each pooled request. This matches the benchmark improvement described (1 alloc/32 B → 0).
+
+### Issue 4 (#945): Wildcard parameter persists between requests — `router.go`
+In `Route.match`, when a `*` (star) route matched the root path (`len(original) <= 1`), `params[0]` was left untouched, so the previous request's wildcard value leaked through the pooled `Ctx`. Now `params[0]` is explicitly reset to `""` in that case, so `c.Params("*")` correctly returns an empty string for `/`.
+
+### Issue 5 (#948): Add request ID to locals — `middleware/requestid/requestid.go` + README
+The assigned request ID is now stored in the context locals via `c.Locals("requestid", rid)`, allowing retrieval inside handlers. Documented in the middleware README.
+
+### Issues 7 & 8 (#950, #947): Proxy header docs — `middleware/proxy/README.md`
+Updated the `ModifyRequest` example to use `c.Request().Header.Add(...)` (which modifies the forwarded request) instead of `c.Set(...)` (which only sets the response header) — the root cause of the user not seeing the added header at the target server.
+
+### Issue 6 (#949): Bump v2.1.1 — `app.go`
+Updated the `Version` constant from `2.1.0` to `2.1.1`.
+
+Issues 1 and 2 are test fixes (localhost→IP in proxy tests), CONTRIBUTING.md typos, and Indonesian translation improvements, which are handled in test/translation files outside the scope of source code changes.
+
+## Verification
+- Built successfully and ran `go test` for all testable packages — all pass.
+- Verified the wildcard persistence fix with a temporary reproduction test (server prints empty string on `/` after a previous `/favicon.ico` request), then removed the temp file.

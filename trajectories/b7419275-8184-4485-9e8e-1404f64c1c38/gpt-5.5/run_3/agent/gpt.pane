@@ -1,0 +1,200 @@
+npx browserslist@latest --update-db
+
+Why you should do it regularly:
+https://github.com/browserslist/browserslist#browsers-data-updating
+repro assertions passed
+$ cd /workspace/babel && BROWSERSLIST_IGNORE_OLD_DATA=1 BABEL_ENV=test ./node_modules/.bin/jest eslint/babel-eslint-parser/test/index.js eslint/babel-eslint-tests/test/integration/eslint-plugin-import.js packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression packages/babel-parser/test/index.js --runInBand
+PASS  packages/babel-parser/test/index.js (7.635 s)
+ PASS  eslint/babel-eslint-tests/test/integration/eslint-plugin-import.js
+ PASS  eslint/babel-eslint-parser/test/index.js
+ PASS  packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/index.js
+ PASS  packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/util.test.js
+
+Test Suites: 5 passed, 5 total
+Tests:       80 skipped, 5339 passed, 5419 total
+Snapshots:   0 total
+Time:        14.575 s
+Ran all test suites matching /eslint\/babel-eslint-parser\/test\/index.js|eslint\/babel-eslint-tests\/test\/integration\/eslint-plugin-import.js|packages\/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression|packages\/babel-parser\/test\/index.js/i.
+$ cd /workspace/babel && git --no-pager diff --stat 67eb2c805e2923932d34c9720e74a71953c7b405 -- . ':!repro-issues.ts' && git --no-pager diff 67eb2c805e2923932d34c9720e74a71953c7b405 -- eslint/babel-eslint-parser/src/worker/babel-core.cjs packages/babel-parser/src/types.js packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+eslint/babel-eslint-parser/src/worker/babel-core.cjs                                              | 8 +++++++-
+ packages/babel-parser/src/types.js                                                                | 1 +
+ packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts | 2 ++
+ 3 files changed, 10 insertions(+), 1 deletion(-)
+diff --git a/eslint/babel-eslint-parser/src/worker/babel-core.cjs b/eslint/babel-eslint-parser/src/worker/babel-core.cjs
+index 47486218db..82ad761646 100644
+--- a/eslint/babel-eslint-parser/src/worker/babel-core.cjs
++++ b/eslint/babel-eslint-parser/src/worker/babel-core.cjs
+@@ -11,7 +11,13 @@ function initialize(babel) {
+ }
+
+ if (process.env.BABEL_8_BREAKING) {
+-  exports.init = import("@babel/core").then(ns => initialize(ns.default));
++  try {
++    initialize(require("@babel/core"));
++  } catch (err) {
++    if (err.code !== "ERR_REQUIRE_ESM") throw err;
++
++    exports.init = import("@babel/core").then(ns => initialize(ns.default));
++  }
+ } else {
+   initialize(require("@babel/core"));
+ }
+diff --git a/packages/babel-parser/src/types.js b/packages/babel-parser/src/types.js
+index 5362caf18d..4d8eda908f 100644
+--- a/packages/babel-parser/src/types.js
++++ b/packages/babel-parser/src/types.js
+@@ -897,6 +897,7 @@ export type ImportDeclaration = NodeBase & {
+   >,
+   source: Literal,
+
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
+ };
+
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd8..705f78ec2c 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -18,6 +18,8 @@ export function shouldTransform(
+   // On collision, `getOwnBinding` returns the param binding
+   // with the id binding be registered as constant violation
+   const paramNameBinding = path.scope.getOwnBinding(name);
++  if (!paramNameBinding) return false;
++
+   const constantViolations = paramNameBinding.constantViolations;
+   if (constantViolations.length === 0) {
+     // the function scope has no such collided bindings
+# file_editor: Review reproduction script contents
+Here's the result of running `cat -n` on /workspace/babel/repro-issues.ts:
+     1	const assert = require("assert");
+     2	const { createRequire } = require("module");
+     3	
+     4	const localRequire = createRequire(
+     5	  __dirname +
+     6	    "/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/package.json"
+     7	);
+     8	const { transformSync, parseSync } = localRequire("@babel/core");
+     9	const safariBugfixPlugin = localRequire(
+    10	  "@babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression"
+    11	).default;
+    12	const transformClassesPlugin = localRequire("@babel/plugin-transform-classes");
+    13	
+    14	function transformWithSafariBugfix(code) {
+    15	  return transformSync(code, {
+    16	    filename: __filename,
+    17	    babelrc: false,
+    18	    configFile: false,
+    19	    parserOpts: { plugins: ["jsx", "typescript"] },
+    20	    plugins: [safariBugfixPlugin],
+    21	  }).code;
+    22	}
+    23	
+    24	
+    25	function transformWithClassesAndSafariBugfix(code) {
+    26	  return transformSync(code, {
+    27	    filename: "root.jsx",
+    28	    babelrc: false,
+    29	    configFile: false,
+    30	    parserOpts: { plugins: ["jsx", "typescript"] },
+    31	    plugins: [[transformClassesPlugin, { loose: true }], safariBugfixPlugin],
+    32	  }).code;
+    33	}
+    34	
+    35	function assertDoesNotThrowTransform(name, code) {
+    36	  assert.doesNotThrow(
+    37	    () => transformWithSafariBugfix(code),
+    38	    `${name} should transform without throwing`
+    39	  );
+    40	}
+    41	
+    42	function assertOutputContains(name, code, expected) {
+    43	  const output = transformWithSafariBugfix(code);
+    44	  assert(
+    45	    output.includes(expected),
+    46	    `${name} should include ${expected}; received:\n${output}`
+    47	  );
+    48	}
+    49	
+    50	const reportedInput = `
+    51	import { observer, inject } from 'mobx-react'
+    52	import { AccountRootStore } from 'stores/account/account_root_store'
+    53	
+    54	const AccountsEdit = inject(({ accountRootStore }) => ({
+    55	  accountRootStore,
+    56	  accountStore: accountRootStore.accountStore,
+    57	  currentUser: accountRootStore.currentUser,
+    58	  onSubmit: accountRootStore.accountSettingsFormStore.onSubmit,
+    59	}))(
+    60	  observer(
+    61	    class AccountsEdit extends React.PureComponent {
+    62	      render() {
+    63	        return (
+    64	          <div>
+    65	          </div>
+    66	        )
+    67	      }
+    68	    },
+    69	  ),
+    70	)
+    71	`;
+    72	
+    73	assertDoesNotThrowTransform("reported JSX/class expression input", reportedInput);
+    74	assert.doesNotThrow(
+    75	  () => transformWithClassesAndSafariBugfix(reportedInput),
+    76	  "reported input with transform-classes should not read constantViolations of undefined"
+    77	);
+    78	assertDoesNotThrowTransform("ordinary named function expression", `(function a() { return a; });`);
+    79	assertDoesNotThrowTransform("same simple parameter does not need rename", `(function a(a) { return a; });`);
+    80	assertOutputContains("destructuring parameter collision is renamed", `(function a([a]) { return a; });`, "function a([_a])");
+    81	assertOutputContains("object rest parameter collision is renamed", `(function a({ ...a }) { return a; });`, "..._a");
+    82	assertDoesNotThrowTransform("local var collision remains ignored", `(function a() { var a; return a; });`);
+    83	
+    84	const ast = parseSync(`import data from "./data.json" assert { type: "json" };`, {
+    85	  filename: __filename,
+    86	  babelrc: false,
+    87	  configFile: false,
+    88	  sourceType: "module",
+    89	  parserOpts: { plugins: ["importAssertions"] },
+    90	});
+    91	const importDecl = ast.program.body[0];
+    92	assert.strictEqual(importDecl.type, "ImportDeclaration");
+    93	assert.strictEqual(importDecl.assertions[0].type, "ImportAttribute");
+    94	assert.strictEqual(importDecl.assertions[0].key.name, "type");
+    95	
+    96	console.log("repro assertions passed");
+    97	
+$ cd /workspace/babel && git status --short && git diff --name-only | sort && git diff --name-only | grep '/test/' || true
+M eslint/babel-eslint-parser/src/worker/babel-core.cjs
+ M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+?? repro-issues.ts
+eslint/babel-eslint-parser/src/worker/babel-core.cjs
+packages/babel-parser/src/types.js
+packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+# task_tracker: Mark all tasks complete with verification notes
+Task list has been updated with 5 item(s).
+# finish: Summarize implemented Babel fixes and verification
+Implemented the requested non-test source changes in `/workspace/babel`.
+
+Summary of changes:
+- Added the missing `assertions?: $ReadOnlyArray<ImportAttribute>` field to Babel parser’s `ImportDeclaration` Flow type.
+- Fixed the Safari id/destructuring bugfix plugin crash by returning `false` when a named function expression has no own binding for its id, avoiding `undefined.constantViolations`.
+- Fixed the Babel 8 eslint parser worker path by trying `require("@babel/core")` first when possible, and only falling back to dynamic `import()` for actual ESM core builds.
+- Created `repro-issues.ts` with coverage for:
+  - the reported JSX/class/transform-classes crash path,
+  - positive and negative safari destructuring collision cases,
+  - import assertions parsing shape.
+
+Verification performed:
+- Confirmed the original missing guard reproduces: `Cannot read properties of undefined (reading 'constantViolations')`.
+- `node repro-issues.ts` ✅
+- Focused non-Babel8 tests ✅
+  - `eslint/babel-eslint-parser/test/index.js`
+  - `eslint/babel-eslint-tests/test/integration/eslint-plugin-import.js`
+  - `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression`
+  - `packages/babel-parser/test/index.js`
+- Full Babel 8 Jest suite ✅
+  - `BROWSERSLIST_IGNORE_OLD_DATA=1 BABEL_8_BREAKING=true BABEL_ENV=test ./node_modules/.bin/jest --runInBand`
+  - Result: 207/207 suites passed.
+
+Note: `ts-node` is not available in this environment (`bash: ts-node: command not found`), so I ran the TypeScript-named reproduction script directly with Node after building local package artifacts. No test files or test logic were modified.

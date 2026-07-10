@@ -1,0 +1,200 @@
+   508		})
+   509	}
+   510	
+   511	func (s3a *S3ApiServer) proxyToFiler(w http.ResponseWriter, r *http.Request, destUrl string, isWrite bool, responseFn func(proxyResponse *http.Response, w http.ResponseWriter) (statusCode int, bytesTransferred int64)) {
+   512	
+   513		glog.V(3).Infof("s3 proxying %s to %s", r.Method, destUrl)
+   514		start := time.Now()
+   515	
+   516		proxyReq, err := http.NewRequest(r.Method, destUrl, r.Body)
+   517	
+   518		if err != nil {
+   519			glog.Errorf("NewRequest %s: %v", destUrl, err)
+   520			s3err.WriteErrorResponse(w, r, s3err.ErrInternalError)
+   521			return
+   522		}
+   523	
+   524		proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+   525		proxyReq.Header.Set("Accept-Encoding", "identity")
+   526		for k, v := range r.URL.Query() {
+   527			if _, ok := s3_constants.PassThroughHeaders[strings.ToLower(k)]; ok {
+   528				proxyReq.Header[k] = v
+   529			}
+   530			if k == "partNumber" {
+   531				proxyReq.Header[s3_constants.SeaweedFSPartNumber] = v
+   532			}
+   533		}
+   534		for header, values := range r.Header {
+   535			proxyReq.Header[header] = values
+   536		}
+   537		if proxyReq.ContentLength == 0 && r.ContentLength != 0 {
+   538			proxyReq.ContentLength = r.ContentLength
+   539		}
+   540	
+   541		// ensure that the Authorization header is overriding any previous
+   542		// Authorization header which might be already present in proxyReq
+   543		s3a.maybeAddFilerJwtAuthorization(proxyReq, isWrite)
+   544		resp, postErr := s3a.client.Do(proxyReq)
+   545	
+   546		if postErr != nil {
+   547			glog.Errorf("post to filer: %v", postErr)
+   548			s3err.WriteErrorResponse(w, r, s3err.ErrInternalError)
+   549			return
+   550		}
+   551		defer util_http.CloseResponse(resp)
+   552	
+   553		if resp.StatusCode == http.StatusPreconditionFailed {
+   554			s3err.WriteErrorResponse(w, r, s3err.ErrPreconditionFailed)
+   555			return
+   556		}
+   557	
+   558		if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+   559			s3err.WriteErrorResponse(w, r, s3err.ErrInvalidRange)
+   560			return
+$ cd /workspace/seaweedfs && grep -rn "If-Match\|IfMatch\|If-None-Match\|StatusPreconditionFailed\|checkPreconditions\|If-Modified" weed/server/*.go weed/server/common.go | head -30
+weed/server/filer_server_handlers_read.go:30:// If-Modified-Since
+weed/server/filer_server_handlers_read.go:32:// If-Match
+weed/server/filer_server_handlers_read.go:33:// If-None-Match
+weed/server/filer_server_handlers_read.go:34:func checkPreconditions(w http.ResponseWriter, r *http.Request, entry *filer.Entry) bool {
+weed/server/filer_server_handlers_read.go:50:   ifMatchETagHeader := r.Header.Get("If-Match")
+weed/server/filer_server_handlers_read.go:54:                   w.WriteHeader(http.StatusPreconditionFailed)
+weed/server/filer_server_handlers_read.go:60:                           w.WriteHeader(http.StatusPreconditionFailed)
+weed/server/filer_server_handlers_read.go:66:   ifNoneMatchETagHeader := r.Header.Get("If-None-Match")
+weed/server/filer_server_handlers_read.go:67:   ifModifiedSinceHeader := r.Header.Get("If-Modified-Since")
+weed/server/filer_server_handlers_read.go:158:  if checkPreconditions(w, r, entry) {
+weed/server/volume_server_handlers_read.go:216:         if r.Header.Get("If-Modified-Since") != "" {
+weed/server/volume_server_handlers_read.go:217:                 if t, parseError := time.Parse(http.TimeFormat, r.Header.Get("If-Modified-Since")); parseError == nil {
+weed/server/volume_server_handlers_read.go:225: if inm := r.Header.Get("If-None-Match"); inm == "\""+n.Etag()+"\"" {
+# file_editor: /workspace/seaweedfs/weed/server/filer_server_handlers_read.go
+Here's the result of running `cat -n` on /workspace/seaweedfs/weed/server/filer_server_handlers_read.go:
+    28	// Preconditions supported are:
+    29	//
+    30	//	If-Modified-Since
+    31	//	If-Unmodified-Since
+    32	//	If-Match
+    33	//	If-None-Match
+    34	func checkPreconditions(w http.ResponseWriter, r *http.Request, entry *filer.Entry) bool {
+    35	
+    36		etag := filer.ETagEntry(entry)
+    37		/// When more than one conditional request header field is present in a
+    38		/// request, the order in which the fields are evaluated becomes
+    39		/// important.  In practice, the fields defined in this document are
+    40		/// consistently implemented in a single, logical order, since "lost
+    41		/// update" preconditions have more strict requirements than cache
+    42		/// validation, a validated cache is more efficient than a partial
+    43		/// response, and entity tags are presumed to be more accurate than date
+    44		/// validators. https://tools.ietf.org/html/rfc7232#section-5
+    45		if entry.Attr.Mtime.IsZero() {
+    46			return false
+    47		}
+    48		w.Header().Set("Last-Modified", entry.Attr.Mtime.UTC().Format(http.TimeFormat))
+    49	
+    50		ifMatchETagHeader := r.Header.Get("If-Match")
+    51		ifUnmodifiedSinceHeader := r.Header.Get("If-Unmodified-Since")
+    52		if ifMatchETagHeader != "" {
+    53			if util.CanonicalizeETag(etag) != util.CanonicalizeETag(ifMatchETagHeader) {
+    54				w.WriteHeader(http.StatusPreconditionFailed)
+    55				return true
+    56			}
+    57		} else if ifUnmodifiedSinceHeader != "" {
+    58			if t, parseError := time.Parse(http.TimeFormat, ifUnmodifiedSinceHeader); parseError == nil {
+    59				if t.Before(entry.Attr.Mtime) {
+    60					w.WriteHeader(http.StatusPreconditionFailed)
+    61					return true
+    62				}
+    63			}
+    64		}
+    65	
+    66		ifNoneMatchETagHeader := r.Header.Get("If-None-Match")
+    67		ifModifiedSinceHeader := r.Header.Get("If-Modified-Since")
+    68		if ifNoneMatchETagHeader != "" {
+    69			if util.CanonicalizeETag(etag) == util.CanonicalizeETag(ifNoneMatchETagHeader) {
+    70				SetEtag(w, etag)
+    71				w.WriteHeader(http.StatusNotModified)
+    72				return true
+    73			}
+    74		} else if ifModifiedSinceHeader != "" {
+    75			if t, parseError := time.Parse(http.TimeFormat, ifModifiedSinceHeader); parseError == nil {
+    76				if !t.Before(entry.Attr.Mtime) {
+    77					SetEtag(w, etag)
+    78					w.WriteHeader(http.StatusNotModified)
+    79					return true
+    80				}
+    81			}
+    82		}
+    83	
+    84		return false
+    85	}
+    86	
+    87	func (fs *FilerServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request) {
+    88		ctx := r.Context()
+    89		path := r.URL.Path
+    90		isForDirectory := strings.HasSuffix(path, "/")
+$ cd /workspace/seaweedfs && go build ./weed/s3api/ 2>&1 | head -20
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ -run TestConditional 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.020s
+# file_editor: /workspace/seaweedfs/weed/s3api/issue7274_repro_test.go
+File created successfully at: /workspace/seaweedfs/weed/s3api/issue7274_repro_test.go
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ -run TestIssue7274 -v 2>&1 | tail -20
+=== RUN   TestIssue7274_ETagConsistency
+--- PASS: TestIssue7274_ETagConsistency (0.00s)
+PASS
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.015s
+$ cd /workspace/seaweedfs && rm weed/s3api/issue7274_repro_test.go && go test ./weed/s3api/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.107s
+$ cd /workspace/seaweedfs && go test ./weed/filer/ 2>&1 | tail -10
+ok      github.com/seaweedfs/seaweedfs/weed/filer       0.014s
+$ cd /workspace/seaweedfs && git --no-pager diff
+diff --git a/weed/s3api/s3api_object_handlers_put.go b/weed/s3api/s3api_object_handlers_put.go
+index fb7d6c3a6..b24e5b35e 100644
+--- a/weed/s3api/s3api_object_handlers_put.go
++++ b/weed/s3api/s3api_object_handlers_put.go
+@@ -13,6 +13,7 @@ import (
+        "time"
+
+        "github.com/pquerna/cachecontrol/cacheobject"
++       "github.com/seaweedfs/seaweedfs/weed/filer"
+        "github.com/seaweedfs/seaweedfs/weed/glog"
+        "github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+        "github.com/seaweedfs/seaweedfs/weed/pb/s3_pb"
+@@ -1257,8 +1258,11 @@ func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+        if etagBytes, hasETag := entry.Extended[s3_constants.ExtETagKey]; hasETag {
+                return string(etagBytes)
+        }
+-       // Fallback: calculate ETag from chunks
+-       return s3a.calculateETagFromChunks(entry.Chunks)
++       // Fallback: use filer.ETag which prefers the stored MD5 (Attributes.Md5)
++       // and only computes from chunks when no MD5 is available. This keeps the
++       // ETag used for conditional checks consistent with the ETag returned by
++       // HeadObject/GetObject (which also use filer.ETag).
++       return filer.ETag(entry)
+ }
+
+ func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+$ cd /workspace/seaweedfs && go build ./weed/... 2>&1 | head -20 && echo "BUILD DONE"
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/seaweedfs/seaweedfs: permission denied
+BUILD DONE
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/filer/ ./weed/server/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/filer       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/server      0.014s
+# finish: Fixed If-Match ETag inconsistency in s3api
+I resolved Issue 1 (#7274): "[s3proxy] If-Match fails against ETag returned by HeadObject".
+
+## Root Cause
+There was an ETag computation inconsistency for objects that have a stored MD5 (`Attributes.Md5`) but no `Extended[ExtETagKey]`:
+
+- `HeadObject`/`GetObject` return the ETag via `filer.ETag(entry)`, which **prefers the stored MD5** → e.g. `663726330ac254635581be07a2a1def6`.
+- The S3 conditional-header check (`If-Match`/`If-None-Match`) used `getObjectETag(entry)`, whose fallback called `calculateETagFromChunks` (`filer.ETagChunks`), producing a **multipart-style chunk ETag** → e.g. `123294de680f28bde364b81477549f7d-2`.
+
+Because of this mismatch, an `If-Match` request using the exact ETag returned by `HeadObject` failed at the S3 layer with 412. Furthermore, even when the user supplied the chunk-style ETag (so the S3-level check "passed"), the filer's own `checkPreconditions` (which uses `filer.ETagEntry`, MD5-preferred) still returned 412 — exactly matching the issue's confusing log of "If-Match passed" followed by a 412 response.
+
+## Fix
+In `weed/s3api/s3api_object_handlers_put.go`, changed `getObjectETag`'s fallback from `calculateETagFromChunks(entry.Chunks)` to `filer.ETag(entry)` (and added the `filer` import). Since `filer.ETag` prefers the stored MD5 and only computes from chunks when no MD5 exists, the conditional-check ETag is now consistent with what `HeadObject`/`GetObject` return and with the filer's precondition check. As a result, the entire flow (S3 conditional check + forwarded header to filer) now agrees and `If-Match` with the HeadObject ETag succeeds.
+
+## Verification
+- `go build ./weed/...` succeeds.
+- Authored a reproduction test using the exact object metadata from the issue (MD5 `ZjcmMwrCVGNVgb4HoqHe9g==` with two chunks) which confirmed `getObjectETag` now returns `663726330ac254635581be07a2a1def6` and matches `filer.ETag`; removed the temporary test afterward to keep the change minimal.
+- All tests in `weed/s3api`, `weed/filer`, and `weed/server` pass, including the existing conditional-header test suite.
+
+The change is minimal: one behavioral line plus an import.

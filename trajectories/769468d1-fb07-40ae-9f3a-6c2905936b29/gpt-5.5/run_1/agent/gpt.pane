@@ -1,0 +1,200 @@
++               return nil
+        }
+
+        imp := &Import{
+@@ -74,6 +82,28 @@ func stringHasSuffixFold(s, suffix string) bool {
+        return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
+ }
+
++func importPathMatchesDir(path, destDir string) bool {
++       if stringHasSuffixFold(filepath.ToSlash(destDir), path) {
++               return true
++       }
++
++       pkg, err := build.Default.Import(path, destDir, build.FindOnly)
++       if err != nil {
++               return false
++       }
++
++       pkgDir, err := filepath.Abs(pkg.Dir)
++       if err != nil {
++               return false
++       }
++       destDir, err = filepath.Abs(destDir)
++       if err != nil {
++               return false
++       }
++
++       return strings.EqualFold(filepath.Clean(pkgDir), filepath.Clean(destDir))
++}
++
+ func (s Imports) finalize() []*Import {
+        // ensure stable ordering by sorting
+        sort.Slice(s.imports, func(i, j int) bool {
+diff --git a/codegen/type.go b/codegen/type.go
+index 31fcefc..228f404 100644
+--- a/codegen/type.go
++++ b/codegen/type.go
+@@ -17,10 +17,11 @@ type NamedType struct {
+ }
+
+ type Ref struct {
+-       GoType        string  // Name of the go type
+-       Package       string  // the package the go type lives in
+-       Import        *Import // the resolved import with alias
+-       IsUserDefined bool    // does the type exist in the typemap
++       GoType        string   // Name of the go type
++       Package       string   // the package the go type lives in
++       Import        *Import  // the resolved import with alias
++       IsUserDefined bool     // does the type exist in the typemap
++       GoModifiers   []string // modifiers that are part of the configured go type
+ }
+
+ type Type struct {
+@@ -36,7 +37,7 @@ const (
+ )
+
+ func (t Ref) FullName() string {
+-       return t.PkgDot() + t.GoType
++       return strings.Join(t.GoModifiers, "") + t.PkgDot() + t.GoType
+ }
+
+ func (t Ref) PkgDot() string {
+@@ -56,7 +57,7 @@ func (t Type) FullSignature() string {
+                pkg = t.Package + "."
+        }
+
+-       return strings.Join(t.Modifiers, "") + pkg + t.GoType
++       return strings.Join(t.Modifiers, "") + strings.Join(t.GoModifiers, "") + pkg + t.GoType
+ }
+
+ func (t Type) IsPtr() bool {
+diff --git a/codegen/type_build.go b/codegen/type_build.go
+index 76426a2..6537ba1 100644
+--- a/codegen/type_build.go
++++ b/codegen/type_build.go
+@@ -34,7 +34,7 @@ func (cfg *Config) buildNamedTypes() NamedTypes {
+        return types
+ }
+
+-func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) {
++func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) error {
+        for _, t := range namedTypes {
+                if t.Package == "" {
+                        continue
+@@ -47,10 +47,17 @@ func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir st
+                        cpy := t.Ref
+                        t.Marshaler = &cpy
+
+-                       t.Package, t.GoType = pkgAndType(sig.Params().At(0).Type().String())
++                       ref := refFromGoType(sig.Params().At(0).Type())
++                       t.Package = ref.Package
++                       t.GoType = ref.GoType
++                       t.GoModifiers = ref.GoModifiers
+                        t.Import = imports.add(t.Package)
++                       if imports.err != nil {
++                               return imports.err
++                       }
+                }
+        }
++       return nil
+ }
+
+ // namedTypeFromSchema objects for every graphql type, including primitives.
+@@ -78,6 +85,36 @@ func pkgAndType(name string) (string, string) {
+        return normalizeVendor(strings.Join(parts[:len(parts)-1], ".")), parts[len(parts)-1]
+ }
+
++func refFromGoType(t types.Type) Ref {
++       var ref Ref
++       for {
++               switch typ := t.(type) {
++               case *types.Pointer:
++                       ref.GoModifiers = append(ref.GoModifiers, modPtr)
++                       t = typ.Elem()
++               case *types.Array:
++                       ref.GoModifiers = append(ref.GoModifiers, modList)
++                       t = typ.Elem()
++               case *types.Slice:
++                       ref.GoModifiers = append(ref.GoModifiers, modList)
++                       t = typ.Elem()
++               default:
++                       switch typ := t.(type) {
++                       case *types.Named:
++                               ref.GoType = typ.Obj().Name()
++                               if typ.Obj().Pkg() != nil {
++                                       ref.Package = normalizeVendor(typ.Obj().Pkg().Path())
++                               }
++                       case *types.Basic:
++                               ref.GoType = typ.Name()
++                       default:
++                               ref.Package, ref.GoType = pkgAndType(t.String())
++                       }
++                       return ref
++               }
++       }
++}
++
+ func (n NamedTypes) getType(t common.Type) *Type {
+        var modifiers []string
+        usePtr := true
+diff --git a/codegen/util.go b/codegen/util.go
+index dfd44d5..46f400e 100644
+--- a/codegen/util.go
++++ b/codegen/util.go
+@@ -161,7 +161,7 @@ func bindObject(t types.Type, object *Object, imports *Imports) error {
+                                                continue l2
+                                        }
+                                }
+-                               return errors.Errorf("cannot match argument " + param.Name() + " to any argument in " + t.String())
++                               return errors.Errorf("cannot match argument %s to any argument in %s", param.Name(), t.String())
+                        }
+                        field.Args = newArgs
+$ cd /workspace/gqlgen && git status --short && printf '\nLast reproduction run:\n' && go run /workspace/repro_gqlgen_issues.go
+M codegen/build.go
+ M codegen/codegen.go
+ M codegen/import.go
+ M codegen/import_build.go
+ M codegen/type.go
+ M codegen/type_build.go
+ M codegen/util.go
+ M go.mod
+ M handler/graphql.go
+ M neelance/validation/validation.go
+?? example/scalars/vendor/external/go.mod
+?? test/vendor/remote_api/go.mod
+
+Last reproduction run:
+package-main invalid typemap returned error without panic
+valid package-main generated and compiled
+external-scalar reproduction generated and compiled
+# finish: Summarize completed gqlgen fixes and passing verification
+Implemented the fixes in `/workspace/gqlgen` without modifying any test logic or test files.
+
+Summary of changes:
+- Fixed package-main import path handling:
+  - `importPath` now uses the generated directory’s actual import path instead of substituting the Go package name, so `package main` no longer turns `example.com/foo-bar` into `example.com/main`.
+  - Added module-aware fallback import path resolution for this repository’s module-mode tests.
+- Prevented command-line/codegen panics on bad imports:
+  - Import construction now returns errors instead of panicking from `Imports.add`.
+  - Callers propagate those errors through model/exec planning.
+- Fixed external custom scalar marshaller generation:
+  - Scalar marshaller parameter types are now derived from `go/types` rather than parsing strings only.
+  - Pointer/slice/array modifiers on external scalar parameter types are preserved, so cases like `func MarshalCustom(*external.Value)` generate valid code.
+- Avoided self-import cycles by resolving whether an import path points at the generated destination directory.
+- Fixed Go 1.25 vet failures in non-test code (`handler`, `validation`, and one `codegen` error path).
+- Added local module metadata/replacements for the existing pseudo-packages `external` and `remote_api` so the full suite runs in module mode.
+
+Reproducer:
+- Created `/workspace/repro_gqlgen_issues.go`.
+- It checks:
+  1. The invalid package-main typemap returns an error without panic.
+  2. A valid `package main` generation compiles.
+  3. An external pointer custom scalar marshaller generation compiles.
+
+Verification run:
+- `go run /workspace/repro_gqlgen_issues.go` ✅
+- `go test ./codegen` ✅
+- `go test ./...` ✅
+
+Current modified non-test files include codegen source, module metadata, and two small vet/module-mode support fixes. No test files were modified.

@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+cd /workspace/gqlgen && git diff --name-only | sort && echo '--- test files modified ---' && git diff --name-only | grep '_test\.go$' || true && echo '--- diff check ---' && git diff --check
+README.md
+codegen/field.gotpl
+codegen/testserver/generated.go
+docs/content/getting-started.md
+graphql/context_field.go
+graphql/context_field_input.go
+graphql/context_response.go
+graphql/error.go
+integration/generated.go
+--- test files modified ---
+--- diff check ---
+# finish: Finish task with summary and validation results
+Implemented the remaining non-test changes for the gqlgen issues.
+
+What changed:
+- Preserved custom errors from input coercion/directive paths:
+  - `graphql.WrapErrorWithInputPath` now keeps the original error instead of converting non-`gqlerror.Error` values into a new `gqlerror.Error` too early.
+  - `graphql.AddError` unwraps the stored original error before invoking the configured error presenter, while preserving the input path in context.
+  - `graphql.DefaultErrorPresenter` now uses a shared `GetPath(ctx)` helper that prefers input paths when present.
+- Added `FieldContext.IsResolver`:
+  - Added the field to `graphql.FieldContext`.
+  - Updated `codegen/field.gotpl` to populate it.
+  - Updated checked-in generated outputs in `codegen/testserver/generated.go` and `integration/generated.go`.
+- Fixed documentation typos in:
+  - `README.md`
+  - `docs/content/getting-started.md`
+
+Validation performed:
+- Created a temporary Go reproduction script and ran it with `go run` to confirm the original custom directive error was clobbered before the fix.
+- Expanded the reproduction to cover:
+  - custom error type handled by a custom presenter
+  - plain `error`
+  - `*gqlerror.Error` with extensions
+- Confirmed all those cases preserve error information and path after the fix, then removed the temporary script.
+- Ran focused tests successfully:
+  - `go test ./graphql ./codegen/testserver ./integration`
+- Ran `git diff --check` successfully.
+- Verified no `*_test.go` files were modified.
+
+I also ran `go test ./...`. It still fails in unrelated packages because of existing `go/types` / `go/packages` toolchain issues in packages such as `codegen/config`, `internal/code`, `internal/rewrite`, `plugin/federation`, `plugin/modelgen`, and `plugin/resolvergen`; the focused tests for the modified areas pass.

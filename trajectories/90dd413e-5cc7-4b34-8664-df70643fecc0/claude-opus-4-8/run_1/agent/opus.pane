@@ -1,0 +1,200 @@
+kernel/x86_64/iamax_sse.S:860:  cmpeqps %xmm0, %xmm5
+kernel/x86/iamax_sse.S:110:     cmpeqps %xmm7, %xmm7
+kernel/x86/iamax_sse.S:325:     cmpeqps %xmm0, %xmm1
+kernel/x86/iamax_sse.S:331:     cmpeqps %xmm0, %xmm2
+kernel/x86/iamax_sse.S:583:     cmpeqps %xmm0, %xmm1
+kernel/x86/iamax_sse.S:590:     cmpeqps %xmm0, %xmm2
+# file_editor: Fix cmpeqps to cmpeqss in iamax_sse.S
+The file /workspace/OpenBLAS/kernel/x86_64/iamax_sse.S has been edited. Here's the result of running `cat -n` on a snippet of /workspace/OpenBLAS/kernel/x86_64/iamax_sse.S:
+   855		movss	0 * SIZE(X), %xmm5
+   856		addq	INCX, X
+   857	#ifdef USE_ABS
+   858		andps	 %xmm15, %xmm5
+   859	#endif
+   860		cmpeqss	%xmm0, %xmm5
+   861	
+   862		movss	0 * SIZE(X), %xmm6
+   863		addq	INCX, X
+   864	#ifdef USE_ABS
+   865	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/OpenBLAS && make TARGET=HASWELL NO_LAPACK=1 NO_FORTRAN=1 -j4 > /tmp/build.log 2>&1; tail -5 /tmp/build.log
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_G77 -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -DASMNAME=samax_k -DASMFNAME=samax_k_ -DNAME=samax_k_ -DCNAME=samax_k -DCHAR_NAME=\"samax_k_\" -DCHAR_CNAME=\"samax_k\" -DNO_AFFINITY -I.. -UDOUBLE  -UCOMPLEX -UCOMPLEX -UDOUBLE  -DUSE_ABS -UUSE_MIN ../kernel/arm64/amax.S -o samax_k.o
+make[1]: *** No rule to make target '../kernel/arm64/amin.S', needed by 'samin_k.o'.  Stop.
+make[1]: *** Waiting for unfinished jobs....
+make[1]: Leaving directory '/workspace/OpenBLAS/kernel'
+make: *** [Makefile:140: libs] Error 1
+$ cd /workspace/OpenBLAS && uname -m && gcc -dumpmachine
+aarch64
+aarch64-linux-gnu
+$ cd /workspace/OpenBLAS && cat kernel/arm/iamin.c
+/***************************************************************************
+Copyright (c) 2013, The OpenBLAS Project
+All rights reserved.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+1. Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in
+the documentation and/or other materials provided with the
+distribution.
+3. Neither the name of the OpenBLAS project nor the names of
+its contributors may be used to endorse or promote products
+derived from this software without specific prior written permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE OPENBLAS PROJECT OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*****************************************************************************/
+
+/**************************************************************************************
+* 2013/09/14 Saar
+*        BLASTEST float         : NoTest
+*        BLASTEST double        : NoTest
+*        CTEST                  : NoTest
+*        TEST                   : NoTest
+*
+**************************************************************************************/
+
+#include "common.h"
+#include <math.h>
+
+#if defined(DOUBLE)
+
+#define ABS fabs
+
+#else
+
+#define ABS fabsf
+
+#endif
+
+
+BLASLONG CNAME(BLASLONG n, FLOAT *x, BLASLONG inc_x)
+{
+        BLASLONG i=0;
+        BLASLONG ix=0;
+        FLOAT minf=0.0;
+        BLASLONG min=0;
+
+        if (n <= 0 || inc_x <= 0) return(min);
+
+        minf=ABS(x[0]);
+        ix += inc_x;
+        i++;
+
+        while(i < n)
+        {
+                if( ABS(x[ix]) < ABS(minf) )
+                {
+                        min = i;
+                        minf = ABS(x[ix]);
+                }
+                ix += inc_x;
+                i++;
+        }
+        return(min+1);
+}
+$ cd /workspace/OpenBLAS && grep -n "cmpeqpd\|cmpeqsd\|cmppd\|cmpsd" kernel/x86_64/iamax_sse2.S
+297:    cmpeqpd %xmm0, %xmm1
+303:    cmpeqpd %xmm0, %xmm3
+309:    cmpeqpd %xmm0, %xmm5
+315:    cmpeqpd %xmm0, %xmm7
+622:    cmpeqpd %xmm0, %xmm1
+629:    cmpeqpd %xmm0, %xmm3
+636:    cmpeqpd %xmm0, %xmm5
+643:    cmpeqpd %xmm0, %xmm7
+972:    cmpeqpd %xmm0, %xmm1
+981:    cmpeqpd %xmm0, %xmm3
+990:    cmpeqpd %xmm0, %xmm5
+999:    cmpeqpd %xmm0, %xmm7
+# file_editor: /workspace/OpenBLAS/kernel/x86_64/iamax_sse2.S
+Here's the result of running `cat -n` on /workspace/OpenBLAS/kernel/x86_64/iamax_sse2.S:
+   955		unpckhpd %xmm0, %xmm0
+   956		maxsd	 %xmm1, %xmm0
+   957		unpcklpd %xmm0, %xmm0
+   958	
+   959		movq	M,  I
+   960		sarq	$3, I
+   961		jle	.L95
+   962		ALIGN_4
+   963	
+   964	.L92:
+   965		movsd	0 * SIZE(X), %xmm1
+   966		addq	INCX, X
+   967		movhpd	0 * SIZE(X), %xmm1
+   968		addq	INCX, X
+   969	#ifdef USE_ABS
+   970		andpd	 %xmm15, %xmm1
+   971	#endif
+   972		cmpeqpd	%xmm0, %xmm1
+   973	
+   974		movsd	0 * SIZE(X), %xmm3
+   975		addq	INCX, X
+   976		movhpd	0 * SIZE(X), %xmm3
+   977		addq	INCX, X
+   978	#ifdef USE_ABS
+   979		andpd	 %xmm15, %xmm3
+   980	#endif
+   981		cmpeqpd	%xmm0, %xmm3
+   982	
+   983		movsd	0 * SIZE(X), %xmm5
+   984		addq	INCX, X
+   985		movhpd	0 * SIZE(X), %xmm5
+   986		addq	INCX, X
+   987	#ifdef USE_ABS
+   988		andpd	 %xmm15, %xmm5
+   989	#endif
+   990		cmpeqpd	%xmm0, %xmm5
+   991	
+   992		movsd	0 * SIZE(X), %xmm7
+   993		addq	INCX, X
+   994		movhpd	0 * SIZE(X), %xmm7
+   995		addq	INCX, X
+   996	#ifdef USE_ABS
+   997		andpd	 %xmm15, %xmm7
+   998	#endif
+   999		cmpeqpd	%xmm0, %xmm7
+  1000	
+  1001		orpd	%xmm3, %xmm1
+  1002		orpd	%xmm7, %xmm5
+  1003		orpd	%xmm5, %xmm1
+  1004	#ifndef C_SUN
+  1005		movmskpd %xmm1, %r11
+  1006	#else
+  1007		.byte	0x66
+  1008		.long	0xd9500f4c
+  1009	#endif
+  1010		testq	 $3, %r11
+$ cd /workspace/OpenBLAS && git --no-pager diff
+diff --git a/kernel/x86_64/iamax_sse.S b/kernel/x86_64/iamax_sse.S
+index f22e34a1..03d421b3 100644
+--- a/kernel/x86_64/iamax_sse.S
++++ b/kernel/x86_64/iamax_sse.S
+@@ -857,7 +857,7 @@
+ #ifdef USE_ABS
+        andps    %xmm15, %xmm5
+ #endif
+-       cmpeqps %xmm0, %xmm5
++       cmpeqss %xmm0, %xmm5
+
+        movss   0 * SIZE(X), %xmm6
+        addq    INCX, X
+# finish: Summarize the isamin kernel fix
+Fixed Issue #2116 (cblas_isamin returning the wrong index when the data contains 0.0 and incX != 1).
+
+Root cause: In kernel/x86_64/iamax_sse.S, the strided (incX != 1) loop `.L93` used a packed compare `cmpeqps %xmm0, %xmm5` for the 5th of 8 scalar-loaded elements, whereas the other 7 elements correctly used scalar `cmpeqss`. Since `movss` zeroes the upper 3 lanes and the min/max value is broadcast across all lanes of xmm0, a min value of 0.0 made the zeroed upper lanes spuriously match, producing a false early "hit" and thus the wrong index.
+
+Fix (single instruction): changed `cmpeqps %xmm0, %xmm5` to `cmpeqss %xmm0, %xmm5`.
+
+Verified the analogous double-precision kernel (iamax_sse2.S) is not affected (it loads two real elements via movsd+movhpd, so packed compare is correct), the other cmpeqps uses are in legitimate aligned packed paths, and the generic C fallback (kernel/arm/iamin.c) is correct.
+
+Note: the test environment is aarch64, so the x86_64 assembly cannot be compiled/executed natively here, but the change is a minimal, logically verified correction consistent with the surrounding scalar-compare pattern.

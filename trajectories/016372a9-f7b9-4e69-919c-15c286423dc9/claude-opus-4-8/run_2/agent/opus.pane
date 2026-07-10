@@ -1,0 +1,200 @@
++++ b/clause/where.go
+@@ -60,6 +60,9 @@ func buildExprs(exprs []Expression, builder Builder, joinCond string) {
+                        case Expr:
+                                sql := strings.ToLower(v.SQL)
+                                wrapInParentheses = strings.Contains(sql, "and") || strings.Contains(sql, "or")
++                       case NamedExpr:
++                               sql := strings.ToLower(v.SQL)
++                               wrapInParentheses = strings.Contains(sql, "and") || strings.Contains(sql, "or")
+                        }
+                }
+
+@@ -89,9 +92,14 @@ func (where Where) MergeClause(clause *Clause) {
+ func And(exprs ...Expression) Expression {
+        if len(exprs) == 0 {
+                return nil
+-       } else if len(exprs) == 1 {
+-               return exprs[0]
+        }
++
++       if len(exprs) == 1 {
++               if _, ok := exprs[0].(OrConditions); !ok {
++                       return exprs[0]
++               }
++       }
++
+        return AndConditions{Exprs: exprs}
+ }
+
+diff --git a/finisher_api.go b/finisher_api.go
+index b3bdedc..1377d09 100644
+--- a/finisher_api.go
++++ b/finisher_api.go
+@@ -557,6 +557,28 @@ func (db *DB) Transaction(fc func(tx *DB) error, opts ...*sql.TxOptions) (err er
+        return
+ }
+
++// Connection uses a db conn to execute Multiple commands, this conn will put conn pool after it is executed.
++func (db *DB) Connection(fc func(tx *DB) error) (err error) {
++       if db.Error != nil {
++               return db.Error
++       }
++
++       tx := db.getInstance()
++       sqlDB, err := tx.DB()
++       if err != nil {
++               return
++       }
++
++       conn, err := sqlDB.Conn(tx.Statement.Context)
++       if err != nil {
++               return
++       }
++
++       defer conn.Close()
++       tx.Statement.ConnPool = conn
++       return fc(tx)
++}
++
+ // Begin begins a transaction
+ func (db *DB) Begin(opts ...*sql.TxOptions) *DB {
+        var (
+diff --git a/migrator/migrator.go b/migrator/migrator.go
+index 91bf60a..d082230 100644
+--- a/migrator/migrator.go
++++ b/migrator/migrator.go
+@@ -97,7 +97,8 @@ func (m Migrator) AutoMigrate(values ...interface{}) error {
+                        if err := m.RunWithValue(value, func(stmt *gorm.Statement) (errr error) {
+                                columnTypes, _ := m.DB.Migrator().ColumnTypes(value)
+
+-                               for _, field := range stmt.Schema.FieldsByDBName {
++                               for _, dbName := range stmt.Schema.DBNames {
++                                       field := stmt.Schema.FieldsByDBName[dbName]
+                                        var foundColumn gorm.ColumnType
+
+                                        for _, columnType := range columnTypes {
+diff --git a/schema/field.go b/schema/field.go
+index f3189c7..1683919 100644
+--- a/schema/field.go
++++ b/schema/field.go
+@@ -346,7 +346,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
+                }
+        }
+
+-       if _, ok := field.TagSettings["EMBEDDED"]; ok || (fieldStruct.Anonymous && !isValuer && (field.Creatable || field.Updatable || field.Readable)) {
++       if _, ok := field.TagSettings["EMBEDDED"]; ok || (field.GORMDataType == "" && fieldStruct.Anonymous && !isValuer && (field.Creatable || field.Updatable || field.Readable)) {
+                if reflect.Indirect(fieldValue).Kind() == reflect.Struct {
+                        var err error
+                        field.Creatable = false
+diff --git a/soft_delete.go b/soft_delete.go
+index 11c4faf..8fa109d 100644
+--- a/soft_delete.go
++++ b/soft_delete.go
+@@ -63,9 +63,9 @@ func (sd SoftDeleteQueryClause) MergeClause(*clause.Clause) {
+ }
+
+ func (sd SoftDeleteQueryClause) ModifyStatement(stmt *Statement) {
+-       if _, ok := stmt.Clauses["soft_delete_enabled"]; !ok {
++       if _, ok := stmt.Clauses["soft_delete_enabled"]; !ok && !stmt.Statement.Unscoped {
+                if c, ok := stmt.Clauses["WHERE"]; ok {
+-                       if where, ok := c.Expression.(clause.Where); ok && len(where.Exprs) > 1 {
++                       if where, ok := c.Expression.(clause.Where); ok && len(where.Exprs) >= 1 {
+                                for _, expr := range where.Exprs {
+                                        if orCond, ok := expr.(clause.OrConditions); ok && len(orCond.Exprs) == 1 {
+                                                where.Exprs = []clause.Expression{clause.And(where.Exprs...)}
+diff --git a/statement.go b/statement.go
+index 5a948d3..452a649 100644
+--- a/statement.go
++++ b/statement.go
+@@ -232,6 +232,14 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                        case reflect.Slice, reflect.Array:
+                                if rv.Len() == 0 {
+                                        writer.WriteString("(NULL)")
++                               } else if rv.Kind() == reflect.Slice && rv.Type().Elem() == reflect.TypeOf(uint8(0)) {
++                                       // convert alias types of []byte (e.g. `type Bytes []byte`) so the
++                                       // driver binds them as a single value instead of expanding the slice
++                                       if rv.Type() != reflect.TypeOf([]byte(nil)) {
++                                               v = rv.Convert(reflect.TypeOf([]byte(nil))).Interface()
++                                       }
++                                       stmt.Vars = append(stmt.Vars, v)
++                                       stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+                                } else {
+                                        writer.WriteByte('(')
+                                        for i := 0; i < rv.Len(); i++ {
+@@ -242,6 +250,14 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                                        }
+                                        writer.WriteByte(')')
+                                }
++                       case reflect.Struct:
++                               // convert alias types of time.Time (e.g. `type Time time.Time`) so
++                               // the driver receives a value it can handle
++                               if rv.Type().ConvertibleTo(schema.TimeReflectType) {
++                                       v = rv.Convert(schema.TimeReflectType).Interface()
++                               }
++                               stmt.Vars = append(stmt.Vars, v)
++                               stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+                        default:
+                                stmt.Vars = append(stmt.Vars, v)
+                                stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+# file_editor: Temp named OR test
+File created successfully at: /workspace/gorm/tests/zz_tmp_test.go
+$ cd /workspace/gorm/tests && rm -f /tmp/gorm.db && go test -run 'TestZZNamedOr' -v . 2>&1 | grep -E "named or|PASS|FAIL"; rm zz_tmp_test.go
+zz_tmp_test.go:15: named or: SELECT * FROM `users` WHERE (role = ? OR role = ?) AND `users`.`deleted_at` IS NULL
+--- PASS: TestZZNamedOr (0.00s)
+PASS
+$ cd /workspace/gorm && go build ./... && go vet ./clause/ ./schema/ ./migrator/ . 2>&1 | grep -v "^#" | head; cd tests && rm -f /tmp/gorm.db && go test . 2>&1 | tail -3
+ok      gorm.io/gorm/tests      (cached)
+$ cd /workspace/gorm/tests && rm -f /tmp/gorm.db && go test -count=1 . 2>&1 | tail -3
+ok      gorm.io/gorm/tests      22.015s
+$ cd /workspace/gorm && go test -count=1 ./clause/ ./schema/ ./utils/ . 2>&1 | tail
+ok      gorm.io/gorm/clause     0.041s
+ok      gorm.io/gorm/schema     0.022s
+ok      gorm.io/gorm/utils      0.002s
+ok      gorm.io/gorm    0.003s
+$ cd /workspace/gorm && git status --short && ls tests/zz_tmp_test.go 2>/dev/null || echo "no temp files"
+M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+no temp files
+$ cd /workspace/gorm && go build ./... && echo "BUILD OK" && go test -count=1 ./clause/ ./schema/ . 2>&1 | tail -5
+BUILD OK
+ok      gorm.io/gorm/clause     0.038s
+ok      gorm.io/gorm/schema     0.020s
+ok      gorm.io/gorm    0.003s
+# finish: Finalize task with summary of all fixes
+I implemented the code-level fixes for the issues in the description and verified them with the existing unit and integration test suites (all passing).
+
+## Changes
+
+**schema/field.go (Issue #4888 — type alias AutoMigrate crash)**
+- Added `field.GORMDataType == ""` to the embedded-struct detection condition. Anonymous alias fields such as `type ID int64` were wrongly treated as embedded structs, producing `invalid embedded struct ... but got main.ID`. They are now parsed as normal columns.
+
+**statement.go `AddVar` (Issue #4992 — time.Time / []byte alias support)**
+- Alias types of `[]byte` (e.g. `type Bytes []byte`) are now converted to `[]byte` and bound as a single value rather than being expanded into `(b0,b1,...)`.
+- Alias types of `time.Time` (e.g. `type Time time.Time`) are converted to `time.Time` before binding so the driver can handle them.
+- Both conversions live in the `default` branch, after the `driver.Valuer` cases, so custom Valuer/Scanner types (e.g. encrypted password fields) are not affected.
+
+**clause/where.go (Issues #4937 and #4914 — OR-condition wrapping)**
+- Added a `case NamedExpr` in `buildExprs` so Where clauses with named arguments and `OR` are wrapped in parentheses: `WHERE (role = ? OR role = ?) AND users.deleted_at IS NULL`.
+- `And()` no longer collapses a single `OrConditions`; it keeps it grouped inside `AndConditions`.
+
+**soft_delete.go (Issues #4914 and #4929)**
+- Changed the guard to `len(where.Exprs) >= 1` so a lone OR condition is normalized before appending the soft-delete predicate. `db.Or("id = ?", 1)` now yields `WHERE id = ? AND deleted_at IS NULL` instead of `WHERE deleted_at IS NULL OR id = ?`.
+- Added `&& !stmt.Statement.Unscoped` so the soft-delete query rewrite is skipped under `Unscoped()`.
+
+**migrator/migrator.go (Issue #4351 — deterministic AutoMigrate)**
+- Iterate the ordered `stmt.Schema.DBNames` slice instead of the non-deterministic `FieldsByDBName` map, giving a stable column migration order.
+
+**finisher_api.go (Issue #4982 — single-connection execution)**
+- Added `func (db *DB) Connection(fc func(tx *DB) error) error` to run multiple commands over one pooled `*sql.Conn`.
+
+The remaining items (golangci config #4896, gofumpt CI #4973, test error-handling #4964, the historical Id→ID #60, and Rows-iteration docs #59) are CI/documentation/historical and require no Go source changes.
+
+## Verification
+- `go build ./...` succeeds; `go vet` is clean on the changed packages.
+- Unit tests pass: `clause`, `schema`, `utils`, root package.
+- Full `tests/` integration suite (sqlite) passes with `-count=1`.
+- Confirmed via temporary scratch tests (since removed): alias `AutoMigrate`+`Create`+`First` round-trips correctly for `int64`/`time.Time`/`[]byte` aliases; `Connection` executes; named-arg OR is parenthesized; single-OR with soft delete produces correct SQL; and previously failing `TestScannerValuer`/`TestInvalidValuer` regressions were resolved by routing the alias conversions through the non-Valuer code path.

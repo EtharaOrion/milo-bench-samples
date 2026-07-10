@@ -1,0 +1,200 @@
+$ nb={
+$  "cells":[
+$   {"cell_type":"markdown","metadata":{},"source":["# Epsilla\n","\n","This notebook shows basic usage of the Epsilla vectorstore integration.\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["# pip install pyepsilla openai\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["from langchain.embeddings import OpenAIEmbeddings\n","from langchain.vectorstores import Epsilla\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["texts = [\n","    \"Epsilla is an open-source vector database.\",\n","    \"LangChain can use Epsilla as a vectorstore.\",\n","]\n","metadatas = [{\"source\": \"intro\"}, {\"source\": \"langchain\"}]\n","\n","vectorstore = Epsilla.from_texts(\n","    texts,\n","    embedding=OpenAIEmbeddings(),\n","    metadatas=metadatas,\n","    db_path=\"/tmp/langchain-epsilla\",\n","    db_name=\"langchain\",\n","    table_name=\"documents\",\n",")\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["docs = vectorstore.similarity_search(\"What is Epsilla?\", k=1)\n","docs[0]\n"]}
+$  ],
+$  "metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"},"language_info":{"name":"python","pygments_lexer":"ipython3"}},
+$  "nbformat":4,
+$  "nbformat_minor":5
+$ }
+$ p.write_text(json.dumps(nb, indent=1) + '\n')
+$ PY
+$ cd /workspace/langchain && python - <<'PY'
+$ import json
+$ from pathlib import Path
+$ p=Path('docs/extras/integrations/toolkits/ainetwork.ipynb')
+$ nb={
+$  "cells":[
+$   {"cell_type":"markdown","metadata":{},"source":["# AINetwork Toolkit\n","\n","The AINetwork toolkit exposes tools for reading and writing values, transferring AIN, and managing rules, owners, and apps on the AINetwork blockchain.\n"]},
+$   {"cell_type":"markdown","metadata":{},"source":["Install the dependency and configure credentials before running the examples:\n","\n","```bash\n","pip install ain-py\n","export AIN_BLOCKCHAIN_PROVIDER_URL=...\n","export AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY=...\n","```\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["from langchain.agents.agent_toolkits.ainetwork import AINetworkToolkit\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["toolkit = AINetworkToolkit()\n","tools = toolkit.get_tools()\n","[tool.name for tool in tools]\n"]},
+$   {"cell_type":"markdown","metadata":{},"source":["Each tool accepts a JSON string. For example, to read a value from the AINetwork database:\n"]},
+$   {"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":["get_value_tool = next(tool for tool in tools if tool.name == \"ainetwork_get_value\")\n","get_value_tool.run('{\"path\": \"/apps/example\"}')\n"]}
+$  ],
+$  "metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"},"language_info":{"name":"python","pygments_lexer":"ipython3"}},
+$  "nbformat":4,
+$  "nbformat_minor":5
+$ }
+$ p.write_text(json.dumps(nb, indent=1) + '\n')
+$ PY
+$ cd /workspace/langchain && python - <<'PY'
+$ import json
+$ for p in [
+$  'docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb',
+$  'docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb',
+$  'docs/extras/integrations/vectorstores/epsilla.ipynb',
+$  'docs/extras/integrations/toolkits/ainetwork.ipynb',
+$ ]:
+$     with open(p) as f:
+$         nb=json.load(f)
+$     print(p, nb['nbformat'], len(nb['cells']))
+$ PY
+docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb 4 7
+docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb 4 28
+docs/extras/integrations/vectorstores/epsilla.ipynb 4 5
+docs/extras/integrations/toolkits/ainetwork.ipynb 4 6
+$ cd /workspace/langchain && source libs/langchain/.venv/bin/activate && python -m ruff check libs/langchain/langchain/chat_models/openai.py libs/langchain/langchain/memory/chat_message_histories/in_memory.py libs/langchain/langchain/graphs/arangodb_graph.py libs/langchain/langchain/chat_models/litellm.py libs/langchain/langchain/document_loaders/dataframe.py libs/langchain/langchain/document_loaders/confluence.py libs/langchain/langchain/vectorstores/marqo.py libs/langchain/langchain/vectorstores/clarifai.py libs/langchain/langchain/llms/clarifai.py libs/langchain/langchain/embeddings/clarifai.py libs/langchain/langchain/vectorstores/epsilla.py libs/experimental/langchain_experimental/prompt_guard.py libs/experimental/langchain_experimental/prompt_injection_identifier/__init__.py libs/experimental/langchain_experimental/prompt_injection_identifier/promptguard.py libs/langchain/langchain/tools/ainetwork/tool.py libs/langchain/langchain/tools/ainetwork/__init__.py libs/langchain/langchain/agents/agent_toolkits/ainetwork/toolkit.py libs/langchain/langchain/agents/agent_toolkits/ainetwork/__init__.py libs/langchain/langchain/tools/__init__.py libs/langchain/langchain/agents/agent_toolkits/__init__.py libs/langchain/langchain/vectorstores/__init__.py && git --no-pager diff --check
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && poetry lock --check && python -m pytest tests/unit_tests/chat_models/test_openai.py tests/unit_tests/document_loaders/test_confluence.py tests/integration_tests/document_loaders/test_dataframe.py tests/unit_tests/tools/test_public_api.py tests/unit_tests/tools/test_signatures.py tests/unit_tests/agents/test_public_api.py
+poetry.lock is consistent with pyproject.toml.
+========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================= test session starts ==========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+platform linux -- Python 3.11.15, pytest-7.3.2, pluggy-1.0.0
+rootdir: /workspace/langchain/libs/langchain
+configfile: pyproject.toml
+plugins: asyncio-0.20.3, cov-4.1.0, dotenv-0.5.2, mock-3.11.1, socket-0.6.0, syrupy-4.0.2
+asyncio: mode=Mode.STRICT
+collected 115 items
+
+tests/unit_tests/chat_models/test_openai.py ....ss                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               [  5%]
+tests/unit_tests/document_loaders/test_confluence.py sssss                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       [  9%]
+tests/integration_tests/document_loaders/test_dataframe.py ...                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   [ 12%]
+tests/unit_tests/tools/test_public_api.py .                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      [ 13%]
+tests/unit_tests/tools/test_signatures.py ...................................................................................................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    [ 99%]
+tests/unit_tests/agents/test_public_api.py .                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     [100%]
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- snapshot report summary --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================= slowest 5 durations ==========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+
+(5 durations < 0.005s hidden.  Use -vv to show these durations.)
+==================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================== 108 passed, 7 skipped in 1.21s ====================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+$ cd /workspace/langchain && git status --short && git --no-pager diff --stat
+M .github/ISSUE_TEMPLATE/bug-report.yml
+ M .github/actions/poetry_setup/action.yml
+ M .github/workflows/_lint.yml
+ M .github/workflows/_release.yml
+ M .github/workflows/_test.yml
+ M .github/workflows/langchain_experimental_release.yml
+ M .github/workflows/langchain_release.yml
+ M docs/api_reference/requirements.txt
+ M docs/docs_skeleton/docs/get_started/introduction.mdx
+ M docs/docs_skeleton/docs/modules/index.mdx
+ M docs/extras/guides/deployments/index.mdx
+ M docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb
+ M docs/snippets/modules/model_io/models/llms/get_started.mdx
+ M libs/langchain/langchain/agents/agent_toolkits/__init__.py
+ M libs/langchain/langchain/chat_models/litellm.py
+ M libs/langchain/langchain/chat_models/openai.py
+ M libs/langchain/langchain/document_loaders/confluence.py
+ M libs/langchain/langchain/document_loaders/dataframe.py
+ M libs/langchain/langchain/embeddings/clarifai.py
+ M libs/langchain/langchain/graphs/arangodb_graph.py
+ M libs/langchain/langchain/llms/clarifai.py
+ M libs/langchain/langchain/memory/chat_message_histories/in_memory.py
+ M libs/langchain/langchain/vectorstores/__init__.py
+ M libs/langchain/langchain/vectorstores/clarifai.py
+ M libs/langchain/langchain/vectorstores/marqo.py
+ M libs/langchain/poetry.lock
+ M libs/langchain/pyproject.toml
+?? SECURITY.md
+?? docs/extras/integrations/providers/epsilla.mdx
+?? docs/extras/integrations/toolkits/ainetwork.ipynb
+?? docs/extras/integrations/vectorstores/epsilla.ipynb
+?? docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb
+?? libs/experimental/langchain_experimental/prompt_guard.py
+?? libs/experimental/langchain_experimental/prompt_injection_identifier/
+?? libs/experimental/langchain_experimental/py.typed
+?? libs/langchain/langchain/agents/agent_toolkits/ainetwork/
+?? libs/langchain/langchain/tools/ainetwork/
+?? libs/langchain/langchain/vectorstores/epsilla.py
+ .github/ISSUE_TEMPLATE/bug-report.yml                                          |   4 ++++
+ .github/actions/poetry_setup/action.yml                                        |   7 +++++--
+ .github/workflows/_lint.yml                                                    |   2 +-
+ .github/workflows/_release.yml                                                 |  13 ++++++++-----
+ .github/workflows/_test.yml                                                    |  16 +++++++++++-----
+ .github/workflows/langchain_experimental_release.yml                           |   6 ------
+ .github/workflows/langchain_release.yml                                        |   6 ------
+ docs/api_reference/requirements.txt                                            |   2 ++
+ docs/docs_skeleton/docs/get_started/introduction.mdx                           |   2 +-
+ docs/docs_skeleton/docs/modules/index.mdx                                      |   2 +-
+ docs/extras/guides/deployments/index.mdx                                       |   1 +
+ docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb |   2 ++
+ docs/snippets/modules/model_io/models/llms/get_started.mdx                     |   2 +-
+ libs/langchain/langchain/agents/agent_toolkits/__init__.py                     |   2 ++
+ libs/langchain/langchain/chat_models/litellm.py                                |   7 ++++++-
+ libs/langchain/langchain/chat_models/openai.py                                 |  18 ++++++++++++++----
+ libs/langchain/langchain/document_loaders/confluence.py                        |  26 +++++++++++++++++++++-----
+ libs/langchain/langchain/document_loaders/dataframe.py                         |  64 ++++++++++++++++++++++++++++++++++++++++++++++++++--------------
+ libs/langchain/langchain/embeddings/clarifai.py                                |   4 ++--
+ libs/langchain/langchain/graphs/arangodb_graph.py                              |   5 ++++-
+ libs/langchain/langchain/llms/clarifai.py                                      |   2 +-
+ libs/langchain/langchain/memory/chat_message_histories/in_memory.py            |   4 ++--
+ libs/langchain/langchain/vectorstores/__init__.py                              |   2 ++
+ libs/langchain/langchain/vectorstores/clarifai.py                              | 134 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----------------------------------------------------------
+ libs/langchain/langchain/vectorstores/marqo.py                                 |  16 ++++++++--------
+ libs/langchain/poetry.lock                                                     |  12 +++++++-----
+ libs/langchain/pyproject.toml                                                  |   4 ++--
+ 27 files changed, 233 insertions(+), 132 deletions(-)
+$ /usr/local/bin/python3.11 - <<'PY'
+$ import json, urllib.request
+$ for name,ver in [('pyepsilla','0.2.0'),('sentry-sdk',None),('posthog',None)]:
+$     url=f'https://pypi.org/pypi/{name}/json' if ver is None else f'https://pypi.org/pypi/{name}/{ver}/json'
+$     data=json.load(urllib.request.urlopen(url, timeout=15))
+$     v=ver or data['info']['version']
+$     if ver is None:
+$         data=json.load(urllib.request.urlopen(f'https://pypi.org/pypi/{name}/{v}/json', timeout=15))
+$     print('\n', name, v, 'py', data['info'].get('requires_python'))
+$     print('requires', data['info'].get('requires_dist'))
+$     for f in data['urls']:
+$         if f['packagetype'] in ('bdist_wheel','sdist'):
+$             print(f['filename'], f['digests']['sha256'])
+$ PY
+pyepsilla 0.2.0 py
+requires ['requests', 'sentry-sdk', 'posthog']
+pyepsilla-0.2.0-py3-none-any.whl 440c271f8b525013155dc8f715283ff6edf5a6bd9c506517e40b54df4b76d06d
+pyepsilla-0.2.0.tar.gz 63037cb67bcb6303d3512c3293a57dfafcd1b871e274a1418edb5cb32d01e3e8
+
+ sentry-sdk 2.63.0 py >=3.6
+requires ['urllib3>=1.26.11', 'certifi', 'aiohttp>=3.5; extra == "aiohttp"', 'anthropic>=0.16; extra == "anthropic"', 'arq>=0.23; extra == "arq"', 'asyncpg>=0.23; extra == "asyncpg"', 'apache-beam>=2.12; extra == "beam"', 'bottle>=0.12.13; extra == "bottle"', 'celery>=3; extra == "celery"', 'celery-redbeat>=2; extra == "celery-redbeat"', 'chalice>=1.16.0; extra == "chalice"', 'clickhouse-driver>=0.2.0; extra == "clickhouse-driver"', 'django>=1.8; extra == "django"', 'falcon>=1.4; extra == "falcon"', 'fastapi>=0.79.0; extra == "fastapi"', 'flask>=0.11; extra == "flask"', 'blinker>=1.1; extra == "flask"', 'markupsafe; extra == "flask"', 'grpcio>=1.21.1; extra == "grpcio"', 'protobuf>=3.8.0; extra == "grpcio"', 'httpcore[http2]==1.*; extra == "http2"', 'httpcore[asyncio]==1.*; extra == "asyncio"', 'httpx>=0.16.0; extra == "httpx"', 'huey>=2; extra == "huey"', 'huggingface_hub>=0.22; extra == "huggingface-hub"', 'langchain>=0.0.210; extra == "langchain"', 'langgraph>=0.6.6; extra == "langgraph"', 'launchdarkly-server-sdk>=9.8.0; extra == "launchdarkly"', 'litellm!=1.82.7,!=1.82.8,>=1.77.5; extra == "litellm"', 'litestar>=2.0.0; extra == "litestar"', 'loguru>=0.5; extra == "loguru"', 'mcp>=1.15.0; extra == "mcp"', 'openai>=1.0.0; extra == "openai"', 'tiktoken>=0.3.0; extra == "openai"', 'openfeature-sdk>=0.7.1; extra == "openfeature"', 'opentelemetry-distro>=0.35b0; extra == "opentelemetry"', 'opentelemetry-distro; extra == "opentelemetry-experimental"', 'opentelemetry-distro[otlp]>=0.35b0; extra == "opentelemetry-otlp"', 'pure_eval; extra == "pure-eval"', 'executing; extra == "pure-eval"', 'asttokens; extra == "pure-eval"', 'pydantic-ai>=1.0.0; extra == "pydantic-ai"', 'pymongo>=3.1; extra == "pymongo"', 'pyspark>=2.4.4; extra == "pyspark"', 'quart>=0.16.1; extra == "quart"', 'blinker>=1.1; extra == "quart"', 'rq>=0.6; extra == "rq"', 'sanic>=0.8; extra == "sanic"', 'sqlalchemy>=1.2; extra == "sqlalchemy"', 'starlette>=0.19.1; extra == "starlette"', 'starlite>=1.48; extra == "starlite"', 'statsig>=0.55.3; extra == "statsig"', 'tornado>=6; extra == "tornado"', 'UnleashClient>=6.0.1; extra == "unleash"', 'google-genai>=1.29.0; extra == "google-genai"']
+sentry_sdk-2.63.0-py3-none-any.whl 3a9b5ddd403f79eb73bd670f75f04485819db53d28f76ced7bc09041cb0dfd6a
+sentry_sdk-2.63.0.tar.gz 2a1502bf864769275dbc8c2c9fc7a0f7f5e18358180b615d262d13a31ffba216
+
+ posthog 7.21.1 py >=3.10
+requires ['requests<3.0,>=2.7', 'backoff>=1.10.0', 'distro>=1.5.0', 'typing-extensions>=4.2.0', 'langchain>=0.2.0; extra == "langchain"', 'opentelemetry-sdk>=1.20.0; extra == "otel"', 'opentelemetry-exporter-otlp-proto-http>=1.20.0; extra == "otel"', 'django-stubs; extra == "dev"', 'griffe; extra == "dev"', 'lxml; extra == "dev"', 'mypy; extra == "dev"', 'mypy-baseline; extra == "dev"', 'types-requests; extra == "dev"', 'types-setuptools; extra == "dev"', 'pre-commit; extra == "dev"', 'pydantic>=2.12.0; extra == "dev"', 'ruff; extra == "dev"', 'setuptools; extra == "dev"', 'packaging; extra == "dev"', 'wheel; extra == "dev"', 'twine; extra == "dev"', 'tomli; extra == "dev"', 'tomli_w; extra == "dev"', 'freezegun==1.5.1; extra == "test"', 'python-dateutil>=2.9.0.post0; extra == "test"', 'tzdata; extra == "test"', 'coverage; extra == "test"', 'pytest; extra == "test"', 'pytest-timeout; extra == "test"', 'pytest-asyncio; extra == "test"', 'django<6.0,>=5.2.8; extra == "test"', 'openai>=2.0; extra == "test"', 'anthropic>=0.72; extra == "test"', 'langgraph>=1.0; extra == "test"', 'langgraph-checkpoint>=3.0.1; extra == "test"', 'tiktoken>=0.12.0; extra == "test"', 'langchain-core>=1.0; extra == "test"', 'langchain-community>=0.4; extra == "test"', 'langchain-openai>=1.0; extra == "test"', 'langchain-anthropic>=1.0; extra == "test"', 'google-genai; extra == "test"', 'pydantic>=2.12.0; extra == "test"', 'parameterized>=0.8.1; extra == "test"', 'claude-agent-sdk; extra == "test"', 'mcp>=1.26.0; extra == "test"', 'fastmcp>=2.0; extra == "test"', 'opentelemetry-sdk>=1.20.0; extra == "test"', 'opentelemetry-exporter-otlp-proto-http>=1.20.0; extra == "test"', 'pytest-bdd>=8.1.0; extra == "test"']
+posthog-7.21.1-py3-none-any.whl 30764b751b111fcd3b7056ee84468832c2d6bf6b495b06f56aa5c09bb7cf23fc
+posthog-7.21.1.tar.gz c8f7cd3eb3704fcd944c31c887801bf263dff39505d3531ecd0113e059d33bf8
+$ cd /workspace/langchain && grep -R "Data Connection\|data connection\|Data connection" -n docs/docs_skeleton/docs/get_started/introduction.mdx docs/docs_skeleton/docs/modules/index.mdx docs/snippets/modules/model_io/models/llms/get_started.mdx && cd libs/langchain && source .venv/bin/activate && poetry lock --check
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && poetry lock --check
+poetry.lock is consistent with pyproject.toml.
+$ cd /workspace/langchain && git --no-pager diff --check
+# finish: Finish task with implementation and validation summary
+Implemented the requested repository changes across source, workflows, and documentation.
+
+Highlights:
+- Added Epsilla vectorstore integration with exports and docs/notebook examples.
+- Improved Clarifai integration with batching, threaded result retrieval, metadata filtering support, ImportError handling, and safer error-message logic.
+- Updated `ChatOpenAI` streaming to carry `finish_reason` into `generation_info`.
+- Fixed `ConfluenceLoader` markdown/comment import behavior, OAuth validation, and added `requests.Session` support.
+- Updated Marqo for `tensor_fields` and bumped Marqo to `1.2.4` with lockfile consistency.
+- Added AINetwork toolkit/tools and example notebook.
+- Added PromptGuard experimental integration and compatibility exports.
+- Fixed ArangoDB empty collection schema handling.
+- Fixed shared mutable default in `ChatMessageHistory`.
+- Added Polars support to `DataFrameLoader`.
+- Added LiteLLM `model` alias support.
+- Added `SECURITY.md`, security-reporting reminder in the bug template, and `py.typed` for `langchain-experimental`.
+- Updated release workflows for manual triggering, trusted publishing/OIDC, `contents: write`, safer shell interpolation, and fixed the lint workflow condition.
+- Updated docs labels from “Data connection” to “Retrieval”, fixed an LLM docs typo, added AzureML deployment link, Memgraph graph QA notebook, and ParentDocumentRetriever notebook `search_kwargs` parameter.
+- Bumped `libs/langchain` to `0.0.271` and kept `poetry.lock` consistent.
+
+Validation completed:
+- `python -m ruff check ...` on modified Python files: passed.
+- `git diff --check`: passed.
+- `poetry lock --check` in `libs/langchain`: passed.
+- Final targeted tests: `108 passed, 7 skipped`.
+- Previously run full suites also passed:
+  - LangChain unit suite: `971 passed, 236 skipped`.
+  - Experimental unit suite: `27 passed`.

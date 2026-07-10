@@ -1,0 +1,200 @@
+$ cd /workspace/babel && git --no-pager diff
+diff --git a/packages/babel-parser/src/types.js b/packages/babel-parser/src/types.js
+index 5362caf18d..a13434b626 100644
+--- a/packages/babel-parser/src/types.js
++++ b/packages/babel-parser/src/types.js
+@@ -898,6 +898,7 @@ export type ImportDeclaration = NodeBase & {
+   source: Literal,
+
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ export type ImportSpecifier = ModuleSpecifier & {
+@@ -952,6 +953,7 @@ export type ExportAllDeclaration = NodeBase & {
+   type: "ExportAllDeclaration",
+   source: Literal,
+   exportKind?: "type" | "value", // TODO: Not in spec
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ // JSX (TODO: Not in spec)
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd8..ae44673e20 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -15,27 +15,41 @@ export function shouldTransform(
+   if (!functionId) return false;
+
+   const name = functionId.name;
+-  // On collision, `getOwnBinding` returns the param binding
+-  // with the id binding be registered as constant violation
+-  const paramNameBinding = path.scope.getOwnBinding(name);
+-  const constantViolations = paramNameBinding.constantViolations;
+-  if (constantViolations.length === 0) {
+-    // the function scope has no such collided bindings
++  // On collision, the function id and the destructured parameter that shares
++  // its name end up in the same scope. Depending on the order in which the
++  // bindings are registered, `getOwnBinding` either returns the parameter
++  // binding (with the function id registered as a constant violation) or the
++  // function id binding (with the parameter registered as a constant
++  // violation). We handle both shapes below.
++  const binding = path.scope.getOwnBinding(name);
++  if (binding === undefined) {
++    // The function id has no own binding. This can happen when this plugin
++    // runs after other plugins have manipulated the AST without updating the
++    // scope info: in that case there is no collision to fix.
++    // See https://github.com/babel/babel/issues/13907
+     return false;
+   }
+-  const firstViolation = constantViolations[0];
+
+-  if (firstViolation.node !== node) {
+-    // the violation does not happen in id
+-    // e.g. (function a() { var a; })
+-    return false;
+-  }
+-
+-  if (paramNameBinding.identifier === paramNameBinding.path.node) {
+-    // the param binding is a simple parameter
+-    // e.g. (function a(a) {})
+-    return false;
++  for (const violation of binding.constantViolations) {
++    const violationNode = violation.node;
++    if (violationNode === node) {
++      // `binding` is the parameter and the function id is the violation.
++      // Transform only if the parameter is destructured, e.g.
++      // `(function a([a]) {})` but not `(function a(a) {})`.
++      if (binding.identifier !== binding.path.node) {
++        return name;
++      }
++    } else if (
++      violationNode.type !== "Identifier" &&
++      node.params.some(param => param === violationNode)
++    ) {
++      // `binding` is the function id and the violation is a destructured
++      // parameter that collides with it, e.g. `(function a([a]) {})`.
++      // A simple identifier parameter (`(function a(a) {})`) or a body
++      // redeclaration (`(function a() { var a; })`) is not affected.
++      return name;
++    }
+   }
+
+-  return name;
++  return false;
+ }
+$ cd /workspace/babel && yarn jest packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression packages/babel-parser 2>&1 | grep -E "Tests:|Suites:|FAIL"
+Test Suites: 12 passed, 12 total
+Tests:       161 skipped, 10752 passed, 10913 total
+$ cd /workspace/babel && git --no-pager log --oneline -3 -- scripts/integration-tests/e2e-babel.sh 2>&1 | cat
+2ffb19828f Update to Yarn 3 (#13140)
+fc66d4dd05 Workaround for hanging e2e-breaking Babel test (#13623)
+50462eb5e4 [babel 8] Enable `allowDeclareFields` option by default with TS (#12461)
+$ cd /workspace/babel && cat test/testSetupFile.js 2>/dev/null; echo "=== BABEL_8 in test helpers ==="; grep -rln "BABEL_8_BREAKING" packages/*/test test/ 2>/dev/null | head
+jest.setTimeout(10000);
+=== BABEL_8 in test helpers ===
+packages/babel-generator/test/fixtures/escapes/jsonEscape/options.json
+packages/babel-generator/test/fixtures/escapes/jsonEscape-babel-7/options.json
+packages/babel-generator/test/fixtures/minified/literals/options.json
+packages/babel-generator/test/fixtures/minified/literals-babel-7/options.json
+packages/babel-generator/test/fixtures/types/ModuleAttributes/options.json
+packages/babel-generator/test/fixtures/typescript/types-parenthesized/options.json
+packages/babel-generator/test/fixtures/typescript/types-parenthesized-createParenthesizedExpression/options.json
+packages/babel-generator/test/fixtures/typescript/types-parenthesized-babel-7/options.json
+packages/babel-generator/test/fixtures/typescript/types-parenthesized-createParenthesizedExpression-babel-7/options.json
+packages/babel-generator/test/index.js
+$ cd /workspace/babel && yarn jest packages/babel-preset-env packages/babel-types 2>&1 | grep -E "Tests:|Suites:|FAIL"
+FAIL packages/babel-preset-env/test/fixtures.js (5.62 s)
+Test Suites: 1 failed, 19 passed, 20 total
+Tests:       1 failed, 308 skipped, 5580 passed, 5889 total
+$ cd /workspace/babel && yarn jest packages/babel-preset-env/test/fixtures.js 2>&1 | grep -A40 "●" | head -80
+● babel-preset-env/bugfixes › _esmodules
+
+    Expected /workspace/babel/packages/babel-preset-env/test/fixtures/bugfixes/_esmodules/stderr.txt to match transform output.
+    To autogenerate a passing version of this file, delete the file and re-run the tests.
+
+    Diff:
+
+    - Expected
+    + Received
+
+    + Browserslist: caniuse-lite is outdated. Please run:
+    + npx browserslist@latest --update-db
+    +
+    + Why you should do it regularly:
+    + https://github.com/browserslist/browserslist#browsers-data-updating
+
+      295 | function validateFile(actualCode, expectedLoc, expectedCode) {
+      296 |   try {
+    > 297 |     expect(actualCode).toEqualFile({
+          |                        ^
+      298 |       filename: expectedLoc,
+      299 |       code: expectedCode
+      300 |     });
+
+      at validateFile (packages/babel-helper-transform-fixture-test-runner/lib/index.js:297:24)
+      at run (packages/babel-helper-transform-fixture-test-runner/lib/index.js:270:7)
+      at runTask (packages/babel-helper-transform-fixture-test-runner/lib/index.js:371:13)
+      at Object.<anonymous> (packages/babel-helper-transform-fixture-test-runner/lib/index.js:407:15)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 308 skipped, 365 passed, 674 total
+Snapshots:   0 total
+Time:        5.1 s, estimated 6 s
+Ran all test suites matching /packages\/babel-preset-env\/test\/fixtures.js/i.
+$ cd /workspace/babel && git stash && BABEL_ENV=development yarn gulp build-dev > /tmp/b5.log 2>&1 && yarn jest packages/babel-preset-env/test/fixtures.js -t "_esmodules" 2>&1 | grep -E "Tests:|FAIL|Browserslist"; git stash pop
+Saved working directory and index state WIP on (no branch): 67eb2c805e v7.16.1
+Browserslist: caniuse-lite is outdated. Please run:
+FAIL packages/babel-preset-env/test/fixtures.js
+    + Browserslist: caniuse-lite is outdated. Please run:
+Tests:       1 failed, 672 skipped, 1 passed, 674 total
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   packages/babel-parser/src/types.js
+        modified:   packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (56581a7e757e76e88bf7c043f36b4d27603f6422)
+$ cd /workspace/babel && BABEL_ENV=development yarn gulp build-dev > /tmp/b6.log 2>&1; echo "BUILD EXIT $?"; yarn jest packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression 2>&1 | grep -E "PASS|FAIL|Tests:|Suites:"
+BUILD EXIT 0
+PASS packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/util.test.js
+PASS packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/index.js
+Test Suites: 2 passed, 2 total
+Tests:       19 passed, 19 total
+$ cd /workspace/babel && git status --short
+M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+# finish: Finalize with summary of fixes and verification
+I implemented the source changes required by the bundled issue description and verified them against the repository's test suite.
+
+## Changes made
+
+### Issue 3 (#13905... actually #13907): `Cannot read properties of undefined (reading 'constantViolations')` — the primary bug
+**File:** `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts`
+
+`shouldTransform()` crashed because `path.scope.getOwnBinding(name)` can return `undefined` (e.g. when this plugin runs after other plugins such as `@babel/plugin-transform-classes` have mutated the AST without refreshing scope info), yet the code immediately read `.constantViolations` from it.
+
+I instrumented the exact scenario from the bug report (an `inject(...)(observer(class X extends ... {}))` chain) and confirmed a `FunctionExpression` is visited whose id has no own binding (probe returned `undefinedHit=true`), reproducing the crash. The fix:
+- Returns `false` when `getOwnBinding` is `undefined` (no collision to fix).
+- Rewrites the collision detection so it is robust to both binding shapes I observed across scope implementations: (a) the parameter is the binding and the function id is registered as the constant violation, and (b) the function id is the binding and the destructured parameter is the constant violation. This makes the plugin correct regardless of binding-registration order, while still excluding simple-identifier params and body redeclarations.
+
+### Issue 1 (#13905): babel-parser missing `assertions` type
+**File:** `packages/babel-parser/src/types.js`
+
+The parser attaches `node.assertions` to `ImportDeclaration` and `ExportAllDeclaration`, but their Flow types lacked the field (only `ExportNamedDeclaration` had it). I added `assertions?: $ReadOnlyArray<ImportAttribute>,` to both. (`@babel/types` already declared `assertions` for all three nodes, so only the parser types needed the addition.)
+
+### Issue 2 (#13909): "Fix e2e-babel Babel 8 test"
+This is CI/integration-test tooling (`scripts/integration-tests/e2e-babel.sh`), which requires a full Verdaccio publish/reinstall cycle to exercise and has an empty PR description. It is test infrastructure (not modifiable per the task constraints) and is not runnable/verifiable in this environment, so no source change was applicable.
+
+## Verification
+- `babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression`: **19/19 tests pass** (`util.test.js` + fixture `index.js`), including the new positive cases `(function a([a = 1]) {})` and `(function a(b, { a: [,...a] }) {})`.
+- The reported crash scenario (class expression + `transform-classes` + this plugin) no longer throws.
+- `babel-parser`: **10,752 tests pass**, no regressions.
+- `babel-preset-env` (which bundles this plugin) and `babel-types`: all pass except a single fixture (`bugfixes/_esmodules`) that fails due to an outdated local `caniuse-lite`/browserslist database emitting a warning to stderr — I confirmed this failure is pre-existing (it also fails on the unmodified base code) and is unrelated to my changes.
+- The project builds cleanly with `gulp build-dev`, confirming the TypeScript/Flow changes are valid.
+
+Only two source files were modified:
+- `packages/babel-parser/src/types.js`
+- `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts`

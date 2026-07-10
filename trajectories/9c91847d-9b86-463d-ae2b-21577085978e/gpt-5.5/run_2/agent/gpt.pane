@@ -1,0 +1,200 @@
+
+
+class Tree(JupyterMixin):
+    """A renderable for a tree structure.
+
+    Args:
+        label (RenderableType): The renderable or text to use as the tree label.
+        style (StyleType, optional): Style for this tree. Defaults to "tree".
+        guide_style (StyleType, optional): Style for guide lines. Defaults to
+            "tree.line".
+        expanded (bool, optional): Also display children. Defaults to True.
+        highlight (bool, optional): Highlight labels. Defaults to False.
+        hide_root (bool, optional): Hide the root node. Defaults to False.
+    """
+
+    def __init__(
+        self,
+        label: "RenderableType",
+        *,
+        style: StyleType = "tree",
+        guide_style: StyleType = "tree.line",
+        expanded: bool = True,
+        highlight: bool = False,
+        hide_root: bool = False,
+    ) -> None:
+        self.label = label
+        self.style = style
+        self.guide_style = guide_style
+        self.expanded = expanded
+        self.highlight = highlight
+        self.hide_root = hide_root
+        self.children: List["Tree"] = []
+
+    def add(
+        self,
+        label: "RenderableType",
+        *,
+        style: Optional[StyleType] = None,
+        guide_style: Optional[StyleType] = None,
+        expanded: bool = True,
+        highlight: Optional[bool] = None,
+    ) -> "Tree":
+        """Add a child to the tree.
+
+        Args:
+            label (RenderableType): The renderable or text to use as the child label.
+            style (StyleType, optional): Style for this child.
+            guide_style (StyleType, optional): Style for this child's guide lines.
+            expanded (bool, optional): Also display child nodes. Defaults to True.
+            highlight (bool, optional): Highlight this child label.
+
+        Returns:
+            Tree: The new child node.
+        """
+        node = Tree(
+            label,
+            style=self.style if style is None else style,
+            guide_style=self.guide_style if guide_style is None else guide_style,
+            expanded=expanded,
+            highlight=self.highlight if highlight is None else highlight,
+        )
+        self.children.append(node)
+        return node
+
+    def __rich_console__(
+        self, console: "Console", options: "ConsoleOptions"
+    ) -> "RenderResult":
+        guides = ASCII_TREE_GUIDES if options.ascii_only else TREE_GUIDES
+        space, vertical, tee, last = guides
+
+        def render_node(
+            node: "Tree",
+            prefix: List[Segment],
+            connector: str,
+            continuation: str,
+        ) -> Iterable[Segment]:
+            guide_style = console.get_style(node.guide_style)
+            prefix_width = sum(segment.cell_length for segment in prefix) + len(
+                connector
+            )
+            render_options = options.update(
+                width=max(1, options.max_width - prefix_width),
+                highlight=node.highlight,
+            )
+            node_style = (
+                console.get_style(node.style) if node.style is not None else None
+            )
+            lines = console.render_lines(
+                node.label, render_options, style=node_style, pad=False
+            ) or [[]]
+
+            for first, line in loop_first(lines):
+                yield from prefix
+                if connector:
+                    yield Segment(connector if first else continuation, guide_style)
+                yield from line
+                yield Segment.line()
+
+            if node.expanded and node.children:
+                child_prefix = (
+                    prefix + [Segment(continuation, guide_style)]
+                    if connector
+                    else prefix
+                )
+                for is_last, child in loop_last(node.children):
+                    yield from render_node(
+                        child,
+                        child_prefix,
+                        last if is_last else tee,
+                        space if is_last else vertical,
+                    )
+
+        if self.hide_root:
+            if self.expanded:
+                for is_last, child in loop_last(self.children):
+                    yield from render_node(
+                        child,
+                        [],
+                        last if is_last else tee,
+                        space if is_last else vertical,
+                    )
+        else:
+            yield from render_node(self, [], "", "")
+
+--- new docs reference ---
+Tree
+====
+
+.. automodule:: rich.tree
+    :members:
+$ cd /workspace/rich && rm reproduce_issue.py && git status --short
+M docs/requirements.txt
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M poetry.lock
+ M rich/console.py
+ M rich/default_styles.py
+ M rich/style.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+$ cd /workspace/rich && python -m py_compile rich/tree.py rich/console.py rich/style.py rich/default_styles.py && git --no-pager diff --check && git status --short
+M docs/requirements.txt
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M poetry.lock
+ M rich/console.py
+ M rich/default_styles.py
+ M rich/style.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+# task_tracker: View task list before final update
+# Task List
+
+1. ✅ Explore repository structure and relevant files
+   Inspected Rich source, docs/dependencies, console/style internals, and confirmed no AGENTS.md present.
+
+2. ✅ Create and run reproduction script
+   Created temporary script and confirmed Tree import currently fails.
+
+3. 🔄 Implement minimal non-test changes
+   Add Tree renderable if missing, dependency/doc updates, and fix color_system semantics without modifying tests.
+
+4. ⏳ Validate with reproduction and related tests
+   Run script edge cases and relevant existing tests, then full test suite if feasible.
+
+5. ⏳ Review diff against base and clean up
+   Compare with base commit, ensure no test changes or temp files remain, update memory if useful.
+# task_tracker: Update final task statuses with validation caveat
+Task list has been updated with 5 item(s).
+# finish: Finish implementation summary and validation results
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary of changes:
+- Added `rich.tree.Tree` renderable with:
+  - nested child rendering via `add()`
+  - Unicode and ASCII guide fallback
+  - multiline labels
+  - collapsed nodes via `expanded=False`
+  - `hide_root`, `style`, `guide_style`, and `highlight` support
+- Added default tree styles: `tree` and `tree.line`.
+- Added a minimal Tree API docs reference page and included it in the reference toctree.
+- Fixed `Console` / `Style` behavior so:
+  - `force_terminal=False` suppresses terminal styling even if `color_system` is explicit
+  - `force_terminal=True, color_system=None` can still emit non-color ANSI attributes like bold/italic while omitting colors
+- Added missing `import time` to the Progress advanced usage docs example.
+- Updated docs requirements:
+  - `Sphinx==3.4.3`
+  - `sphinx-rtd-theme==0.5.1`
+- Updated `poetry.lock` for `ipywidgets==7.6.3` with PyPI hashes.
+
+Validation performed:
+- Created and ran a temporary reproduction/edge-case script; it passed after the fixes. The script was removed afterward.
+- `python -m py_compile rich/tree.py rich/console.py rich/style.py rich/default_styles.py` passed.
+- `git diff --check` passed.
+- Targeted tests passed:
+  - `python -m pytest tests/test_style.py tests/test_console.py -q` → `70 passed`
+
+Notes:
+- `python -m black ...` could not be run because Black is not installed in this environment (`No module named black`), so I manually checked formatting on new code.
+- I also ran the full suite. It currently reports `18 failed, 411 passed`; the remaining failures are snapshot expectations from the existing tests that still assume `color_system=None` suppresses all styling, which conflicts with the issue’s requested behavior, plus existing syntax/color snapshot differences. I did not modify any test files, per your instruction.

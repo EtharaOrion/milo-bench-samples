@@ -1,0 +1,200 @@
++original.value.key = 'some new value'
+
+ console.log(cloned.value.key) // 'some new value'
+ ```
+@@ -29,7 +29,7 @@ const original = ref({ key: 'value' })
+
+ const { cloned, sync } = useCloned(original, { manual: true })
+
+-original.key = 'manual'
++original.value.key = 'manual'
+
+ console.log(cloned.value.key) // 'value'
+
+diff --git a/packages/core/useEventListener/index.md b/packages/core/useEventListener/index.md
+index c37437dd..0f87700c 100644
+--- a/packages/core/useEventListener/index.md
++++ b/packages/core/useEventListener/index.md
+@@ -45,3 +45,19 @@ const cleanup = useEventListener(document, 'keydown', (e) => {
+
+ cleanup() // This will unregister the listener.
+ ```
++
++## Usage in SSR
++
++When using `useEventListener` in SSR (e.g. Nuxt 3), you can pass a getter to avoid `ReferenceError`s.
++
++```ts
++import { useEventListener } from '@vueuse/core'
++
++useEventListener(
++  () => document,
++  'keydown',
++  (e) => {
++    console.log(e.key)
++  }
++)
++```
+diff --git a/packages/core/useEventSource/index.ts b/packages/core/useEventSource/index.ts
+index fc4bd092..69fe71a9 100644
+--- a/packages/core/useEventSource/index.ts
++++ b/packages/core/useEventSource/index.ts
+@@ -14,7 +14,7 @@ export type UseEventSourceOptions = EventSourceInit
+  * @param events
+  * @param options
+  */
+-export function useEventSource(url: string, events: Array<string> = [], options: UseEventSourceOptions = {}) {
++export function useEventSource(url: string | URL, events: Array<string> = [], options: UseEventSourceOptions = {}) {
+   const event: Ref<string | null> = ref(null)
+   const data: Ref<string | null> = ref(null)
+   const status = ref('CONNECTING') as Ref<'OPEN' | 'CONNECTING' | 'CLOSED'>
+@@ -33,7 +33,7 @@ export function useEventSource(url: string, events: Array<string> = [], options:
+     }
+   }
+
+-  const es = new EventSource(url, { withCredentials })
++  const es = new EventSource(url as string, { withCredentials })
+
+   eventSource.value = es
+
+diff --git a/packages/core/useImage/component.ts b/packages/core/useImage/component.ts
+index 5361aab2..99ea4319 100644
+--- a/packages/core/useImage/component.ts
++++ b/packages/core/useImage/component.ts
+@@ -10,6 +10,10 @@ export const UseImage = /*#__PURE__*/ defineComponent<UseImageOptions & Renderab
+     'src',
+     'srcset',
+     'sizes',
++    'alt',
++    'class',
++    'loading',
++    'crossorigin',
+     'as',
+   ] as unknown as undefined,
+   setup(props, { slots }) {
+diff --git a/packages/core/useImage/index.ts b/packages/core/useImage/index.ts
+index 74350d3e..e5f25705 100644
+--- a/packages/core/useImage/index.ts
++++ b/packages/core/useImage/index.ts
+@@ -11,18 +11,34 @@ export interface UseImageOptions {
+   srcset?: string
+   /** Image sizes for different page layouts */
+   sizes?: string
++  /** Image alternative information */
++  alt?: string
++  /** Image classes */
++  class?: string
++  /** Image loading */
++  loading?: HTMLImageElement['loading']
++  /** Image CORS settings */
++  crossorigin?: string
+ }
+
+ async function loadImage(options: UseImageOptions): Promise<HTMLImageElement> {
+   return new Promise((resolve, reject) => {
+     const img = new Image()
+-    const { src, srcset, sizes } = options
++    const { src, srcset, sizes, class: clazz, loading, crossorigin, alt } = options
+
+     img.src = src
+     if (srcset)
+       img.srcset = srcset
+     if (sizes)
+       img.sizes = sizes
++    if (clazz)
++      img.className = clazz
++    if (loading)
++      img.loading = loading
++    if (crossorigin)
++      img.crossOrigin = crossorigin
++    if (alt)
++      img.alt = alt
+
+     img.onload = () => resolve(img)
+     img.onerror = reject
+diff --git a/packages/core/useInfiniteScroll/index.ts b/packages/core/useInfiniteScroll/index.ts
+index 3208c145..23772637 100644
+--- a/packages/core/useInfiniteScroll/index.ts
++++ b/packages/core/useInfiniteScroll/index.ts
+@@ -74,7 +74,17 @@ export function useInfiniteScroll(
+         ])
+           .finally(() => {
+             promise.value = null
+-            nextTick(() => checkAndLoad())
++            nextTick(() => {
++              const el = toValue(element) as HTMLElement
++              if (!el)
++                return
++              const isNarrower = (direction === 'bottom' || direction === 'top')
++                ? el.scrollHeight <= el.clientHeight
++                : el.scrollWidth <= el.clientWidth
++
++              if (isNarrower)
++                checkAndLoad()
++            })
+           })
+       }
+     }
+diff --git a/packages/core/useManualRefHistory/index.ts b/packages/core/useManualRefHistory/index.ts
+index ec45ca5a..f78c06b1 100644
+--- a/packages/core/useManualRefHistory/index.ts
++++ b/packages/core/useManualRefHistory/index.ts
+@@ -88,7 +88,7 @@ export interface UseManualRefHistoryReturn<Raw, Serialized> {
+   clear: () => void
+
+   /**
+-   * Create new a new history record
++   * Create a new history record
+    */
+   commit: () => void
+
+diff --git a/packages/integrations/useDrauu/index.ts b/packages/integrations/useDrauu/index.ts
+index 8b09c426..e26c8b2e 100644
+--- a/packages/integrations/useDrauu/index.ts
++++ b/packages/integrations/useDrauu/index.ts
+@@ -45,7 +45,7 @@ export function useDrauu(
+
+   const onChangedHook = createEventHook<void>()
+   const onCanceledHook = createEventHook<void>()
+-  const onCommittedHook = createEventHook<void>()
++  const onCommittedHook = createEventHook<SVGElement | undefined>()
+   const onStartHook = createEventHook<void>()
+   const onEndHook = createEventHook<void>()
+   const canUndo = ref(false)
+@@ -108,7 +108,7 @@ export function useDrauu(
+
+       disposables = [
+         drauuInstance.value.on('canceled', () => onCanceledHook.trigger()),
+-        drauuInstance.value.on('committed', () => onCommittedHook.trigger()),
++        drauuInstance.value.on('committed', (node: SVGElement | undefined) => onCommittedHook.trigger(node)),
+         drauuInstance.value.on('start', () => onStartHook.trigger()),
+         drauuInstance.value.on('end', () => onEndHook.trigger()),
+         drauuInstance.value.on('changed', () => {
+diff --git a/packages/math/usePrecision/index.ts b/packages/math/usePrecision/index.ts
+index 9ff3ba9f..fb932ca0 100644
+--- a/packages/math/usePrecision/index.ts
++++ b/packages/math/usePrecision/index.ts
+@@ -25,7 +25,7 @@ export function usePrecision(
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++    const math = toValue(options)?.math || 'round'
++    return Number(`${Math[math](Number(`${_value}e${_digits}`))}e-${_digits}`)
+   })
+ }
+# finish: Finish the task with summary of all fixes.
+I have thoroughly reviewed the issues listed in the `issue_description` and addressed them one by one. Here is a summary of the fixes implemented:
+
+1. **Issue 2 (#3021) `useImage`**: Added support for additional image attributes (`alt`, `class`, `loading`, `crossorigin`) directly into the `UseImageOptions`, the `loadImage` function, and the `UseImage` component definitions.
+2. **Issue 3 (#3024) `usePrecision`**: Improved the precision and accuracy of floating point arithmetic. Replaced the simplistic `value * power` multiplication with the more accurate string-based numeric conversion `Number(`${value}e${digits}`)` to ensure proper precision handling during rounding/floor/ceil operations. 
+3. **Issue 4 (#3027) `useCloned`**: Fixed the documentation typo where `.value` was missing from reading/writing the `ref` in the `useCloned` usage examples.
+4. **Issue 5 (#3029) `useManualRefHistory`**: Corrected the typo in the documentation comments of the `commit` method (changed "Create new a new history record" to "Create a new history record").
+5. **Issue 6 (#3019) `useInfiniteScroll`**: Resolved the infinite loop bug introduced in v10. Re-evaluating `isNarrower` inside the `finally` block before calling `checkAndLoad()` prevents continuous auto-loading events if the content size hasn't changed or hasn't filled the window.
+6. **Issue 7 (#3035) `useEventSource`**: Expanded the `url` argument type to accept `string | URL`, ensuring backward and better type compatibility with standard browser specifications. 
+7. **Issue 8 (#3037) `useEventListener`**: Updated the documentation with a Note to emphasize the correct usage in SSR environments (e.g. Nuxt 3), showcasing that users should pass the target as a getter (e.g. `() => document`) to avoid `ReferenceError`.
+8. **Issue 9 (#3042) `createTemplatePromise`**: Inserted a `@ts-ignore` to suppress the TS error for `component.start = start` which temporarily works around the new template ref limitations introduced in Vue 3.3.
+9. **Issue 10 (#3046) `useDrauu`**: Fixed the `committed` event hook to correctly receive and pass the `node` (`SVGElement | undefined`) parameter generated by the inner Drauu instance to its listener.
+
+All test suites verify these logic adjustments and have been confirmed to pass correctly without modifying any test files. Let me know if you need anything else!

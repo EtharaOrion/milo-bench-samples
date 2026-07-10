@@ -1,0 +1,200 @@
++
+$ cd /workspace/seaweedfs && git --no-pager diff -- weed/wdclient/masterclient.go weed/wdclient/vid_map.go | sed -n '120,260p'
+}
+ }
+diff --git a/weed/wdclient/vid_map.go b/weed/wdclient/vid_map.go
+index 9d5e5d378..9d54a5e85 100644
+--- a/weed/wdclient/vid_map.go
++++ b/weed/wdclient/vid_map.go
+@@ -135,13 +135,19 @@ func (vc *vidMap) GetLocations(vid uint32) (locations []Location, found bool) {
+                return locations, found
+        }
+
+-       if vc.cache != nil {
+-               return vc.cache.GetLocations(vid)
++       if cache := vc.getCache(); cache != nil {
++               return cache.GetLocations(vid)
+        }
+
+        return nil, false
+ }
+
++func (vc *vidMap) getCache() *vidMap {
++       vc.RLock()
++       defer vc.RUnlock()
++       return vc.cache
++}
++
+ func (vc *vidMap) GetLocationsClone(vid uint32) (locations []Location, found bool) {
+        locations, found = vc.GetLocations(vid)
+$ cd /workspace/seaweedfs && git --no-pager diff -- weed/wdclient/masterclient.go | sed -n '70,190p'
+GrpcPort:   int(vidLoc.GrpcPort),
+                                        DataCenter: vidLoc.DataCenter,
+                                }
+-                               mc.vidMap.addLocation(uint32(vid), loc)
++                               mc.addLocation(uint32(vid), loc)
+                                httpUrl := "http://" + loc.Url + "/" + fileId
+                                // Prefer same data center
+                                if mc.DataCenter != "" && mc.DataCenter == loc.DataCenter {
+@@ -342,23 +385,35 @@ func (mc *MasterClient) WithClientCustomGetMaster(getMasterF func() pb.ServerAdd
+ }
+
+ func (mc *MasterClient) resetVidMap() {
++       mc.vidMapLock.Lock()
++       defer mc.vidMapLock.Unlock()
++
++       oldVidMap := mc.vidMap
+        tail := &vidMap{
+-               vid2Locations:   mc.vid2Locations,
+-               ecVid2Locations: mc.ecVid2Locations,
+-               DataCenter:      mc.DataCenter,
+-               cache:           mc.cache,
++               vid2Locations:   oldVidMap.vid2Locations,
++               ecVid2Locations: oldVidMap.ecVid2Locations,
++               DataCenter:      oldVidMap.DataCenter,
++               cache:           oldVidMap.cache,
+        }
+
+-       nvm := newVidMap(mc.DataCenter)
++       nvm := newVidMap(oldVidMap.DataCenter)
+        nvm.cache = tail
+        mc.vidMap = nvm
+
+        //trim
+-       for i := 0; i < mc.vidMapCacheSize && tail.cache != nil; i++ {
++       for i := 0; i < mc.vidMapCacheSize; i++ {
++               tail.Lock()
++               next := tail.cache
++               if next == nil {
++                       tail.Unlock()
++                       break
++               }
+                if i == mc.vidMapCacheSize-1 {
+                        tail.cache = nil
+-               } else {
+-                       tail = tail.cache
++                       tail.Unlock()
++                       break
+                }
++               tail.Unlock()
++               tail = next
+        }
+ }
+# file_editor: Remove old cloud storage go.sum entries
+The file /workspace/seaweedfs/go.sum has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/go.sum:
+   477	cloud.google.com/go/storage v1.23.0/go.mod h1:vOEEDNFnciUMhBeT6hsJIn3ieU5cFRmzeLgDvXzfIXc=
+   478	cloud.google.com/go/storage v1.27.0/go.mod h1:x9DOL8TK/ygDUMieqwfhdpQryTeEkhGKMi80i/iqR2s=
+   479	cloud.google.com/go/storage v1.28.1/go.mod h1:Qnisd4CqDdo6BGs2AD5LLnEsmSQ80wQ5ogcBBKhU86Y=
+   480	cloud.google.com/go/storage v1.57.1 h1:gzao6odNJ7dR3XXYvAgPK+Iw4fVPPznEPPyNjbaVkq8=
+   481	cloud.google.com/go/storage v1.57.1/go.mod h1:329cwlpzALLgJuu8beyJ/uvQznDHpa2U5lGjWednkzg=
+   482	cloud.google.com/go/storagetransfer v1.5.0/go.mod h1:dxNzUopWy7RQevYFHewchb29POFv3/AaBgnhqzqiK0w=
+   483	cloud.google.com/go/storagetransfer v1.6.0/go.mod h1:y77xm4CQV/ZhFZH75PLEXY0ROiS7Gh6pSKrM8dJyg6I=
+   484	cloud.google.com/go/storagetransfer v1.7.0/go.mod h1:8Giuj1QNb1kfLAiWM1bN6dHzfdlDAVC9rv9abHot2W4=
+   485	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# task_tracker: Update follow-up task completion statuses
+Task list has been updated with 4 item(s).
+$ cd /workspace/seaweedfs && git status --short && git --no-pager diff --stat
+M docker/Dockerfile.go_build
+ M docker/Dockerfile.local
+ M go.mod
+ M go.sum
+ M k8s/charts/seaweedfs/templates/filer/filer-statefulset.yaml
+ M k8s/charts/seaweedfs/templates/master/master-statefulset.yaml
+ M weed/command/admin.go
+ M weed/command/backup.go
+ M weed/command/benchmark.go
+ M weed/command/download.go
+ M weed/command/master_follower.go
+ M weed/command/server.go
+ M weed/command/volume.go
+ M weed/filer/stream.go
+ M weed/iam/policy/policy_engine.go
+ M weed/s3api/auth_credentials.go
+ M weed/s3api/auth_signature_v4.go
+ M weed/s3api/chunked_reader_v4.go
+ M weed/s3api/s3api_bucket_config.go
+ M weed/s3api/s3api_bucket_handlers_object_lock_config.go
+ M weed/s3api/s3api_bucket_policy_handlers.go
+ M weed/s3api/s3api_object_handlers.go
+ M weed/storage/volume_vacuum.go
+ M weed/util/net_timeout.go
+ M weed/wdclient/masterclient.go
+ M weed/wdclient/vid_map.go
+ docker/Dockerfile.go_build                                    |  9 ++++++---
+ docker/Dockerfile.local                                       |  9 ++++++---
+ go.mod                                                        |  5 +----
+ go.sum                                                        |  4 ++--
+ k8s/charts/seaweedfs/templates/filer/filer-statefulset.yaml   | 12 +++++++++---
+ k8s/charts/seaweedfs/templates/master/master-statefulset.yaml |  8 ++++++--
+ weed/command/admin.go                                         |  1 +
+ weed/command/backup.go                                        |  1 +
+ weed/command/benchmark.go                                     | 15 +++++++++++++++
+ weed/command/download.go                                      |  1 +
+ weed/command/master_follower.go                               |  1 +
+ weed/command/server.go                                        |  1 +
+ weed/command/volume.go                                        |  1 +
+ weed/filer/stream.go                                          |  2 +-
+ weed/iam/policy/policy_engine.go                              | 99 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ weed/s3api/auth_credentials.go                                |  7 +++----
+ weed/s3api/auth_signature_v4.go                               | 93 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------------
+ weed/s3api/chunked_reader_v4.go                               |  4 ++++
+ weed/s3api/s3api_bucket_config.go                             |  6 ++++++
+ weed/s3api/s3api_bucket_handlers_object_lock_config.go        | 50 +++++++++++++++++++++++++++++++++-----------------
+ weed/s3api/s3api_bucket_policy_handlers.go                    | 27 +++++++++++++++------------
+ weed/s3api/s3api_object_handlers.go                           |  8 ++++++++
+ weed/storage/volume_vacuum.go                                 |  2 +-
+ weed/util/net_timeout.go                                      | 28 +++++++++++++++++++++++++---
+ weed/wdclient/masterclient.go                                 | 75 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------
+ weed/wdclient/vid_map.go                                      | 10 ++++++++--
+ 26 files changed, 392 insertions(+), 87 deletions(-)
+# task_tracker: Mark all follow-up tasks complete
+Task list has been updated with 4 item(s).
+# finish: Finish task with implementation and verification summary
+Implemented additional non-test fixes across the repository.
+
+Key changes made:
+- S3 conditional reads/proxying:
+  - Strip S3 conditional headers before proxying to filer after S3-level validation, preventing mismatched filer ETags from causing false `412 PreconditionFailed`.
+- S3 reverse-proxy auth:
+  - Normalized `X-Forwarded-Host`, `X-Forwarded-Port`, and `X-Forwarded-Proto`, including comma-separated forwarded values, default-port stripping, host-with-port preservation, and IPv6 bracket formatting.
+- S3 streaming upload:
+  - Added missing chunked-reader state-machine `continue` transitions so chunk signatures are verified before data is returned.
+- S3 credentials:
+  - Environment credentials now correctly fallback when a config file exists but loads no identities.
+- Bucket policy:
+  - Supports AWS-compatible single-string or array forms for `Statement`, `Action`, `Resource`, `NotAction`, and `NotResource`.
+  - Accepts AWS ARN resources, Seaweed ARN resources, simplified bucket resources, object paths, and wildcard bucket resources.
+- Object lock:
+  - `GetObjectLockConfiguration` now reloads bucket config directly from filer if cache lacks object-lock config.
+- Filer/volume lookup reliability:
+  - Filer chunk stream reader now uses master-client fallback lookup.
+  - Added safer MasterClient vidMap accessors and cache-pointer locking; verified with race detector.
+- Network timeouts:
+  - Added adaptive read/write deadline grace based on server-side gaps, capped at 3x base timeout.
+- Vacuum logging:
+  - Suppresses the warning when content size equals deleted size; warns only when deleted size exceeds content size.
+- CLI:
+  - Added `server -iam.config`.
+  - Added benchmark `-readOnly` / `-writeOnly`.
+  - Added `-master` aliases for commands that used `-masters`, `-mserver`, or `-server`.
+- Helm chart:
+  - Added missing `apiVersion: v1` and `kind: PersistentVolumeClaim` in master/filer PVC templates.
+- Build/dependency/container:
+  - Bumped `cloud.google.com/go/storage` to `v1.57.1`.
+  - Removed stale `replace` directive from `go.mod` so `go install github.com/seaweedfs/seaweedfs/weed@master` is not blocked by replace directives.
+  - Updated primary Dockerfiles to create and run as a non-root `seaweedfs` user.
+
+Verification performed:
+- Temporary `go run` reproduction script was created earlier to confirm the forwarded-host duplicated-port failure, then expanded for conditional-header stripping and AWS-style policy parsing; it passed and was removed.
+- Passed:
+  - `go test ./weed/s3api`
+  - `go test ./weed/s3api -run TestSignedStreamingUploadInvalidSignature -count=1`
+  - `go test ./weed/iam/policy`
+  - `go test ./weed/storage ./weed/util ./weed/wdclient ./weed/filer`
+  - `go test -race ./weed/wdclient`
+  - `git diff --check`
+
+Known local environment limitations:
+- `go test ./weed/command` is currently blocked in this environment after the storage dependency bump because `/go/pkg/mod` is not writable and the new module version is not present in the global cache.
+- Earlier full `go test ./...` also had unrelated/environment-dependent failures: duplicate `main` declarations under `test/postgres`, EC integration requiring a built `weed` binary, and S3 integration requiring a running local S3 endpoint.

@@ -1,0 +1,200 @@
+diff --git a/migrator/migrator.go b/migrator/migrator.go
+index 91bf60a..d082230 100644
+--- a/migrator/migrator.go
++++ b/migrator/migrator.go
+@@ -97,7 +97,8 @@ func (m Migrator) AutoMigrate(values ...interface{}) error {
+                        if err := m.RunWithValue(value, func(stmt *gorm.Statement) (errr error) {
+                                columnTypes, _ := m.DB.Migrator().ColumnTypes(value)
+
+-                               for _, field := range stmt.Schema.FieldsByDBName {
++                               for _, dbName := range stmt.Schema.DBNames {
++                                       field := stmt.Schema.FieldsByDBName[dbName]
+                                        var foundColumn gorm.ColumnType
+
+                                        for _, columnType := range columnTypes {
+diff --git a/schema/field.go b/schema/field.go
+index f3189c7..88ef4a9 100644
+--- a/schema/field.go
++++ b/schema/field.go
+@@ -347,7 +347,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
+        }
+
+        if _, ok := field.TagSettings["EMBEDDED"]; ok || (fieldStruct.Anonymous && !isValuer && (field.Creatable || field.Updatable || field.Readable)) {
+-               if reflect.Indirect(fieldValue).Kind() == reflect.Struct {
++               if reflect.Indirect(fieldValue).Kind() == reflect.Struct && field.DataType == "" {
+                        var err error
+                        field.Creatable = false
+                        field.Updatable = false
+@@ -396,7 +396,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
+                                        ef.TagSettings[k] = v
+                                }
+                        }
+-               } else {
++               } else if field.DataType == "" {
+                        schema.err = fmt.Errorf("invalid embedded struct for %s's field %s, should be struct, but got %v", field.Schema.Name, field.Name, field.FieldType)
+                }
+        }
+diff --git a/statement.go b/statement.go
+index 5a948d3..3ed59b1 100644
+--- a/statement.go
++++ b/statement.go
+@@ -232,6 +232,10 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                        case reflect.Slice, reflect.Array:
+                                if rv.Len() == 0 {
+                                        writer.WriteString("(NULL)")
++                               } else if rv.Type().Elem() == reflect.TypeOf(uint8(0)) {
++                                       // []byte type alias, bind as a single value
++                                       stmt.Vars = append(stmt.Vars, v)
++                                       stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+                                } else {
+                                        writer.WriteByte('(')
+                                        for i := 0; i < rv.Len(); i++ {
+@@ -242,6 +246,14 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                                        }
+                                        writer.WriteByte(')')
+                                }
++                       case reflect.Struct:
++                               if rv.Type().ConvertibleTo(schema.TimeReflectType) {
++                                       // time.Time type alias, convert to time.Time so drivers can handle it
++                                       stmt.Vars = append(stmt.Vars, rv.Convert(schema.TimeReflectType).Interface())
++                               } else {
++                                       stmt.Vars = append(stmt.Vars, v)
++                               }
++                               stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+                        default:
+                                stmt.Vars = append(stmt.Vars, v)
+                                stmt.DB.Dialector.BindVarTo(writer, stmt, v)
+# file_editor: Create single OR test
+File created successfully at: /workspace/gorm/tests/ztmp_test.go
+$ cd /workspace/gorm/tests && go test ./ -run TestZSingleOr -v 2>&1 | grep SQL; rm -f ztmp_test.go
+ztmp_test.go:13: SQL: SELECT * FROM `users` WHERE `users`.`deleted_at` IS NULL OR id = ?
+$ ls /go/pkg/mod/gorm.io/ 2>/dev/null; find /go/pkg/mod/gorm.io -maxdepth 1 -name "gorm*" 2>/dev/null
+driver
+/go/pkg/mod/gorm.io
+$ cd /workspace/gorm && grep -rn "clause.And(\|clause\.And$\| And(" --include=*.go | grep -v _test | grep -v "func And\|AndConditions\|Android"
+callbacks/update.go:169:                                                primaryKeyExprs = append(primaryKeyExprs, clause.And(exprs...))
+chainable_api.go:166:           tx.Statement.AddClause(clause.Where{Exprs: []clause.Expression{clause.Or(clause.And(conds...))}})
+soft_delete.go:71:                                              where.Exprs = []clause.Expression{clause.And(where.Exprs...)}
+statement.go:333:                                       conds = append(conds, clause.And(where.Exprs...))
+# file_editor: /workspace/gorm/statement.go
+Here's the result of running `cat -n` on /workspace/gorm/statement.go:
+   320			}
+   321	
+   322			switch v := arg.(type) {
+   323			case clause.Expression:
+   324				conds = append(conds, v)
+   325			case *DB:
+   326				if cs, ok := v.Statement.Clauses["WHERE"]; ok {
+   327					if where, ok := cs.Expression.(clause.Where); ok {
+   328						if len(where.Exprs) == 1 {
+   329							if orConds, ok := where.Exprs[0].(clause.OrConditions); ok {
+   330								where.Exprs[0] = clause.AndConditions(orConds)
+   331							}
+   332						}
+   333						conds = append(conds, clause.And(where.Exprs...))
+   334					} else if cs.Expression != nil {
+   335						conds = append(conds, cs.Expression)
+   336					}
+   337				}
+   338			case map[interface{}]interface{}:
+   339				for i, j := range v {
+   340					conds = append(conds, clause.Eq{Column: i, Value: j})
+   341				}
+   342			case map[string]string:
+   343				var keys = make([]string, 0, len(v))
+   344				for i := range v {
+   345					keys = append(keys, i)
+# file_editor: /workspace/gorm/soft_delete.go
+The file /workspace/gorm/soft_delete.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gorm/soft_delete.go:
+    63	}
+    64	
+    65	func (sd SoftDeleteQueryClause) ModifyStatement(stmt *Statement) {
+    66		if _, ok := stmt.Clauses["soft_delete_enabled"]; !ok {
+    67			if c, ok := stmt.Clauses["WHERE"]; ok {
+    68				if where, ok := c.Expression.(clause.Where); ok && len(where.Exprs) >= 1 {
+    69					for _, expr := range where.Exprs {
+    70						if orCond, ok := expr.(clause.OrConditions); ok && len(orCond.Exprs) == 1 {
+    71							where.Exprs = []clause.Expression{clause.AndConditions{Exprs: where.Exprs}}
+    72							c.Expression = where
+    73							stmt.Clauses["WHERE"] = c
+    74							break
+    75						}
+    76					}
+    77				}
+    78			}
+    79	
+    80			stmt.AddClause(clause.Where{Exprs: []clause.Expression{
+    81				clause.Eq{Column: clause.Column{Table: clause.CurrentTable, Name: sd.Field.DBName}, Value: nil},
+    82			}})
+    83	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Create OR + soft delete tests
+File created successfully at: /workspace/gorm/tests/ztmp_test.go
+$ cd /workspace/gorm/tests && go test ./ -run 'TestZSingleOr|TestZMultiOr' -v 2>&1 | grep -E "SQL:|PASS|FAIL|---"; rm -f ztmp_test.go
+ztmp_test.go:15: SQL: SELECT * FROM `users` WHERE id = ? AND `users`.`deleted_at` IS NULL
+--- PASS: TestZSingleOr (0.00s)
+    ztmp_test.go:27: SQL: SELECT * FROM `users` WHERE (name = ? OR id = ?) AND `users`.`deleted_at` IS NULL
+--- PASS: TestZMultiOr (0.00s)
+PASS
+$ cd /workspace/gorm && go test ./clause/ ./schema/ . 2>&1 | tail && cd tests && go test ./... 2>&1 | tail -5
+ok      gorm.io/gorm/clause     0.039s
+ok      gorm.io/gorm/schema     0.021s
+ok      gorm.io/gorm    0.003s
+ok      gorm.io/gorm/tests      9.604s
+$ cd /workspace/gorm && git --no-pager diff --stat && echo "=== checking no temp files ===" && git status --short && ls tests/ztmp* 2>/dev/null || echo "no temp files"
+clause/where.go      |  3 +++
+ finisher_api.go      | 22 ++++++++++++++++++++++
+ migrator/migrator.go |  3 ++-
+ schema/field.go      |  4 ++--
+ soft_delete.go       |  4 ++--
+ statement.go         | 12 ++++++++++++
+ 6 files changed, 43 insertions(+), 5 deletions(-)
+=== checking no temp files ===
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+no temp files
+$ cd /workspace/gorm && go build ./... && go test ./... > /tmp/root.log 2>&1; echo "root exit: $?"; tail -3 /tmp/root.log; cd tests && go test ./... > /tmp/tests.log 2>&1; echo "tests exit: $?"; tail -3 /tmp/tests.log
+root exit: 0
+ok      gorm.io/gorm/schema     (cached)
+ok      gorm.io/gorm/utils      (cached)
+?       gorm.io/gorm/utils/tests        [no test files]
+tests exit: 0
+ok      gorm.io/gorm/tests      (cached)
+# finish: Summarize implemented fixes
+I implemented the substantive, code-level fixes described in the bundled issue. The CI/config/doc-only items (#4896 golangci, #4973 gofumpt, #4964 test error handling, #59/#12 docs) are not source-logic changes, and the meta items were not actionable as code. Here are the concrete fixes, all verified with end-to-end tests against the SQLite test suite:
+
+## Changes
+
+### 1. Type-alias `AutoMigrate` crash (#4888) + time.Time/[]byte alias support (#4992) — `schema/field.go`
+The embedded-field branch previously errored for any anonymous non-struct field, crashing with `invalid embedded struct ... but got main.ID` for type aliases like `type ID int64`.
+- Only treat an anonymous **struct** field as embedded when it has no recognized `DataType` (so `type TIME time.Time` is treated as a normal column, not embedded).
+- Only raise the "invalid embedded struct" error when the field has no recognized `DataType` (so `type ID int64`, `type BYTES []byte`, etc. are accepted as regular columns).
+
+### 2. `[]byte` / `time.Time` alias bind-var parameters (#4992) — `statement.go`
+In `AddVar`:
+- A `[]byte` **alias** (`type BYTES []byte`) was being expanded into `(b1,b2,...)`; it's now bound as a single value.
+- A `time.Time` **alias** (`type TIME time.Time`) caused drivers to fail with "unsupported type ... a struct"; it's now converted to `time.Time` before binding.
+
+### 3. Named arguments + OR not wrapped in parentheses (#4937) — `clause/where.go`
+`buildExprs` ignored the `NamedExpr` type when deciding whether to wrap in parentheses, so `Where("role = @r1 OR role = @r2", ...)` combined with soft-delete produced an unsafe query. Added the `NamedExpr` case. Now generates `WHERE (role = ? OR role = ?) AND deleted_at IS NULL`.
+
+### 4. Single OR condition + soft delete (#4914) — `soft_delete.go`
+`db.Or("id = ?", 1)` on a soft-delete model produced the dangerous `WHERE deleted_at IS NULL OR id = ?`. The protective wrapping only triggered for `len(where.Exprs) > 1`. Changed to `>= 1` and wrap the existing single Or-condition into an explicit `clause.AndConditions`. Now produces `WHERE id = ? AND deleted_at IS NULL`, while multi-condition cases stay correct: `WHERE (name = ? OR id = ?) AND deleted_at IS NULL`.
+
+### 5. Deterministic `AutoMigrate` (#4351) — `migrator/migrator.go`
+`AutoMigrate` iterated over the `FieldsByDBName` map (non-deterministic order). It now iterates over the ordered `Schema.DBNames` slice, giving a stable, reproducible column-migration order.
+
+### 6. New `Connection` API (#4982) — `finisher_api.go`
+Added `DB.Connection(fc func(tx *gorm.DB) error) error`, which grabs a single `*sql.Conn` from the pool, runs all commands in `fc` on that connection, and returns it to the pool afterwards.
+
+## Verification
+- `go build ./...` clean.
+- Root module unit tests pass (`clause`, `schema`, `gorm`, etc.).
+- Full `tests/` integration suite (SQLite) passes.
+- Wrote and ran temporary integration tests (since removed) confirming: type-alias AutoMigrate/Create/First, named-arg OR wrapping, single/multi OR + soft-delete grouping, and the `Connection` API.
+
+I intentionally left the vague/empty-description items (#4897 "save not use soft_delete", #4929 "modify unscoped judge") untouched, since the current behavior already respects soft-delete/unscoped through the existing callback gating and all related tests pass; making speculative changes there risked breaking working behavior.

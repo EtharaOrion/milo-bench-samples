@@ -1,0 +1,223 @@
+diff --git a/tests/test_cells.py b/tests/test_cells.py
+index c332f2a541..d64317f3ba 100644
+--- a/tests/test_cells.py
++++ b/tests/test_cells.py
+@@ -13,6 +13,7 @@ def test_set_cell_size():
+     assert cells.set_cell_size("😽😽", 3) == "😽 "
+     assert cells.set_cell_size("😽😽", 2) == "😽"
+     assert cells.set_cell_size("😽😽", 1) == " "
++    assert cells.set_cell_size("😽😽", 5) == "😽😽 "
+ 
+ 
+ def test_set_cell_size_infinite():
+diff --git a/tests/test_console.py b/tests/test_console.py
+index 390e97be18..4b21e397e9 100644
+--- a/tests/test_console.py
++++ b/tests/test_console.py
+@@ -87,6 +87,23 @@ def test_console_options_update():
+     assert options_copy == options and options_copy is not options
+ 
+ 
++def test_console_options_update_height():
++    options = ConsoleOptions(
++        ConsoleDimensions(80, 25),
++        max_height=25,
++        legacy_windows=False,
++        min_width=10,
++        max_width=20,
++        is_terminal=False,
++        encoding="utf-8",
++    )
++    assert options.height is None
++    render_options = options.update_height(12)
++    assert options.height is None
++    assert render_options.height == 12
++    assert render_options.max_height == 12
++
++
+ def test_init():
+     console = Console(color_system=None)
+     assert console._color_system == None
+diff --git a/tests/test_pretty.py b/tests/test_pretty.py
+index 9fd2bdd9d9..ab83d930d1 100644
+--- a/tests/test_pretty.py
++++ b/tests/test_pretty.py
+@@ -97,6 +97,7 @@ def test_small_width():
+     assert result == expected
+ 
+ 
++@skip_py36
+ def test_broken_repr():
+     class BrokenRepr:
+         def __repr__(self):
+@@ -108,6 +109,20 @@ def __repr__(self):
+     assert result == expected
+ 
+ 
++@skip_py36
++def test_broken_getattr():
++    class BrokenAttr:
++        def __getattr__(self, name):
++            1 / 0
++
++        def __repr__(self):
++            return "BrokenAttr()"
++
++    test = BrokenAttr()
++    result = pretty_repr(test)
++    assert result == "BrokenAttr()"
++
++
+ def test_recursive():
+     test = []
+     test.append(test)
+diff --git a/tests/test_progress.py b/tests/test_progress.py
+index 303c2e0871..2020f91ffb 100644
+--- a/tests/test_progress.py
++++ b/tests/test_progress.py
+@@ -68,6 +68,13 @@ def test_text_column():
+     assert text == Text("[b]bar")
+ 
+ 
++def test_time_elapsed_column():
++    column = TimeElapsedColumn()
++    task = Task(1, "test", 100, 20, _get_time=lambda: 1.0)
++    text = column.render(task)
++    assert str(text) == "-:--:--"
++
++
+ def test_time_remaining_column():
+     class FakeTask(Task):
+         time_remaining = 60
+diff --git a/tests/test_protocol.py b/tests/test_protocol.py
+index 50d129a716..6337ef5df6 100644
+--- a/tests/test_protocol.py
++++ b/tests/test_protocol.py
+@@ -18,6 +18,21 @@ def test_rich_cast():
+     assert console.file.getvalue() == "Foo\n"
+ 
+ 
++class Fake:
++    def __getattr__(self, name):
++        return 12
++
++    def __repr__(self) -> str:
++        return "Fake()"
++
++
++def test_rich_cast_fake():
++    fake = Fake()
++    console = Console(file=io.StringIO())
++    console.print(fake)
++    assert console.file.getvalue() == "Fake()\n"
++
++
+ def test_rich_cast_container():
+     foo = Foo()
+     console = Console(file=io.StringIO(), legacy_windows=False)
+diff --git a/tests/test_repr.py b/tests/test_repr.py
+index c4f8bd09aa..3c2f48a462 100644
+--- a/tests/test_repr.py
++++ b/tests/test_repr.py
+@@ -1,10 +1,22 @@
+ import pytest
++import sys
+ from typing import Optional
+ 
+ from rich.console import Console
+ import rich.repr
+ 
+ 
++skip_py36 = pytest.mark.skipif(
++    sys.version_info.minor == 6 and sys.version_info.major == 3,
++    reason="rendered differently on py3.6",
++)
++
++skip_py37 = pytest.mark.skipif(
++    sys.version_info.minor == 7 and sys.version_info.major == 3,
++    reason="rendered differently on py3.7",
++)
++
++
+ @rich.repr.auto
+ class Foo:
+     def __init__(self, foo: str, bar: Optional[int] = None, egg: int = 1):
+@@ -59,6 +71,24 @@ def test_rich_repr() -> None:
+     assert (repr(Foo("hello", bar=3))) == "Foo('hello', 'hello', bar=3, egg=1)"
+ 
+ 
++@skip_py36
++@skip_py37
++def test_rich_repr_positional_only() -> None:
++    _locals = locals().copy()
++    exec(
++        """\
++@rich.repr.auto
++class PosOnly:
++    def __init__(self, foo, /):
++        self.foo = 1
++    """,
++        globals(),
++        _locals,
++    )
++    p = _locals["PosOnly"](1)
++    assert repr(p) == "PosOnly(1)"
++
++
+ def test_rich_angular() -> None:
+     assert (repr(Bar("hello"))) == "<Bar 'hello' 'hello' egg=1>"
+     assert (repr(Bar("hello", bar=3))) == "<Bar 'hello' 'hello' bar=3 egg=1>"
+diff --git a/tests/test_segment.py b/tests/test_segment.py
+index c3cb222c35..dcf7b218ce 100644
+--- a/tests/test_segment.py
++++ b/tests/test_segment.py
+@@ -223,6 +223,7 @@ def test_divide_edge_2():
+ @pytest.mark.parametrize(
+     "text,split,result",
+     [
++        ("XX", 4, (Segment("XX"), Segment(""))),
+         ("X", 1, (Segment("X"), Segment(""))),
+         ("💩", 1, (Segment(" "), Segment(" "))),
+         ("XY", 1, (Segment("X"), Segment("Y"))),
+diff --git a/tests/test_text.py b/tests/test_text.py
+index 3727d1602c..63f128e52e 100644
+--- a/tests/test_text.py
++++ b/tests/test_text.py
+@@ -95,6 +95,16 @@ def test_from_markup():
+     assert text._spans == [Span(7, 13, "bold")]
+ 
+ 
++def test_from_ansi():
++    text = Text.from_ansi("Hello, \033[1mWorld!\033[0m")
++    assert str(text) == "Hello, World!"
++    assert text._spans == [Span(7, 13, Style(bold=True))]
++
++    text = Text.from_ansi("Hello, \033[1m\nWorld!\033[0m")
++    assert str(text) == "Hello, \nWorld!"
++    assert text._spans == [Span(8, 14, Style(bold=True))]
++
++
+ def test_copy():
+     test = Text()
+     test.append("Hello", "bold")
+diff --git a/tools/stress_test_pretty.py b/tools/stress_test_pretty.py
+index 4a945d1114..334f9cf544 100644
+--- a/tools/stress_test_pretty.py
++++ b/tools/stress_test_pretty.py
+@@ -1,6 +1,7 @@
+ from rich.console import Console
+ from rich.panel import Panel
+ from rich.pretty import Pretty
++from rich._timer import timer
+ 
+ DATA = {
+     "foo": [1, 2, 3, (), {}, (1, 2, 3), {4, 5, 6, (7, 8, 9)}, "Hello, World"],
+@@ -15,5 +16,6 @@
+     },
+ }
+ console = Console()
+-for w in range(130):
+-    console.print(Panel(Pretty(DATA, indent_guides=True), width=w))
++with timer("Stress test"):
++    for w in range(130):
++        console.print(Panel(Pretty(DATA, indent_guides=True), width=w))

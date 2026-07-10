@@ -1,0 +1,200 @@
+     isPumping = true;
+-    pumpTask = kj::evalNow([&]() {
++    pumpTask = kj::evalLater([this]() {
+       return pump();
+     }).fork();
+   }
+diff --git a/doc/encoding.md b/doc/encoding.md
+index 068cc3c3..7b3c7413 100644
+--- a/doc/encoding.md
++++ b/doc/encoding.md
+@@ -375,6 +375,7 @@ A canonical Cap'n Proto message must adhere to the following rules:
+   then it must be truncated from all structs in the list. (All structs in a struct list must have
+   equal sizes, hence a trailing zero can only be removed if it is zero in all elements.)
+ * Any struct pointer pointing to a zero-sized struct should have an offset of -1.
++* Any list pointer with element size `Void` (C = 0) should have an offset of 0.
+ * Canonical messages are not packed. However, packing can still be applied for transmission
+   purposes; the message must simply be unpacked before checking signatures.
+
+diff --git a/release.sh b/release.sh
+index 57970bfc..b0fef2bb 100755
+--- a/release.sh
++++ b/release.sh
+@@ -177,7 +177,7 @@ case "${1-}:$BRANCH" in
+     declare -a VERSION_ARR=(${RELEASE_VERSION//./ })
+     NEXT_VERSION=${VERSION_ARR[0]}.$((VERSION_ARR[1] + 1))
+
+-    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainlaine"
++    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainline"
+
+     done_banner $RELEASE_VERSION-rc1 "master release-$RELEASE_VERSION" no
+     ;;
+$ cd /workspace/capnproto && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('c++/src/kj/common.h')
+$ s=p.read_text()
+$ s=s.replace('''#if __clang__
+$ #define KJ_UNREACHABLE \\
+$     _Pragma("clang diagnostic push") \\
+$     _Pragma("clang diagnostic ignored \\\"-Wunreachable-code\\\"") \\
+$     ::kj::_::unreachable(); \\
+$     _Pragma("clang diagnostic pop")
+$ #else
+$ #define KJ_UNREACHABLE ::kj::_::unreachable();
+$ #endif
+$ ''', '''#if __clang__
+$ #define KJ_UNREACHABLE \\
+$     do { \\
+$       _Pragma("clang diagnostic push") \\
+$       _Pragma("clang diagnostic ignored \\\"-Wunreachable-code\\\"") \\
+$       ::kj::_::unreachable(); \\
+$       _Pragma("clang diagnostic pop") \\
+$     } while (false)
+$ #else
+$ #define KJ_UNREACHABLE ::kj::_::unreachable();
+$ #endif
+$ ''')
+$ p.write_text(s)
+$ PY
+$ sed -n '264,284p' c++/src/kj/common.h
+cd /workspace/capnproto && python3 - <<'PY'
+from pathlib import Path
+p=Path('c++/src/kj/common.h')
+s=p.read_text()
+s=s.replace('''#if __clang__
+#define KJ_UNREACHABLE \\
+    _Pragma("clang diagnostic push") \\
+    _Pragma("clang diagnostic ignored \\\"-Wunreachable-code\\\"") \\
+    ::kj::_::unreachable(); \\
+    _Pragma("clang diagnostic pop")
+#else
+#define KJ_UNREACHABLE ::kj::_::unreachable();
+#endif
+''', '''#if __clang__
+#define KJ_UNREACHABLE \\
+    do { \\
+      _Pragma("clang diagnostic push") \\
+      _Pragma("clang diagnostic ignored \\\"-Wunreachable-code\\\"") \\
+      ::kj::_::unreachable(); \\
+      _Pragma("clang diagnostic pop") \\
+    } while (false)
+#else
+#define KJ_UNREACHABLE ::kj::_::unreachable();
+#endif
+''')
+p.write_text(s)
+PY
+
+
+
+sed -n '264,284p' c++/src/kj/common.h
+#endif
+#else
+#define KJ_IREQUIRE(condition, ...)
+#endif
+
+#define KJ_IASSERT KJ_IREQUIRE
+
+#if __clang__
+#define KJ_UNREACHABLE \
+    do { \
+      _Pragma("clang diagnostic push") \
+      _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") \
+      ::kj::_::unreachable(); \
+      _Pragma("clang diagnostic pop") \
+    } while (false)
+#else
+#define KJ_UNREACHABLE ::kj::_::unreachable();
+#endif
+// Put this on code paths that cannot be reached to suppress compiler warnings about missing
+// returns.
+$ cd /workspace/capnproto && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('c++/src/capnp/serialize-text.c++')
+$ s=p.read_text().replace('kj::throwRecoverableException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,', 'kj::throwFatalException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,')
+$ s=s.replace('''  lexAndParseExpression(input, [input, &type, &orphanage, &output](compiler::Expression::Reader expression) {
+$ ''', '''  lexAndParseExpression(input,
+$       [input, &type, &orphanage, &output](compiler::Expression::Reader expression) {
+$ ''')
+$ p.write_text(s)
+$ PY
+$ grep -n "throwFatalException\|lexAndParseExpression(input" -A2 c++/src/capnp/serialize-text.c++
+cd /workspace/capnproto && python3 - <<'PY'
+from pathlib import Path
+p=Path('c++/src/capnp/serialize-text.c++')
+s=p.read_text().replace('kj::throwRecoverableException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,', 'kj::throwFatalException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,')
+s=s.replace('''  lexAndParseExpression(input, [input, &type, &orphanage, &output](compiler::Expression::Reader expression) {
+''', '''  lexAndParseExpression(input,
+      [input, &type, &orphanage, &output](compiler::Expression::Reader expression) {
+''')
+p.write_text(s)
+PY
+
+
+
+grep -n "throwFatalException\|lexAndParseExpression(input" -A2 c++/src/capnp/serialize-text.c++
+40:    kj::throwFatalException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,
+41-        kj::str(message, " (", describeLocation(startByte, endByte), ").")));
+42-  }
+--
+159:  lexAndParseExpression(input, [input, &output](compiler::Expression::Reader expression) {
+160-    KJ_REQUIRE(expression.isTuple(), "Input does not contain a struct.");
+161-
+--
+174:  lexAndParseExpression(input,
+175-      [input, &type, &orphanage, &output](compiler::Expression::Reader expression) {
+176-    ThrowingErrorReporter errorReporter(input);
+$ cd /workspace/capnproto && mkdir -p .tmp-repro && g++ -std=gnu++14 -I c++/src -DKJ_HEADER_WARNINGS -DCAPNP_HEADER_WARNINGS -c c++/src/capnp/serialize-text.c++ -o .tmp-repro/serialize-text.o && rm -rf .tmp-repro
+$ cd /workspace/capnproto && git status --short && git --no-pager diff --stat && grep -R "mainlaine" -n release.sh doc c++ 2>/dev/null || true
+M c++/src/capnp/CMakeLists.txt
+ M c++/src/capnp/compat/http-over-capnp.c++
+ M c++/src/capnp/layout.c++
+ M c++/src/capnp/serialize-text.c++
+ M c++/src/kj/array.h
+ M c++/src/kj/async.h
+ M c++/src/kj/common.h
+ M c++/src/kj/compat/http.c++
+ M c++/src/kj/compat/readiness-io.c++
+ M doc/encoding.md
+ M release.sh
+ c++/src/capnp/CMakeLists.txt             |  1 +
+ c++/src/capnp/compat/http-over-capnp.c++ | 13 ++++++++++---
+ c++/src/capnp/layout.c++                 | 10 ++++++++++
+ c++/src/capnp/serialize-text.c++         | 57 +++++++++++++++++++++++++++++++++++++++++++++++++++------
+ c++/src/kj/array.h                       | 10 ++++++++--
+ c++/src/kj/async.h                       |  2 +-
+ c++/src/kj/common.h                      | 10 ++++++++++
+ c++/src/kj/compat/http.c++               |  6 ++----
+ c++/src/kj/compat/readiness-io.c++       |  2 +-
+ doc/encoding.md                          |  1 +
+ release.sh                               |  2 +-
+ 11 files changed, 96 insertions(+), 18 deletions(-)
+$ cd /workspace/capnproto && git diff --check
+# finish: Summarize completed implementation and verification
+Implemented the requested non-test changes in `/workspace/capnproto`.
+
+Summary of changes:
+- Coalesced TLS compatibility-layer writes by deferring `ReadyOutputStreamWrapper` pumping one event-loop turn.
+- Added `CAPNP_INCLUDE_DIR` to the CMake-built `capnp` tool.
+- Suppressed Clang `-Wunreachable-code` around `KJ_UNREACHABLE`.
+- Reworked `fastCaseCmp` to avoid GCC tautological-compare warnings.
+- Fixed `kj::ArrayBuilder` default disposer initialization so empty `Vector::releaseAsArray()` no longer binds a null disposer reference.
+- Fixed `TextCodec` parse error formatting and added line/column reporting.
+- Corrected `Canceler::isEmpty()` usage and documentation.
+- Hardened WebSocket-over-RPC cancellation/abort behavior for send-only adapters.
+- Canonicalized `Void` lists with offset 0 and documented the rule.
+- Fixed the `mainlaine` typo.
+
+Verification performed:
+- Built the CMake project successfully.
+- Ran focused reproducers for:
+  - empty `Vector<int>::releaseAsArray()` under UBSAN,
+  - TLS readiness small-write coalescing,
+  - TextCodec parse error formatting,
+  - canonical void-list offset normalization.
+- Compiled `http.c++` with `-Werror=tautological-compare` successfully.
+- Ran all built test executables directly: `kj-tests`, `kj-heavy-tests`, `capnp-tests`, `capnp-heavy-tests`, and `capnp-evolution-tests`.
+- Manually generated schemas, compiled, and ran `http-over-capnp-test` successfully.
+- Ran `git diff --check` successfully.
+
+No test files were modified. Temporary reproduction/build artifacts were removed; only source/documentation files remain changed.

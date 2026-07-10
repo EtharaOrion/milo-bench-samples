@@ -1,0 +1,200 @@
+   121		defer func() {
+   122			if r := recover(); r != nil {
+   123				err = fmt.Errorf("panic: %v", r)
+   124			}
+   125		}()
+   126	
+   127		r := resolver.NewReconciler(&fake.Manager{
+   128			Client: &test.MockClient{
+   129				MockGet: test.NewMockGetFn(nil, func(o client.Object) error {
+   130					l := o.(*v1beta1.Lock)
+   131					l.Packages = append(l.Packages, v1beta1.LockPackage{
+   132						Name:    "cool-package",
+   133						Type:    v1beta1.ProviderPackageType,
+   134						Source:  "cool-repo/cool-image",
+   135						Version: "v0.0.1",
+   136					})
+   137					return nil
+   138				}),
+   139				MockCreate: test.NewMockCreateFn(tc.createErr),
+   140				MockUpdate: test.NewMockUpdateFn(nil),
+   141			},
+   142		},
+   143			resolver.WithLogger(logging.NewLogrLogger(zap.New(zap.UseDevMode(true)))),
+   144			resolver.WithNewDagFn(func() dag.DAG {
+   145				return &fakedag.MockDag{
+   146					MockInit: func(nodes []dag.Node, fns ...dag.NodeFn) ([]dag.Node, error) {
+   147						return []dag.Node{tc.dep}, nil
+   148					},
+   149					MockSort: func() ([]string, error) { return nil, nil },
+   150				}
+   151			}),
+   152			resolver.WithFetcher(&fakexpkg.MockFetcher{
+   153				MockTags: fakexpkg.NewMockTagsFn(tc.tags, tc.tagErr),
+   154			}),
+   155		)
+   156	
+   157		_, reconcileErr := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: "lock"}})
+   158		if (reconcileErr != nil) != tc.wantErr {
+   159			return fmt.Errorf("want error %t, got %v", tc.wantErr, reconcileErr)
+   160		}
+   161		return nil
+   162	}
+   163	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/crossplane && gofmt -w repro_logger_panic.go && go run repro_logger_panic.go
+1.7823575421105027e+09  DEBUG   Reconciling     {"request": "/lock"}
+1.782357542110581e+09   DEBUG   cannot find a valid version for package constraints     {"request": "/lock", "uid": "", "version": "", "name": "", "error": "dependency (hasheddan/config-nop-b) does not have version in constraints (>v1.0.0)"}
+1.782357542110601e+09   DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421106207e+09  DEBUG   cannot find a valid version for package constraints     {"request": "/lock", "uid": "", "version": "", "name": "", "error": "dependency (hasheddan/config-nop-b) does not have version in constraints (>v1.0.0)"}
+1.7823575421106324e+09  DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421106439e+09  DEBUG   version constraint on dependency is invalid     {"request": "/lock", "uid": "", "version": "", "name": "", "error": "improper constraint: not a constraint"}
+1.7823575421106536e+09  DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421106672e+09  DEBUG   dependency package is not valid {"request": "/lock", "uid": "", "version": "", "name": "", "error": "could not parse reference: not a valid package reference"}
+1.7823575421106794e+09  DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421106906e+09  DEBUG   cannot fetch dependency package tags    {"request": "/lock", "uid": "", "version": "", "name": "", "error": "boom"}
+1.782357542110701e+09   DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421107135e+09  DEBUG   cannot create invalid package dependency type   {"request": "/lock", "uid": "", "version": "", "name": ""}
+1.782357542110722e+09   DEBUG   Reconciling     {"request": "/lock"}
+1.7823575421107407e+09  DEBUG   cannot create dependency package        {"request": "/lock", "uid": "", "version": "", "name": "", "error": "boom"}
+1.7823575421107497e+09  DEBUG   Reconciling     {"request": "/lock"}
+$ rm /workspace/crossplane/repro_logger_panic.go && cd /workspace/crossplane && git status --short
+M internal/controller/pkg/resolver/reconciler.go
+# task_tracker: Update progress after implementation and reproduction
+Task list has been updated with 6 item(s).
+$ cd /workspace/crossplane && go test ./internal/controller/pkg/resolver
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       0.022s
+$ cd /workspace/crossplane && go test ./internal/controller/pkg/...
+?       github.com/crossplane/crossplane/internal/controller/pkg        [no test files]
+?       github.com/crossplane/crossplane/internal/controller/pkg/controller     [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/manager        0.016s
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/revision       0.022s
+$ cd /workspace/crossplane && go test ./...
+?       github.com/crossplane/crossplane/apis   [no test files]
+?       github.com/crossplane/crossplane/apis/apiextensions     [no test files]
+ok      github.com/crossplane/crossplane/apis/apiextensions/v1  0.016s
+?       github.com/crossplane/crossplane/apis/apiextensions/v1alpha1    [no test files]
+?       github.com/crossplane/crossplane/apis/pkg       [no test files]
+?       github.com/crossplane/crossplane/apis/pkg/meta/v1       [no test files]
+ok      github.com/crossplane/crossplane/apis/pkg/meta/v1alpha1 0.012s
+?       github.com/crossplane/crossplane/apis/pkg/v1    [no test files]
+?       github.com/crossplane/crossplane/apis/pkg/v1alpha1      [no test files]
+?       github.com/crossplane/crossplane/apis/pkg/v1beta1       [no test files]
+?       github.com/crossplane/crossplane/apis/secrets   [no test files]
+?       github.com/crossplane/crossplane/apis/secrets/v1alpha1  [no test files]
+ok      github.com/crossplane/crossplane/cmd/crank      0.018s
+?       github.com/crossplane/crossplane/cmd/crossplane [no test files]
+?       github.com/crossplane/crossplane/cmd/crossplane/core    [no test files]
+?       github.com/crossplane/crossplane/cmd/crossplane/rbac    [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned    [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/fake       [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/scheme     [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/apiextensions/v1     [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/apiextensions/v1/fake        [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1       [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1/fake  [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1alpha1 [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1alpha1/fake    [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1beta1  [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/pkg/v1beta1/fake     [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/secrets/v1alpha1     [no test files]
+?       github.com/crossplane/crossplane/internal/client/clientset/versioned/typed/secrets/v1alpha1/fake        [no test files]
+?       github.com/crossplane/crossplane/internal/controller    [no test files]
+?       github.com/crossplane/crossplane/internal/controller/apiextensions      [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/claim        0.016s
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/composite    0.020s
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/composition  0.014s
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/definition   0.016s
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/offered      0.017s
+?       github.com/crossplane/crossplane/internal/controller/pkg        [no test files]
+?       github.com/crossplane/crossplane/internal/controller/pkg/controller     [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/manager        (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/revision       (cached)
+?       github.com/crossplane/crossplane/internal/controller/rbac       [no test files]
+?       github.com/crossplane/crossplane/internal/controller/rbac/controller    [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/rbac/definition    0.014s
+ok      github.com/crossplane/crossplane/internal/controller/rbac/namespace     0.014s
+ok      github.com/crossplane/crossplane/internal/controller/rbac/provider/binding      0.013s
+ok      github.com/crossplane/crossplane/internal/controller/rbac/provider/roles        0.014s
+ok      github.com/crossplane/crossplane/internal/dag   0.002s
+?       github.com/crossplane/crossplane/internal/dag/fake      [no test files]
+?       github.com/crossplane/crossplane/internal/features      [no test files]
+ok      github.com/crossplane/crossplane/internal/initializer   1.023s
+ok      github.com/crossplane/crossplane/internal/version       0.011s
+?       github.com/crossplane/crossplane/internal/version/fake  [no test files]
+ok      github.com/crossplane/crossplane/internal/xcrd  0.018s
+ok      github.com/crossplane/crossplane/internal/xpkg  0.018s
+?       github.com/crossplane/crossplane/internal/xpkg/fake     [no test files]
+$ cd /workspace/crossplane && git --no-pager diff --stat f60d10f28905082fe8e5537f17ed74d0117de532 && git --no-pager diff f60d10f28905082fe8e5537f17ed74d0117de532 -- internal/controller/pkg/resolver/reconciler.go && git status --short
+internal/controller/pkg/resolver/reconciler.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..1e846c15 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+
+ M internal/controller/pkg/resolver/reconciler.go
+$ cd /workspace/crossplane && printf 'Suspicious direct error-as-key calls:\n' && grep -R "log\.\(Debug\|Info\)([^\n]*, *errors\." -n internal apis cmd || true && printf '\nOdd literal key-only calls in resolver:\n' && grep -n "log\.Debug" internal/controller/pkg/resolver/reconciler.go
+Suspicious direct error-as-key calls:
+
+Odd literal key-only calls in resolver:
+157:    log.Debug("Reconciling")
+166:            log.Debug(errGetLock, "error", err)
+176:                    log.Debug(errRemoveFinalizer, "error", err)
+183:            log.Debug(errAddFinalizer, "error", err)
+196:            log.Debug(errBuildDAG, "error", err)
+204:            log.Debug(errSortDAG, "error", err)
+218:            log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, dep.Identifier()))
+223:            log.Debug(errInvalidConstraint, "error", err)
+228:            log.Debug(errInvalidDependency, "error", err)
+237:            log.Debug(errFetchTags, "error", err)
+262:            log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+273:            log.Debug(errInvalidPackageType)
+287:            log.Debug(errCreateDependency, "error", err)
+# task_tracker: Update task statuses before final review
+Task list has been updated with 6 item(s).
+$ cd /workspace/crossplane && git status --short && git --no-pager diff --check && git --no-pager diff -- internal/controller/pkg/resolver/reconciler.go
+M internal/controller/pkg/resolver/reconciler.go
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..1e846c15 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+# task_tracker: Complete all tracked implementation tasks
+Task list has been updated with 6 item(s).
+# finish: Finish with implementation and validation summary
+Implemented the logger panic fix in `internal/controller/pkg/resolver/reconciler.go`.
+
+What changed:
+- Fixed the malformed dependency-resolution debug log call by adding the missing structured logging key:
+  - Before: `log.Debug(errNoValidVersion, errors.Errorf(...))`
+  - After: `log.Debug(errNoValidVersion, "error", errors.Errorf(...))`
+
+Validation performed:
+- Created and ran a temporary `go run` reproduction script that confirmed the original zap development logger panic.
+- Reran the script after the fix and confirmed the panic was gone.
+- Expanded the temporary script to cover related dependency resolver logging edge cases, including invalid constraints, invalid package references, fetch errors, invalid package type, dependency creation errors, no valid versions, and successful creation.
+- Removed the temporary script afterward.
+- Ran targeted tests: `go test ./internal/controller/pkg/resolver`
+- Ran related package controller tests: `go test ./internal/controller/pkg/...`
+- Ran the full repository suite: `go test ./...`
+- Ran `git diff --check` successfully.
+
+All tests passed, and no test files were modified.

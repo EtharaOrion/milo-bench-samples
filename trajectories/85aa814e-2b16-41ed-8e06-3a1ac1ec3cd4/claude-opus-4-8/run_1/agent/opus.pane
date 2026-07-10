@@ -1,0 +1,200 @@
+
+test result: ok. 1582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+$ cd /workspace/clap && cargo test 2>&1 | grep -E "test result|error\[|warning: unused" | tail -40
+warning: unused return value of `App::<'help>::subcommand` that must be used
+test result: ok. 112 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: FAILED. 345 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 2.02s
+$ cd /workspace/clap && cargo test 2>&1 | grep -E "FAILED|failures:|^test .* FAILED" | head -20
+test src/builder/value_parser.rs - builder::value_parser::value_parser (line 2002) ... FAILED
+failures:
+failures:
+test result: FAILED. 345 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 1.90s
+$ cd /workspace/clap && git stash && cargo test --doc value_parser 2>&1 | grep -E "test result|FAILED" | head; git stash pop
+Saved working directory and index state WIP on (no branch): e6b8b4b6 chore: Release
+test src/builder/value_parser.rs - builder::value_parser::value_parser (line 2002) ... FAILED
+test result: FAILED. 32 passed; 1 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.46s
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   Cargo.toml
+        modified:   src/parser/parser.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        examples/repro3959.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (90efd6b702fdaa70d8ce1160947a59c2d23b49cf)
+$ cd /workspace/clap && grep -rn "low_index\|3959\|multiple.*flag\|flag.*positional" tests/builder/positionals.rs tests/builder/multiple_values.rs 2>/dev/null | head
+tests/builder/positionals.rs:167:        .args(&[arg!(-f --flag "some flag"), Arg::new("positional").index(1)])
+tests/builder/multiple_values.rs:1036:fn low_index_positional_not_required() {
+tests/builder/multiple_values.rs:1054:fn low_index_positional_last_multiple_too() {
+tests/builder/multiple_values.rs:1078:fn low_index_positional_too_far_back() {
+tests/builder/multiple_values.rs:1093:fn low_index_positional() {
+tests/builder/multiple_values.rs:1124:fn low_index_positional_in_subcmd() {
+tests/builder/multiple_values.rs:1159:fn low_index_positional_with_option() {
+tests/builder/multiple_values.rs:1197:fn low_index_positional_with_flag() {
+$ cd /workspace/clap && sed -n '1159,1240p' tests/builder/multiple_values.rs
+fn low_index_positional_with_option() {
+    let m = Command::new("lip")
+        .arg(
+            Arg::new("files")
+                .required(true)
+                .index(1)
+                .takes_value(true)
+                .multiple_values(true),
+        )
+        .arg(Arg::new("target").index(2).required(true))
+        .arg(Arg::new("opt").long("option").takes_value(true))
+        .try_get_matches_from(vec![
+            "lip", "file1", "file2", "file3", "target", "--option", "test",
+        ]);
+
+    assert!(m.is_ok(), "{:?}", m.unwrap_err().kind());
+    let m = m.unwrap();
+
+    assert!(m.contains_id("files"));
+    assert_eq!(
+        m.get_many::<String>("files")
+            .unwrap()
+            .map(|v| v.as_str())
+            .collect::<Vec<_>>(),
+        ["file1", "file2", "file3"]
+    );
+    assert!(m.contains_id("target"));
+    assert_eq!(
+        m.get_one::<String>("target").map(|v| v.as_str()).unwrap(),
+        "target"
+    );
+    assert_eq!(
+        m.get_one::<String>("opt").map(|v| v.as_str()).unwrap(),
+        "test"
+    );
+}
+
+#[test]
+fn low_index_positional_with_flag() {
+    let m = Command::new("lip")
+        .arg(
+            Arg::new("files")
+                .index(1)
+                .takes_value(true)
+                .required(true)
+                .multiple_values(true),
+        )
+        .arg(Arg::new("target").index(2).required(true))
+        .arg(Arg::new("flg").long("flag").action(ArgAction::SetTrue))
+        .try_get_matches_from(vec!["lip", "file1", "file2", "file3", "target", "--flag"]);
+
+    assert!(m.is_ok(), "{:?}", m.unwrap_err().kind());
+    let m = m.unwrap();
+
+    assert!(m.contains_id("files"));
+    assert_eq!(
+        m.get_many::<String>("files")
+            .unwrap()
+            .map(|v| v.as_str())
+            .collect::<Vec<_>>(),
+        ["file1", "file2", "file3"]
+    );
+    assert!(m.contains_id("target"));
+    assert_eq!(
+        m.get_one::<String>("target").map(|v| v.as_str()).unwrap(),
+        "target"
+    );
+    assert!(*m.get_one::<bool>("flg").expect("defaulted by clap"));
+}
+
+#[test]
+fn multiple_value_terminator_option() {
+    let m = Command::new("lip")
+        .arg(
+            Arg::new("files")
+                .short('f')
+                .value_terminator(";")
+                .takes_value(true)
+                .multiple_values(true),
+        )
+        .arg(Arg::new("other"))
+        .try_get_matches_from(vec!["lip", "-f", "val1", "val2", ";", "otherval"]);
+$ cd /workspace/clap && git checkout Cargo.toml && rm examples/repro3959.rs && git status
+Updated 1 path from the index
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/parser/parser.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+$ cd /workspace/clap && git --no-pager diff
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index 2352eff6..6e47b238 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -102,9 +102,15 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+             pos_counter = {
+                 let is_second_to_last = pos_counter + 1 == positional_count;
+
++                // The current arg may be the value of an option that is still
++                // expecting values, in which case it should *not* affect the
++                // positional counter.
++                let pending_opt = matches!(parse_state, ParseState::Opt(_));
++
+                 // The last positional argument, or second to last positional
+                 // argument may be set to .multiple_values(true) or `.multiple_occurrences(true)`
+                 let low_index_mults = is_second_to_last
++                    && !pending_opt
+                     && self
+                         .cmd
+                         .get_positionals()
+@@ -117,6 +123,7 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+
+                 let missing_pos = self.cmd.is_allow_missing_positional_set()
+                     && is_second_to_last
++                    && !pending_opt
+                     && !trailing_values;
+
+                 debug!(
+$ cd /workspace/clap && cargo test --test builder multiple_values positionals allow_missing_positional 2>&1 | grep -E "test result|FAILED"
+$ cd /workspace/clap && cargo test --test builder multiple_values 2>&1 | grep -E "test result|FAILED"; cargo test --test builder positionals 2>&1 | grep -E "test result|FAILED"
+test result: ok. 126 passed; 0 failed; 0 ignored; 0 measured; 1456 filtered out; finished in 0.00s
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.00s
+# finish: Finalize the fix for issue #3959
+## Task Complete
+
+The issue (#3959 — *"Error with multiple flags and positional arguments"*) has been resolved with a minimal change to `src/parser/parser.rs`.
+
+### Root cause
+In `Parser::get_matches_with`, the "Correct pos_counter" block at the top of the parse loop bumps the positional counter when a multi-value positional is second-to-last and the next token looks like a new argument. This block incorrectly ran even when the **current** token was the value of a preceding option (e.g. the `1` in `--one 1`). So while consuming `1` as `--one`'s value, the parser peeked at `--two`, bumped the positional counter past the multi-value `input` positional, and later positionals overflowed — producing `error: Found argument '4' which wasn't expected`.
+
+### Fix
+Skip the positional-counter correction (`low_index_mults` and `missing_pos`) while the parser is mid-way through collecting an option's value (`ParseState::Opt(_)`), because such a token is consumed as an option value and never uses the positional counter:
+
+```rust
+let pending_opt = matches!(parse_state, ParseState::Opt(_));
+...
+let low_index_mults = is_second_to_last
+    && !pending_opt
+    && ...;
+
+let missing_pos = self.cmd.is_allow_missing_positional_set()
+    && is_second_to_last
+    && !pending_opt
+    && !trailing_values;
+```
+
+### Verification
+- The exact reproduction `--one 1 --two 2 3 4 5 6 7 8` now yields the expected output: `input: ["3", "4", "5", "6", "7"]`, `output: "8"`, `one: Some("1")`, `two: Some("2")`, `yes: Some(false)`.
+- The full `builder` integration test suite (1582 tests) passes, including the `multiple_values` low-index-positional tests and `positionals` tests.
+- The only failing test in the repository (`value_parser` doctest at line 2002) is pre-existing and unrelated — it also fails on the unmodified base commit `e6b8b4b6`.
+
+All reproduction artifacts I created were removed; the only source change is in `src/parser/parser.rs`.

@@ -1,0 +1,200 @@
+
+       disposables = [
+         drauuInstance.value.on('canceled', () => onCanceledHook.trigger()),
+-        drauuInstance.value.on('committed', () => onCommittedHook.trigger()),
++        drauuInstance.value.on('committed', node => onCommittedHook.trigger(node)),
+         drauuInstance.value.on('start', () => onStartHook.trigger()),
+         drauuInstance.value.on('end', () => onEndHook.trigger()),
+         drauuInstance.value.on('changed', () => {
+diff --git a/packages/math/usePrecision/index.ts b/packages/math/usePrecision/index.ts
+index 9ff3ba9f..3088b2f6 100644
+--- a/packages/math/usePrecision/index.ts
++++ b/packages/math/usePrecision/index.ts
+@@ -12,6 +12,19 @@ export interface UsePrecisionOptions {
+   math?: 'floor' | 'ceil' | 'round'
+ }
+
++function shiftDecimal(value: number, exponent: number) {
++  const [base, power = '0'] = `${value}`.split('e')
++  return Number(`${base}e${Number(power) + exponent}`)
++}
++
++function precisionRound(value: number, digits: number, math: UsePrecisionOptions['math']) {
++  if (!Number.isFinite(value))
++    return value
++
++  const method = math || 'round'
++  return shiftDecimal(Math[method](shiftDecimal(value, digits)), -digits)
++}
++
+ /**
+  * Reactively set the precision of a number.
+  *
+@@ -19,13 +32,16 @@ export interface UsePrecisionOptions {
+  */
+ export function usePrecision(
+   value: MaybeRefOrGetter<number>,
+-  digits: MaybeRefOrGetter<number>,
++  digits?: MaybeRefOrGetter<number>,
+   options?: MaybeRefOrGetter<UsePrecisionOptions>,
+ ): ComputedRef<number> {
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++
++    if (_digits == null)
++      return _value
++
++    return precisionRound(_value, _digits, toValue(options)?.math)
+   })
+ }
+$ cd /workspace/vueuse && ./node_modules/.bin/eslint packages/math/usePrecision/index.ts packages/core/useImage/index.ts packages/core/useImage/component.ts packages/core/useInfiniteScroll/index.ts packages/core/useMutationObserver/index.ts packages/core/useEventSource/index.ts packages/integrations/useDrauu/index.ts packages/core/createTemplatePromise/index.ts packages/core/useManualRefHistory/index.ts packages/core/useCloned/index.md packages/core/useEventListener/index.md
+/workspace/vueuse/packages/core/createTemplatePromise/index.ts
+  122:3  error  Use "@ts-expect-error" to ensure an error is actually being suppressed  @typescript-eslint/prefer-ts-expect-error
+
+/workspace/vueuse/packages/core/useInfiniteScroll/index.ts
+  70:30  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  70:65  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  71:31  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  71:66  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  72:29  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  72:67  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  73:32  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+  73:70  error  Unexpected mix of '&&' and '?:'. Use parentheses to clarify the intended order of operations  no-mixed-operators
+
+✖ 9 problems (9 errors, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+# file_editor: Fix mixed operator lint in infinite scroll
+The file /workspace/vueuse/packages/core/useInfiniteScroll/index.ts has been edited. Here's the result of running `cat -n` on a snippet of /workspace/vueuse/packages/core/useInfiniteScroll/index.ts:
+    64	    }
+    65	  }
+    66	
+    67	  const { display, flexDirection } = getComputedStyle(el)
+    68	  const isReverseX = display === 'flex' && flexDirection === 'row-reverse'
+    69	  const isReverseY = display === 'flex' && flexDirection === 'column-reverse'
+    70	
+    71	  return {
+    72	    left: isReverseX ? right : left,
+    73	    right: isReverseX ? left : right,
+    74	    top: isReverseY ? bottom : top,
+    75	    bottom: isReverseY ? top : bottom,
+    76	  }
+    77	}
+    78	
+    79	/**
+    80	 * Reactive infinite scroll.
+    81	 *
+    82	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Suppress prefer-ts-expect-error for required ts-ignore
+The file /workspace/vueuse/packages/core/createTemplatePromise/index.ts has been edited. Here's the result of running `cat -n` on a snippet of /workspace/vueuse/packages/core/createTemplatePromise/index.ts:
+   119	    return renderList
+   120	  })
+   121	
+   122	  // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+   123	  // @ts-ignore temporary workaround for Vue 3.3 type incompatibility
+   124	  component.start = start
+   125	
+   126	  return component as any
+   127	}
+   128	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/vueuse && ./node_modules/.bin/eslint packages/math/usePrecision/index.ts packages/core/useImage/index.ts packages/core/useImage/component.ts packages/core/useInfiniteScroll/index.ts packages/core/useMutationObserver/index.ts packages/core/useEventSource/index.ts packages/integrations/useDrauu/index.ts packages/core/createTemplatePromise/index.ts packages/core/useManualRefHistory/index.ts packages/core/useCloned/index.md packages/core/useEventListener/index.md
+$ cd /workspace/vueuse; function ts-node(){ node -r esbuild-register "$@"; }; ts-node reproduce-issues.ts && ./node_modules/.bin/vitest run packages/math/usePrecision/index.test.ts packages/core/useMutationObserver/index.test.ts packages/core/useCloned/index.test.ts packages/core/useManualRefHistory/index.test.ts packages/core/useEventListener/index.test.ts packages/core/useInfiniteScroll/directive.test.ts
+RUN  v0.30.1 /workspace/vueuse
+
+················································
+
+ Test Files  6 passed (6)
+      Tests  48 passed (48)
+   Start at  17:46:41
+   Duration  1.76s (transform 762ms, setup 565ms, collect 2.21s, tests 289ms, environment 1.54s, prepare 387ms)
+$ cd /workspace/vueuse && ./node_modules/.bin/vitest run
+RUN  v0.30.1 /workspace/vueuse
+
+stderr | packages/integrations/useAsyncValidator/index.test.ts > set manual true > manual trigger validator
+async-validator: [ 'name must be between 5 and 20 characters' ]
+
+·····································································································································································································································································································································································································································································································································································································································································································································································································································································································································································
+
+ Test Files  146 passed (146)
+      Tests  933 passed (933)
+   Start at  17:46:46
+   Duration  12.00s (transform 5.52s, setup 29.51s, collect 34.40s, tests 34.40s, environment 87.81s, prepare 23.79s)
+# task_tracker: Update task status after tests
+Task list has been updated with 5 item(s).
+$ cd /workspace/vueuse && git status --short
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/core/useMutationObserver/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+?? reproduce-issues.ts
+$ cd /workspace/vueuse && rm reproduce-issues.ts && git status --short
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/core/useMutationObserver/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+$ cd /workspace/vueuse && git --no-pager diff --stat && git status --short | grep -E 'test\.|\.spec\.' || true && git --no-pager diff --name-only
+packages/core/createTemplatePromise/index.ts |  2 ++
+ packages/core/useCloned/index.md             |  4 ++--
+ packages/core/useEventListener/index.md      | 16 ++++++++++++++++
+ packages/core/useEventSource/index.ts        |  2 +-
+ packages/core/useImage/component.ts          |  4 ++++
+ packages/core/useImage/index.ts              | 20 ++++++++++++++++++--
+ packages/core/useInfiniteScroll/index.ts     | 70 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------
+ packages/core/useManualRefHistory/index.ts   |  2 +-
+ packages/core/useMutationObserver/index.ts   | 25 ++++++++++++++++---------
+ packages/integrations/useDrauu/index.ts      |  6 +++---
+ packages/math/usePrecision/index.ts          | 22 +++++++++++++++++++---
+ 11 files changed, 143 insertions(+), 30 deletions(-)
+packages/core/createTemplatePromise/index.ts
+packages/core/useCloned/index.md
+packages/core/useEventListener/index.md
+packages/core/useEventSource/index.ts
+packages/core/useImage/component.ts
+packages/core/useImage/index.ts
+packages/core/useInfiniteScroll/index.ts
+packages/core/useManualRefHistory/index.ts
+packages/core/useMutationObserver/index.ts
+packages/integrations/useDrauu/index.ts
+packages/math/usePrecision/index.ts
+# task_tracker: Mark all tasks complete
+Task list has been updated with 5 item(s).
+# finish: Complete VueUse issue implementation and validation
+Implemented the requested non-test changes in `/workspace/vueuse`.
+
+Summary of changes:
+- Added/updated `useMutationObserver` support for computed/array targets.
+- Extended `useImage` / `UseImage` to support `alt`, `class`, `crossorigin`, and `loading`, including preload assignment before `src` where needed.
+- Improved `usePrecision` decimal handling for floating-point accuracy and optional `digits`.
+- Fixed `useInfiniteScroll` stale-arrived-state repeat loading and added `canLoadMore` guard support.
+- Updated `useEventSource` URL type to `string | URL`.
+- Forwarded Drauu `committed` event payload through `onCommitted`.
+- Added the Vue 3.3 `createTemplatePromise` type workaround.
+- Fixed the `useCloned` docs `.value` typo and `useManualRefHistory` commit docs typo.
+- Added SSR/Nuxt usage guidance to `useEventListener` docs.
+
+Validation run:
+- Temporary reproduction script: failed before changes, passed after edge-case expansion; removed afterward.
+- Targeted TypeScript check for modified core/math files: passed.
+- Targeted ESLint for modified files: passed.
+- Targeted Vitest suites: 6 files / 48 tests passed.
+- Full Vitest suite: 146 files / 933 tests passed.
+
+Note: I also attempted a full `tsc --noEmit`, but the repo currently stops on a missing generated `packages/metadata/index.json`; targeted typechecking for the modified TypeScript files passed. No test files were modified.

@@ -1,0 +1,200 @@
+-            .map(|bin_name| format!("{}{}{}", bin_name, mid_string, sc_names))
++            .map(|bin_name| format!("{bin_name}{mid_string}{sc_names}"))
+             .unwrap_or(sc_names);
+         sc.usage_name = Some(usage_name);
+
+@@ -4044,19 +4044,19 @@ impl Command {
+                     sc_names.push_str(sc.name.as_str());
+                     let mut flag_subcmd = false;
+                     if let Some(l) = sc.get_long_flag() {
+-                        write!(sc_names, "|--{}", l).unwrap();
++                        write!(sc_names, "|--{l}").unwrap();
+                         flag_subcmd = true;
+                     }
+                     if let Some(s) = sc.get_short_flag() {
+-                        write!(sc_names, "|-{}", s).unwrap();
++                        write!(sc_names, "|-{s}").unwrap();
+                         flag_subcmd = true;
+                     }
+
+                     if flag_subcmd {
+-                        sc_names = format!("{{{}}}", sc_names);
++                        sc_names = format!("{{{sc_names}}}");
+                     }
+
+-                    let usage_name = format!("{}{}{}", self_bin_name, mid_string, sc_names);
++                    let usage_name = format!("{self_bin_name}{mid_string}{sc_names}");
+                     debug!(
+                         "Command::_build_bin_names:iter: Setting usage_name of {} to {:?}",
+                         sc.name, usage_name
+@@ -4334,7 +4334,7 @@ impl Command {
+                 .unwrap_or_default()
+         };
+         let display_name = self.get_display_name().unwrap_or_else(|| self.get_name());
+-        format!("{} {}\n", display_name, ver)
++        format!("{display_name} {ver}\n")
+     }
+
+     pub(crate) fn format_group(&self, g: &Id) -> StyledStr {
+@@ -4593,12 +4593,17 @@ impl Command {
+         // specified by the user is sent through. If hide_short_help is not included,
+         // then items specified with hidden_short_help will also be hidden.
+         let should_long = |v: &Arg| {
++            if v.is_hide_set() {
++                return false;
++            }
++
+             v.get_long_help().is_some()
+                 || v.is_hide_long_help_set()
+                 || v.is_hide_short_help_set()
+-                || v.get_possible_values()
+-                    .iter()
+-                    .any(PossibleValue::should_show_help)
++                || (!v.is_hide_possible_values_set()
++                    && v.get_possible_values()
++                        .iter()
++                        .any(PossibleValue::should_show_help))
+         };
+
+         // Subcommands aren't checked because we prefer short help for them, deferring to
+diff --git a/src/builder/mod.rs b/src/builder/mod.rs
+index 098ad576..c6e2d775 100644
+--- a/src/builder/mod.rs
++++ b/src/builder/mod.rs
+@@ -35,6 +35,7 @@ pub use resettable::IntoResettable;
+ pub use resettable::Resettable;
+ pub use styled_str::StyledStr;
+ pub use value_hint::ValueHint;
++pub use value_parser::_AnonymousValueParser;
+ pub use value_parser::_AutoValueParser;
+ pub use value_parser::via_prelude;
+ pub use value_parser::BoolValueParser;
+@@ -52,7 +53,6 @@ pub use value_parser::StringValueParser;
+ pub use value_parser::TypedValueParser;
+ pub use value_parser::ValueParser;
+ pub use value_parser::ValueParserFactory;
+-pub use value_parser::_AnonymousValueParser;
+
+ #[allow(unused_imports)]
+ pub(crate) use self::str::Inner as StrInner;
+diff --git a/src/builder/str.rs b/src/builder/str.rs
+index c6689d31..be69c3f6 100644
+--- a/src/builder/str.rs
++++ b/src/builder/str.rs
+@@ -246,7 +246,10 @@ pub(crate) mod inner {
+         }
+
+         pub(crate) fn into_string(self) -> String {
+-            self.as_str().to_owned()
++            match self {
++                Self::Static(s) => s.to_owned(),
++                Self::Owned(s) => s.into(),
++            }
+         }
+     }
+ }
+$ cd /workspace/clap && CARGO_HOME=/tmp/cargo_home cargo clippy -p clap --example git -- -A unexpected_cfgs -A unused -A dead_code -A mismatched_lifetime_syntaxes -A clippy::all -D clippy::uninlined_format_args
+Checking num_cpus v1.14.0
+    Checking wait-timeout v0.2.0
+    Checking os_pipe v1.1.1
+    Checking serde v1.0.147
+    Checking concolor v0.0.11
+    Checking clap v4.1.4 (/workspace/clap)
+    Checking rayon-core v1.9.3
+    Checking snapbox v0.4.4
+    Checking rayon v1.5.3
+    Checking serde_json v1.0.87
+    Checking toml_datetime v0.5.0
+    Checking humantime-serde v1.1.1
+    Checking toml v0.5.9
+    Checking toml_edit v0.17.1
+    Checking escargot v0.5.7
+    Checking trybuild v1.0.73
+    Checking trycmd v0.14.9
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.37s
+# task_tracker: Mark all tracked tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/clap && git status --short && printf '\nTargeted lint snapshot:\n' && CARGO_HOME=/tmp/cargo_home cargo clippy --workspace -- -A unexpected_cfgs -A unused -A dead_code -A mismatched_lifetime_syntaxes -A clippy::all -D clippy::uninlined_format_args >/tmp/final_clippy.log 2>&1; status=$?; echo clippy_status=$status; tail -5 /tmp/final_clippy.log
+M clap_complete/examples/completion-derive.rs
+ M clap_complete/examples/completion.rs
+ M clap_complete/examples/dynamic.rs
+ M clap_complete/src/dynamic.rs
+ M clap_complete/src/shells/bash.rs
+ M clap_complete/src/shells/elvish.rs
+ M clap_complete/src/shells/fish.rs
+ M clap_complete/src/shells/powershell.rs
+ M clap_complete/src/shells/shell.rs
+ M clap_complete/src/shells/zsh.rs
+ M clap_complete_fig/src/fig.rs
+ M clap_mangen/src/render.rs
+ M examples/cargo-example-derive.rs
+ M examples/cargo-example.rs
+ M examples/derive_ref/augment_args.rs
+ M examples/derive_ref/augment_subcommands.rs
+ M examples/derive_ref/flatten_hand_args.rs
+ M examples/derive_ref/hand_subcommand.rs
+ M examples/find.rs
+ M examples/git-derive.rs
+ M examples/git.rs
+ M examples/pacman.rs
+ M examples/repl.rs
+ M examples/tutorial_builder/01_quick.rs
+ M examples/tutorial_builder/04_01_enum.rs
+ M examples/tutorial_builder/04_02_parse.rs
+ M examples/tutorial_builder/04_02_validate.rs
+ M examples/tutorial_builder/04_03_relations.rs
+ M examples/tutorial_builder/04_04_custom.rs
+ M examples/tutorial_builder/05_01_assert.rs
+ M examples/tutorial_derive/01_quick.rs
+ M examples/tutorial_derive/03_04_subcommands.rs
+ M examples/tutorial_derive/04_02_validate.rs
+ M examples/tutorial_derive/04_03_relations.rs
+ M examples/tutorial_derive/04_04_custom.rs
+ M examples/typed-derive.rs
+ M src/builder/arg.rs
+ M src/builder/command.rs
+ M src/builder/debug_asserts.rs
+ M src/builder/mod.rs
+ M src/builder/range.rs
+ M src/builder/str.rs
+ M src/builder/value_hint.rs
+ M src/derive.rs
+ M src/error/format.rs
+ M src/error/mod.rs
+ M src/output/fmt.rs
+ M src/output/help_template.rs
+ M src/parser/arg_matcher.rs
+ M src/parser/error.rs
+ M src/parser/matches/arg_matches.rs
+ M src/parser/parser.rs
+ M src/parser/validator.rs
+ M src/util/color.rs
+
+Targeted lint snapshot:
+clippy_status=0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+# finish: Complete implementation and verification summary
+Implemented the requested non-test changes in `/workspace/clap`.
+
+Summary:
+- Fixed the help behavior so hidden arguments (and arguments hiding possible values) with possible-value help no longer make `--help` accidentally render long help.
+- Optimized `builder::str::inner::Inner::into_string` to move `Box<str>` into `String` when the `string` feature is enabled.
+- Renamed the `cargo-example-derive` derive type from `Cargo` to `Cli` to differentiate the Rust type from the command name.
+- Fixed the typo in `examples/git.rs` (`unreachabe` → `unreachable`).
+- Applied the targeted `clippy::uninlined_format_args` cleanup across non-test source/example files.
+- Confirmed no test files were modified.
+
+Verification run:
+- Temporary reproduction binary confirmed the hidden possible-value help bug before the fix and passed after the fix; removed afterward.
+- `cargo run --features derive --example cargo-example-derive -- --help`
+- `cargo run --example git -- --help`
+- `cargo test -p clap --test builder help`
+- `cargo test -p clap --test builder hidden_args`
+- `cargo test -p clap --test builder possible_values`
+- `cargo test -p clap --test derive --features derive value_enum`
+- `cargo test -p clap --test derive --features derive doc_comments_help`
+- `cargo test --workspace`
+- `cargo fmt --check`
+- `cargo clippy --workspace -- -A unexpected_cfgs -A unused -A dead_code -A mismatched_lifetime_syntaxes -A clippy::all -D clippy::uninlined_format_args`
+
+All verification commands passed. The workspace still emits some pre-existing warnings during normal builds/tests, but the targeted Clippy lint is clean.

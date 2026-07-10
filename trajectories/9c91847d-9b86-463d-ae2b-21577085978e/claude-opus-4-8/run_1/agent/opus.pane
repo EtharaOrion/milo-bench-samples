@@ -1,0 +1,200 @@
+
+### Fixed
+
+- Fixed encoding error on Windows when loading code for Tracebacks
+
+## [9.6.0] - 2020-12-30
+
+### Changed
+
+- MarkupError exception raise from None to omit internal exception
+- Factored out RichHandler.render and RichHandler.render_message for easier extending
+- Display pretty printed value in rich.inspect
+
+### Added
+
+=== reference.rst ===
+Reference
+=========
+
+.. toctree::
+   :maxdepth: 3
+
+   reference/align.rst
+   reference/bar.rst
+   reference/color.rst
+   reference/columns.rst
+   reference/console.rst
+   reference/emoji.rst
+   reference/highlighter.rst
+   reference/init.rst
+   reference/live.rst
+   reference/logging.rst
+   reference/markdown.rst
+   reference/markup.rst
+   reference/measure.rst
+   reference/padding.rst
+   reference/panel.rst
+   reference/pretty.rst
+   reference/progress_bar.rst
+   reference/progress.rst
+   reference/prompt.rst
+   reference/protocol.rst
+   reference/rule.rst
+   reference/segment.rst
+   reference/spinner.rst
+   reference/status.rst
+   reference/style.rst
+   reference/styled.rst
+   reference/syntax.rst
+   reference/table.rst
+   reference/text.rst
+   reference/theme.rst
+   reference/traceback.rst
+   references/abc.rst
+# file_editor: Add changelog entry for tree
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [Unreleased]
+     9	
+    10	### Added
+    11	
+    12	- Added rich.tree
+    13	
+    14	## [9.6.2] - 2021-01-07
+    15	
+    16	### Fixed
+    17	
+    18	- Fixed markup escaping edge case https://github.com/willmcgugan/rich/issues/878
+    19	- Double tag escape, i.e. `"\\[foo]"` results in a backslash plus `[foo]` tag
+    20	
+    21	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && cat docs/source/reference/styled.rst
+rich.styled
+===========
+
+.. automodule:: rich.styled
+    :members:
+# file_editor: Create tree reference doc
+File created successfully at: /workspace/rich/docs/source/reference/tree.rst
+# file_editor: Add tree to reference toctree
+The file /workspace/rich/docs/source/reference.rst has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/docs/source/reference.rst:
+    34	   reference/table.rst
+    35	   reference/text.rst
+    36	   reference/theme.rst
+    37	   reference/traceback.rst
+    38	   reference/tree.rst
+    39	   references/abc.rst
+    40	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python -c "
+$ import io
+$ from rich.console import Console
+$ from rich.tree import Tree
+$ 
+$ # ascii + collapsed + nested
+$ tree = Tree('root')
+$ a = tree.add('a')
+$ a.add('a1')
+$ b = tree.add('collapsed', expanded=False)
+$ b.add('hidden')
+$ tree.add('multi\nline')
+$ 
+$ console = Console(width=30, file=io.StringIO(), color_system=None)
+$ console.print(tree)
+$ print(console.file.getvalue())
+$ print('=== ascii ===')
+$ console = Console(width=30, file=io.StringIO(), color_system=None, _environ={'TERM':'xterm'})
+$ opts = console.options.update(ascii_only=True) if hasattr(console.options,'ascii_only') else None
+$ # force ascii via legacy
+$ console2 = Console(width=30, file=io.StringIO(), color_system=None, legacy_windows=True)
+$ console2.print(tree)
+$ print(console2.file.getvalue())
+$ "
+cd /workspace/rich && python -c "
+import io
+from rich.console import Console
+from rich.tree import Tree
+# ascii + collapsed + nested
+tree = Tree('root')
+a = tree.add('a')
+a.add('a1')
+b = tree.add('collapsed', expanded=False)
+b.add('hidden')
+tree.add('multi\nline')
+console = Console(width=30, file=io.StringIO(), color_system=None)
+console.print(tree)
+print(console.file.getvalue())
+print('=== ascii ===')
+console = Console(width=30, file=io.StringIO(), color_system=None, _environ={'TERM':'xterm'})
+opts = console.options.update(ascii_only=True) if hasattr(console.options,'ascii_only') else None
+# force ascii via legacy
+console2 = Console(width=30, file=io.StringIO(), color_system=None, legacy_windows=True)
+console2.print(tree)
+print(console2.file.getvalue())
+"
+root
+├── a
+│   └── a1
+├── collapsed
+└── multi
+    line
+
+=== ascii ===
+Traceback (most recent call last):
+  File "<string>", line 19, in <module>
+TypeError: ConsoleOptions.update() got an unexpected keyword argument 'ascii_only'
+$ cd /workspace/rich && sed -n '105,112p' rich/console.py
+highlight: Optional[bool] = None
+    """Highlight override for render_str."""
+
+    @property
+    def ascii_only(self) -> bool:
+        """Check if renderables should use ascii only."""
+        return not self.encoding.startswith("utf")
+$ cd /workspace/rich && git --no-pager diff --stat && echo "--- untracked ---" && git status --porcelain
+CHANGELOG.md              | 6 ++++++
+ docs/source/progress.rst  | 2 ++
+ docs/source/reference.rst | 1 +
+ rich/default_styles.py    | 2 ++
+ 4 files changed, 11 insertions(+)
+--- untracked ---
+ M CHANGELOG.md
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M rich/default_styles.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+$ cd /workspace/rich && python -m pytest tests/test_console.py tests/test_style.py tests/test_theme.py tests/test_progress.py -q 2>&1 | tail -8
+........................................................................ [ 75%]
+.......................                                                  [100%]
+95 passed in 0.66s
+# finish: Summarize implemented Tree feature and docs fixes
+I implemented the changes for the actionable items in the bundled issue description. The bundle mostly contained dependabot dependency bumps (#879, #880, #885, #892 — no source-code changes needed) plus a few real items:
+
+## Changes made
+
+### Issue #873 — New Tree renderable (the headline feature)
+- **Created `rich/tree.py`** implementing a `Tree` class (a `JupyterMixin` console renderable):
+  - `Tree(label, *, style="tree", guide_style="tree.line", expanded=True, highlight=False)`
+  - `Tree.add(...)` to append child nodes (returns the new child `Tree`)
+  - `__rich_console__` that draws the guide lines (unicode box-drawing, with bold/double variants based on guide style, and ASCII fallback when `options.ascii_only`), supports nested children, collapsed nodes (`expanded=False`), multiline labels, and per-node styles.
+  - `__rich_measure__` for width measurement.
+  - A `__main__` demo.
+- **Added default styles** `"tree"` and `"tree.line"` in `rich/default_styles.py`.
+- **Docs**: created `docs/source/reference/tree.rst` and added it to `docs/source/reference.rst`.
+- **CHANGELOG.md**: added an "Added rich.tree" entry.
+
+### Issue #896 — Progress "Advanced usage" docs example fix
+- Added the missing `import time` to the example in `docs/source/progress.rst` (it previously raised `NameError: name 'time' is not defined`).
+
+### Issue #882 — color_system vs styling
+I investigated this but did **not** change the source for it. The repo's existing tests (e.g. `test_print_style`, `test_markup_highlight`, `test_log` in `tests/test_console.py`) explicitly assert that ANSI styling is emitted when `color_system` is set even without a terminal, and `test_render` in `tests/test_style.py` asserts color-only styles produce plain text when `color_system=None`. Implementing the behavior requested in #882 would contradict those existing tests, which the instructions said must not be modified, so I left this behavior as-is.
+
+## Verification
+- `python -m rich.tree` renders the demo correctly (trees, nested panels, tables, syntax, markdown).
+- Verified edge cases: basic tree, nested children, collapsed nodes, multiline labels, and measurement.
+- Ran the full test suite: the only failures are 11 pre-existing ones unrelated to my changes (confirmed they also fail on the clean base commit — they stem from a newer Pygments version affecting `test_syntax`, `test_card`, `test_inspect`, `test_markdown`, `test_log`). No new failures were introduced. The directly related tests (`test_console.py`, `test_style.py`, `test_theme.py`, `test_progress.py`) all pass.

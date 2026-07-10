@@ -1,0 +1,200 @@
+$ git log -n 5 --oneline
+e6b8b4b6 (HEAD) chore: Release
+85ccf3e9 chore: Update release process
+fcd7cae8 docs: Update changelog
+36ed1bdf Merge pull request #3952 from epage/redocs
+a15524af Merge pull request #3953 from epage/msrv
+$ ./repro 8
+input: ["3", "4", "5", "6", "7"]
+output: "8"
+one: Some("1")
+two: Some("2")
+yes: Some(false)
+$ cat << 'EOF' > /workspace/repro2.rs
+$ use clap::{Arg, ArgAction, Command};
+$ 
+$ fn main() {
+$     let result = args().try_get_matches_from(vec![
+$         "clap-multi-arg-repro", "8"
+$     ]);
+$ 
+$     match result {
+$         Ok(_) => println!("OK"),
+$         Err(e) => println!("ERROR: {}", e),
+$     }
+$ }
+$ 
+$ fn args<'a>() -> clap::Command<'a> {
+$     Command::new("Clap test")
+$         .version("1.0")
+$         .author("Dmitriy Pleshevskiy <dmitriy@ideascup.me>")
+$         .about("Error reproduction with multiple parameters")
+$         .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue))
+$         .arg(Arg::new("one").long("one").action(ArgAction::Set))
+$         .arg(Arg::new("two").long("two").action(ArgAction::Set))
+$         .arg(Arg::new("input").multiple_values(true).required(true))
+$         .arg(Arg::new("output").required(true))
+$ }
+$ EOF
+$ rustc --edition=2021 -L target/debug/deps -L target/debug --extern clap=target/debug/libclap.rlib /workspace/repro2.rs && ./repro2
+cat << 'EOF' > /workspace/repro2.rs
+use clap::{Arg, ArgAction, Command};
+fn main() {
+    let result = args().try_get_matches_from(vec![
+        "clap-multi-arg-repro", "8"
+    ]);
+    match result {
+        Ok(_) => println!("OK"),
+        Err(e) => println!("ERROR: {}", e),
+    }
+}
+fn args<'a>() -> clap::Command<'a> {
+    Command::new("Clap test")
+        .version("1.0")
+        .author("Dmitriy Pleshevskiy <dmitriy@ideascup.me>")
+        .about("Error reproduction with multiple parameters")
+        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue))
+        .arg(Arg::new("one").long("one").action(ArgAction::Set))
+        .arg(Arg::new("two").long("two").action(ArgAction::Set))
+        .arg(Arg::new("input").multiple_values(true).required(true))
+        .arg(Arg::new("output").required(true))
+}
+EOF
+
+
+
+rustc --edition=2021 -L target/debug/deps -L target/debug --extern clap=target/debug/libclap.rlib /workspace/repro2.rs && ./repro2
+$ ./repro2
+ERROR: error: The following required arguments were not provided:
+    <input>...
+
+USAGE:
+    clap-multi-arg-repro <input>... <output>
+
+For more information try --help
+$ cat << 'EOF' > /workspace/repro3.rs
+$ use clap::{Arg, ArgAction, Command};
+$ fn main() {
+$     let result = args().try_get_matches_from(vec![
+$         "clap-multi-arg-repro"
+$     ]);
+$     match result {
+$         Ok(_) => println!("OK"),
+$         Err(e) => println!("ERROR: {}", e),
+$     }
+$ }
+$ fn args<'a>() -> clap::Command<'a> {
+$     Command::new("Clap test")
+$         .arg(Arg::new("input").multiple_values(true).required(true))
+$         .arg(Arg::new("output").required(true))
+$ }
+$ EOF
+$ rustc --edition=2021 -L target/debug/deps -L target/debug --extern clap=target/debug/libclap.rlib /workspace/repro3.rs && ./repro3
+cat << 'EOF' > /workspace/repro3.rs
+use clap::{Arg, ArgAction, Command};
+fn main() {
+    let result = args().try_get_matches_from(vec![
+        "clap-multi-arg-repro"
+    ]);
+    match result {
+        Ok(_) => println!("OK"),
+        Err(e) => println!("ERROR: {}", e),
+    }
+}
+fn args<'a>() -> clap::Command<'a> {
+    Command::new("Clap test")
+        .arg(Arg::new("input").multiple_values(true).required(true))
+        .arg(Arg::new("output").required(true))
+}
+EOF
+
+
+
+rustc --edition=2021 -L target/debug/deps -L target/debug --extern clap=target/debug/libclap.rlib /workspace/repro3.rs && ./repro3
+$ ./repro3
+ERROR: error: The following required arguments were not provided:
+    <input>...
+    <output>
+
+USAGE:
+    clap-multi-arg-repro <input>... <output>
+
+For more information try --help
+$ git status
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/parser/parser.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        patch.py
+        repro
+        repro2
+        repro3
+
+no changes added to commit (use "git add" and/or "git commit -a")
+$ rm patch.py repro repro2 repro3
+$ git diff src/parser/parser.rs
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index 2352eff6..47362674 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -99,7 +99,7 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+             );
+
+             // Correct pos_counter.
+-            pos_counter = {
++            let current_pos_counter = {
+                 let is_second_to_last = pos_counter + 1 == positional_count;
+
+                 // The last positional argument, or second to last positional
+@@ -277,7 +277,7 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                         matcher,
+                         short_arg,
+                         &parse_state,
+-                        pos_counter,
++                        current_pos_counter,
+                         &mut valid_arg_found,
+                         trailing_values,
+                     )?;
+@@ -376,7 +376,7 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                 }
+             }
+
+-            if let Some(arg) = self.cmd.get_keymap().get(&pos_counter) {
++            if let Some(arg) = self.cmd.get_keymap().get(&current_pos_counter) {
+                 if arg.is_last_set() && !trailing_values {
+                     let _ = self.resolve_pending(matcher);
+                     return Err(ClapError::unknown_argument(
+@@ -387,7 +387,7 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                     ));
+                 }
+
+-                if self.cmd.is_trailing_var_arg_set() && pos_counter == positional_count {
++                if self.cmd.is_trailing_var_arg_set() && current_pos_counter == positional_count {
+                     trailing_values = true;
+                 }
+
+@@ -408,9 +408,10 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+
+                 // Only increment the positional counter if it doesn't allow multiples
+                 if !arg.is_multiple() {
+-                    pos_counter += 1;
++                    pos_counter = current_pos_counter + 1;
+                     parse_state = ParseState::ValuesDone;
+                 } else {
++                    pos_counter = current_pos_counter;
+                     parse_state = ParseState::Pos(arg.id.clone());
+                 }
+                 valid_arg_found = true;
+I have analyzed the problem thoroughly and fixed the issue with multiple flags and positional arguments causing erroneous errors when positional arguments are evaluated.
+
+**Root cause:**
+When evaluating arguments, `Parser::get_matches_with` calculates the correct `pos_counter` based on whether the expected positional argument accepts hyphenated values and handles early skips for optional arguments. However, it was permanently modifying the `pos_counter` at the top of the loop even before processing the flag/option options. So when long options or their values were supplied (like `--one 1`), the `pos_counter` incorrectly persisted a bumped state, which led to skipped positional arguments down the line.
+
+**Solution:**
+I modified `src/parser/parser.rs` to compute `current_pos_counter` to cleanly separate the temporary "lookahead" logic needed for `parse_short_arg` from the actual parser state `pos_counter`. The actual state of `pos_counter` is now only updated when an argument is successfully confirmed and consumed as a positional argument.
+
+I have executed your minimal reproduction script and confirmed it fully mirrors the `Expected Behaviour`. All `cargo tests` run successfully with these changes.

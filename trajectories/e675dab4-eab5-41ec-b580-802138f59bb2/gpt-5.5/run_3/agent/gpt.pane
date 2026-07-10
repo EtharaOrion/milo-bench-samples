@@ -1,0 +1,200 @@
+ok      github.com/crossplane/crossplane/internal/xcrd  0.017s
+ok      github.com/crossplane/crossplane/internal/xpkg  0.032s
+?       github.com/crossplane/crossplane/internal/xpkg/fake     [no test files]
+$ cd /workspace/crossplane && git --no-pager diff f60d10f28905082fe8e5537f17ed74d0117de532 -- cmd/crank/main.go cmd/crossplane/main.go internal/controller/pkg/resolver/reconciler.go | sed -n '1,240p' && git status --short
+diff --git a/cmd/crank/main.go b/cmd/crank/main.go
+index d2a0bec3..1c0bfc6b 100644
+--- a/cmd/crank/main.go
++++ b/cmd/crank/main.go
+@@ -20,6 +20,7 @@ import (
+        "fmt"
+
+        "github.com/alecthomas/kong"
++       "github.com/go-logr/zapr"
+        "github.com/spf13/afero"
+        "sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+@@ -47,7 +48,7 @@ func (v versionFlag) BeforeApply(app *kong.Kong) error { // nolint:unparam
+ }
+
+ func (v verboseFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       logger := logging.NewLogrLogger(zap.New(zap.UseDevMode(true)))
++       logger := logging.NewLogrLogger(zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)))
+        ctx.BindTo(logger, (*logging.Logger)(nil))
+        return nil
+ }
+diff --git a/cmd/crossplane/main.go b/cmd/crossplane/main.go
+index c6965a25..78486366 100644
+--- a/cmd/crossplane/main.go
++++ b/cmd/crossplane/main.go
+@@ -18,6 +18,7 @@ package main
+
+ import (
+        "github.com/alecthomas/kong"
++       "github.com/go-logr/zapr"
+        admv1 "k8s.io/api/admissionregistration/v1"
+        appsv1 "k8s.io/api/apps/v1"
+        coordinationv1 "k8s.io/api/coordination/v1"
+@@ -50,7 +51,7 @@ var cli struct {
+ // an error value in return from Hook methods but in our case
+ // there are no error introducing steps.
+ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       zl := zap.New(zap.UseDevMode(true)).WithName("crossplane")
++       zl := zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)).WithName("crossplane")
+        // BindTo uses reflect.TypeOf to get reflection type of used interface
+        // A *logging.Logger value here is used to find the reflection type here.
+        // Please refer: https://golang.org/pkg/reflect/#TypeOf
+@@ -63,7 +64,7 @@ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+ }
+
+ func main() {
+-       zl := zap.New().WithName("crossplane")
++       zl := zapr.NewLoggerWithOptions(zap.NewRaw(), zapr.DPanicOnBugs(false)).WithName("crossplane")
+
+        // Note that the controller managers scheme must be a superset of the
+        // package manager's object scheme; it must contain all object types that
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..1e846c15 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+
+ M cmd/crank/main.go
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+$ cd /workspace/crossplane && git --no-pager diff -- go.mod && grep -n "go-logr/zapr" go.mod
+diff --git a/go.mod b/go.mod
+index b356dd9c..8e24095d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -28,6 +28,8 @@ require (
+        sigs.k8s.io/yaml v1.3.0
+ )
+
++require github.com/go-logr/zapr v1.2.0
++
+ require (
+        cloud.google.com/go/compute v1.1.0 // indirect
+        github.com/Azure/azure-sdk-for-go v61.4.0+incompatible // indirect
+@@ -73,7 +75,6 @@ require (
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+        github.com/go-logr/logr v1.2.2 // indirect
+-       github.com/go-logr/zapr v1.2.0 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+31:require github.com/go-logr/zapr v1.2.0
+$ cd /workspace/crossplane && python3 - <<'PY'
+$ from pathlib import Path
+$ import re
+$ for p in list(Path('internal').rglob('*.go')) + list(Path('cmd').rglob('*.go')):
+$     if p.name.endswith('_test.go'):
+$         continue
+$     s=p.read_text()
+$     # Simple one-line checks for direct odd single argument after message.
+$     for i,line in enumerate(s.splitlines(),1):
+$         if '.Debug(' in line or 'logger.Debug(' in line:
+$             if re.search(r'Debug\([^\n,]+,\s*"[^"]+"\s*\)', line):
+$                 print(f'{p}:{i}: {line.strip()}')
+$             if re.search(r'Debug\([^\n,]+,\s*errors\.Errorf\(', line):
+$                 print(f'{p}:{i}: {line.strip()}')
+$ PY
+cmd/crank/install.go:148: logger.Debug(fmt.Sprintf(errFmtWatchPkg, "Configuration"), "error", err)
+cmd/crank/install.go:154: logger.Debug(fmt.Sprintf(errFmtPkgNotReadyTimeout, "Configuration"))
+cmd/crank/install.go:246: logger.Debug(fmt.Sprintf(errFmtWatchPkg, "Provider"), "error", err)
+cmd/crank/install.go:252: logger.Debug(fmt.Sprintf(errFmtPkgNotReadyTimeout, "Provider"))
+$ cd /workspace/crossplane && git --no-pager diff --stat && git --no-pager diff -- go.mod | sed -n '1,120p' && git status --short
+cmd/crank/main.go                              | 3 ++-
+ cmd/crossplane/main.go                         | 5 +++--
+ go.mod                                         | 3 ++-
+ internal/controller/pkg/resolver/reconciler.go | 2 +-
+ 4 files changed, 8 insertions(+), 5 deletions(-)
+diff --git a/go.mod b/go.mod
+index b356dd9c..8e24095d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -28,6 +28,8 @@ require (
+        sigs.k8s.io/yaml v1.3.0
+ )
+
++require github.com/go-logr/zapr v1.2.0
++
+ require (
+        cloud.google.com/go/compute v1.1.0 // indirect
+        github.com/Azure/azure-sdk-for-go v61.4.0+incompatible // indirect
+@@ -73,7 +75,6 @@ require (
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+        github.com/go-logr/logr v1.2.2 // indirect
+-       github.com/go-logr/zapr v1.2.0 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+ M cmd/crank/main.go
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+$ cd /workspace/crossplane && grep -R "zap.New(.*UseDevMode" -n --include='*.go' . || true && grep -R "NewLogrLogger(zap.New" -n --include='*.go' . || true
+$ cd /workspace/crossplane && grep -R "zap.New" -n --include='*.go' . || true
+./cmd/crossplane/main.go:54:    zl := zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)).WithName("crossplane")
+./cmd/crossplane/main.go:67:    zl := zapr.NewLoggerWithOptions(zap.NewRaw(), zapr.DPanicOnBugs(false)).WithName("crossplane")
+./cmd/crank/main.go:51: logger := logging.NewLogrLogger(zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)))
+# task_tracker: Mark all planned tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/crossplane && git status --short && git --no-pager diff --stat
+M cmd/crank/main.go
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+ cmd/crank/main.go                              | 3 ++-
+ cmd/crossplane/main.go                         | 5 +++--
+ go.mod                                         | 3 ++-
+ internal/controller/pkg/resolver/reconciler.go | 2 +-
+ 4 files changed, 8 insertions(+), 5 deletions(-)
+# think: Reflect on logger panic fix completeness
+Your thought has been logged.
+$ cd /workspace/crossplane && git status --short && git --no-pager diff --stat
+M cmd/crank/main.go
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+ cmd/crank/main.go                              | 3 ++-
+ cmd/crossplane/main.go                         | 5 +++--
+ go.mod                                         | 3 ++-
+ internal/controller/pkg/resolver/reconciler.go | 2 +-
+ 4 files changed, 8 insertions(+), 5 deletions(-)
+# finish: Finish logger panic fix task
+Implemented the requested logger panic fix and future guard in `/workspace/crossplane`.
+
+Changes made:
+- Fixed the malformed dependency resolver log call in `internal/controller/pkg/resolver/reconciler.go` by adding the missing structured logging key:
+  - `log.Debug(errNoValidVersion, "error", errors.Errorf(...))`
+- Guarded Crossplane’s logr/zap logger setup against future malformed key/value logging panics by using `zapr.DPanicOnBugs(false)` in:
+  - `cmd/crossplane/main.go`
+  - `cmd/crank/main.go`
+- Updated `go.mod` so `github.com/go-logr/zapr v1.2.0` is a direct dependency, since it is now imported directly.
+
+Validation performed:
+- Created a temporary `go run` reproducer that confirmed the original logger panic.
+- Re-ran the reproducer after the fix and confirmed the panic was resolved.
+- Expanded the reproducer with edge cases covering:
+  - No valid dependency version.
+  - Invalid dependency version constraint.
+  - Successful dependency creation.
+  - Future malformed logger calls with the guarded logger.
+- Removed the temporary reproducer afterward.
+- Ran targeted tests:
+  - `go test ./internal/controller/pkg/resolver ./cmd/crossplane ./cmd/crank`
+- Ran the full test suite:
+  - `go test ./...`
+
+All tests passed. No test files were modified.

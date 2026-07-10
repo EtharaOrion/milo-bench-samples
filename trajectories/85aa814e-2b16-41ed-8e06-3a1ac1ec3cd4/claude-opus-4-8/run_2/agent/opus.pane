@@ -1,0 +1,200 @@
+test version::mut_version_short ... ok
+test version::mut_arg_version_panic - should panic ... ok
+test version::mut_version_long ... ok
+test version::no_propagation_by_default_short ... ok
+test version::mut_arg_version_no_auto_version ... ok
+test version::no_propagation_by_default_long ... ok
+test version::no_version_flag_long ... ok
+test version::no_version_flag_short ... ok
+test version::override_version_long_with_user_flag_no_version_flag ... ok
+test version::override_version_short_with_user_flag ... ok
+test version::override_version_short_with_user_flag_long_still_works ... ok
+test version::override_version_long_with_user_flag ... ok
+test version::propagate_version_short ... ok
+test version::version_flag_from_long_version_long ... ok
+test version::version_flag_from_long_version_short ... ok
+test version::version_about_multi_subcmd ... ok
+test version::propagate_version_no_version_info - should panic ... ok
+test version::propagate_version_long ... ok
+test version::version_flag_from_version_short ... ok
+test version::version_flag_from_version_long ... ok
+
+test result: ok. 1582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+$ cd /workspace/clap && cargo test 2>&1 | grep -E "test result|error\[|warning: unused" | head -40
+warning: unused return value of `App::<'help>::subcommand` that must be used
+test result: ok. 112 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.86s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: FAILED. 345 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 1.94s
+$ cd /workspace/clap && cargo test 2>&1 | grep -E "FAILED|failures:|^test .* FAILED" | head -40
+test src/builder/value_parser.rs - builder::value_parser::value_parser (line 2002) ... FAILED
+failures:
+failures:
+test result: FAILED. 345 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 2.89s
+$ cd /workspace/clap && git stash && cargo test --doc value_parser 2>&1 | grep -E "test result|FAILED" | head; git stash pop
+Saved working directory and index state WIP on (no branch): e6b8b4b6 chore: Release
+test src/builder/value_parser.rs - builder::value_parser::value_parser (line 2002) ... FAILED
+test result: FAILED. 32 passed; 1 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.38s
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/parser/parser.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        examples/repro3959.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (a19bd81df844fc6ebac5377122a2032532db0b52)
+$ cd /workspace/clap && cargo test --test builder low_index 2>&1 | grep -E "test result|low_index"
+test legacy::multiple_values::low_index_positional ... ok
+test legacy::multiple_values::low_index_positional_in_subcmd ... ok
+test legacy::multiple_values::low_index_positional_not_required - should panic ... ok
+test legacy::multiple_values::low_index_positional_last_multiple_too - should panic ... ok
+test legacy::multiple_values::low_index_positional_too_far_back - should panic ... ok
+test legacy::multiple_values::low_index_positional_with_flag ... ok
+test legacy::multiple_values::low_index_positional_with_option ... ok
+test multiple_values::low_index_positional ... ok
+test multiple_values::low_index_positional_in_subcmd ... ok
+test multiple_values::low_index_positional_last_multiple_too - should panic ... ok
+test multiple_values::low_index_positional_not_required - should panic ... ok
+test multiple_values::low_index_positional_too_far_back - should panic ... ok
+test multiple_values::low_index_positional_with_flag ... ok
+test multiple_values::low_index_positional_with_option ... ok
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 1568 filtered out; finished in 0.00s
+$ cd /workspace/clap && rm examples/repro3959.rs && git status
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/parser/parser.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+$ cd /workspace/clap && head -10 tests/builder/multiple_values.rs
+use clap::{error::ErrorKind, Arg, ArgAction, Command};
+
+#[test]
+fn option_long() {
+    let m = Command::new("multiple_values")
+        .arg(
+            Arg::new("option")
+                .long("option")
+                .help("multiple options")
+                .takes_value(true)
+# file_editor: /workspace/clap/tests/builder/multiple_values.rs
+The file /workspace/clap/tests/builder/multiple_values.rs has been edited. Here's the result of running `cat -n` on a snippet of /workspace/clap/tests/builder/multiple_values.rs:
+  1193	    );
+  1194	}
+  1195	
+  1196	#[test]
+  1197	fn low_index_positional_with_option_and_flag() {
+  1198	    let m = Command::new("lip")
+  1199	        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue))
+  1200	        .arg(Arg::new("one").long("one").action(ArgAction::Set))
+  1201	        .arg(Arg::new("two").long("two").action(ArgAction::Set))
+  1202	        .arg(
+  1203	            Arg::new("input")
+  1204	                .index(1)
+  1205	                .multiple_values(true)
+  1206	                .required(true),
+  1207	        )
+  1208	        .arg(Arg::new("output").index(2).required(true))
+  1209	        .try_get_matches_from(vec![
+  1210	            "lip", "--one", "1", "--two", "2", "3", "4", "5", "6", "7", "8",
+  1211	        ]);
+  1212	
+  1213	    assert!(m.is_ok(), "{:?}", m.unwrap_err().kind());
+  1214	    let m = m.unwrap();
+  1215	
+  1216	    assert_eq!(
+  1217	        m.get_many::<String>("input")
+  1218	            .unwrap()
+  1219	            .map(|v| v.as_str())
+  1220	            .collect::<Vec<_>>(),
+  1221	        ["3", "4", "5", "6", "7"]
+  1222	    );
+  1223	    assert_eq!(
+  1224	        m.get_one::<String>("output").map(|v| v.as_str()).unwrap(),
+  1225	        "8"
+  1226	    );
+  1227	    assert_eq!(m.get_one::<String>("one").map(|v| v.as_str()).unwrap(), "1");
+  1228	    assert_eq!(m.get_one::<String>("two").map(|v| v.as_str()).unwrap(), "2");
+  1229	    assert!(!*m.get_one::<bool>("yes").unwrap());
+  1230	}
+  1231	
+  1232	#[test]
+  1233	fn low_index_positional_with_flag() {
+  1234	    let m = Command::new("lip")
+  1235	        .arg(
+  1236	            Arg::new("files")
+  1237	                .index(1)
+  1238	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/clap && cargo test --test builder low_index_positional_with_option_and_flag 2>&1 | grep -E "test result|with_option_and_flag"
+test multiple_values::low_index_positional_with_option_and_flag ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1582 filtered out; finished in 0.00s
+$ cd /workspace/clap && cargo test --test builder 2>&1 | grep -E "test result"
+test result: ok. 1583 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+$ cd /workspace/clap && git --no-pager diff src/parser/parser.rs
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index 2352eff6..0404ec7b 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -128,7 +128,12 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                     low_index_mults
+                 );
+
+-                if low_index_mults || missing_pos {
++                if matches!(parse_state, ParseState::Opt(_)) {
++                    // The current value is being consumed as a value for a
++                    // preceding option, so it should not advance the positional
++                    // counter.
++                    pos_counter
++                } else if low_index_mults || missing_pos {
+                     let skip_current = if let Some(n) = raw_args.peek(&args_cursor) {
+                         if let Some(arg) = self
+                             .cmd
+$ cd /workspace/clap && git --no-pager diff --stat
+src/parser/parser.rs             |  7 ++++++-
+ tests/builder/multiple_values.rs | 36 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+# finish: Fixed positional counter bug with option values
+I resolved the actionable bug from the issue (#3959): "Error with multiple flags and positional arguments".
+
+## Root cause
+In `src/parser/parser.rs`, the main parsing loop has a "Correct pos_counter" block (the "low index multiples" logic) that peeks at the *next* token to decide whether to advance the positional counter. This correction was incorrectly running even when the *current* token was being consumed as the value of a preceding option (i.e. `parse_state == ParseState::Opt(_)`).
+
+For the repro `--one 1 --two 2 3 4 5 6 7 8`, while consuming `1` (the value of `--one`), the parser peeked at the following `--two`, saw it "looked like a new arg", and wrongly bumped the persistent `pos_counter` from 1 to 2. As a result the first true positional value (`3`) was assigned to the second positional (`output`) instead of the multiple-valued `input`, and `4` had no slot left — producing `error: Found argument '4' which wasn't expected`.
+
+## Fix
+Skip the positional-counter correction when the current token is an option value:
+
+```rust
+if matches!(parse_state, ParseState::Opt(_)) {
+    // The current value is being consumed as a value for a
+    // preceding option, so it should not advance the positional counter.
+    pos_counter
+} else if low_index_mults || missing_pos {
+    ...
+```
+
+This is sound because when `parse_state` is `Opt(_)`, the token is handled as that option's value (the loop `continue`s in the Opt branch) and must not affect positional indexing.
+
+## Verification
+- The issue's exact invocation now yields the expected result: `input: ["3","4","5","6","7"]`, `output: "8"`, `one: Some("1")`, `two: Some("2")`, `yes: Some(false)`.
+- Added regression test `low_index_positional_with_option_and_flag` in `tests/builder/multiple_values.rs`.
+- Full `builder` suite passes: 1583 passed, 0 failed (including all existing `low_index_positional_*` tests).
+- The single failing doctest (`builder::value_parser::value_parser` at line 2002) is pre-existing and unrelated — it also fails on the clean base commit e6b8b4b6.
+
+Files changed:
+- `src/parser/parser.rs` (the fix, +6/-1)
+- `tests/builder/multiple_values.rs` (regression test, +36)
+
+Note: The issue text also referenced a separate docs ticket (#3955 "docs: reduce the need to guess"), which is a vague documentation request with no concrete repro; the only reproducible, actionable defect described was #3959, which is now fixed.

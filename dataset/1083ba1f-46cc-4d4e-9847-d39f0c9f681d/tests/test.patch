@@ -1,0 +1,369 @@
+diff --git a/.github/workflows/_test.yml b/.github/workflows/_test.yml
+index 701e8e2673762..61670014fd351 100644
+--- a/.github/workflows/_test.yml
++++ b/.github/workflows/_test.yml
+@@ -44,6 +44,14 @@ jobs:
+         shell: bash
+         run: make test
+ 
++      - name: Install integration dependencies
++        shell: bash
++        run: poetry install --with=test_integration
++
++      - name: Check integration tests compile
++        shell: bash
++        run: poetry run pytest -m compile tests/integration_tests
++
+       - name: Ensure the tests did not create any additional files
+         shell: bash
+         run: |
+diff --git a/libs/experimental/tests/integration_tests/test_compile.py b/libs/experimental/tests/integration_tests/test_compile.py
+new file mode 100644
+index 0000000000000..33ecccdfa0fbd
+--- /dev/null
++++ b/libs/experimental/tests/integration_tests/test_compile.py
+@@ -0,0 +1,7 @@
++import pytest
++
++
++@pytest.mark.compile
++def test_placeholder() -> None:
++    """Used for compiling integration tests without running any real tests."""
++    pass
+diff --git a/libs/langchain/tests/integration_tests/chains/test_graph_database.py b/libs/langchain/tests/integration_tests/chains/test_graph_database.py
+index fd67d60f2db92..eb40972461ce6 100644
+--- a/libs/langchain/tests/integration_tests/chains/test_graph_database.py
++++ b/libs/langchain/tests/integration_tests/chains/test_graph_database.py
+@@ -14,7 +14,7 @@
+ 
+ def test_connect_neo4j() -> None:
+     """Test that Neo4j database is correctly instantiated and connected."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -36,9 +36,22 @@ def test_connect_neo4j() -> None:
+     assert output == expected_output
+ 
+ 
++def test_connect_neo4j_env() -> None:
++    """Test that Neo4j database environment variables."""
++    graph = Neo4jGraph()
++
++    output = graph.query(
++        """
++    RETURN "test" AS output
++    """
++    )
++    expected_output = [{"output": "test"}]
++    assert output == expected_output
++
++
+ def test_cypher_generating_run() -> None:
+     """Test that Cypher statement is correctly generated and executed."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -68,7 +81,7 @@ def test_cypher_generating_run() -> None:
+ 
+ def test_cypher_top_k() -> None:
+     """Test top_k parameter correctly limits the number of results in the context."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -102,7 +115,7 @@ def test_cypher_top_k() -> None:
+ 
+ def test_cypher_intermediate_steps() -> None:
+     """Test the returning of the intermediate steps."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -146,7 +159,7 @@ def test_cypher_intermediate_steps() -> None:
+ 
+ def test_cypher_return_direct() -> None:
+     """Test that chain returns direct results."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -178,7 +191,7 @@ def test_cypher_return_direct() -> None:
+ 
+ def test_cypher_return_correct_schema() -> None:
+     """Test that chain returns direct results."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -243,7 +256,7 @@ def test_cypher_save_load() -> None:
+     """Test saving and loading."""
+ 
+     FILE_PATH = "cypher.yaml"
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -267,7 +280,7 @@ def test_cypher_save_load() -> None:
+ 
+ def test_exclude_types() -> None:
+     """Test exclude types from schema."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -307,7 +320,7 @@ def test_exclude_types() -> None:
+ 
+ def test_include_types() -> None:
+     """Test include types from schema."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+@@ -347,7 +360,7 @@ def test_include_types() -> None:
+ 
+ def test_include_types2() -> None:
+     """Test include types from schema."""
+-    url = os.environ.get("NEO4J_URL")
++    url = os.environ.get("NEO4J_URI")
+     username = os.environ.get("NEO4J_USERNAME")
+     password = os.environ.get("NEO4J_PASSWORD")
+     assert url is not None
+diff --git a/libs/langchain/tests/integration_tests/chat_models/test_hunyuan.py b/libs/langchain/tests/integration_tests/chat_models/test_hunyuan.py
+new file mode 100644
+index 0000000000000..4024994584c83
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/chat_models/test_hunyuan.py
+@@ -0,0 +1,24 @@
++from langchain.chat_models.hunyuan import ChatHunyuan
++from langchain.schema.messages import AIMessage, HumanMessage
++
++
++def test_chat_hunyuan() -> None:
++    chat = ChatHunyuan()
++    message = HumanMessage(content="Hello")
++    response = chat([message])
++    assert isinstance(response, AIMessage)
++    assert isinstance(response.content, str)
++
++
++def test_chat_hunyuan_with_temperature() -> None:
++    chat = ChatHunyuan(temperature=0.6)
++    message = HumanMessage(content="Hello")
++    response = chat([message])
++    assert isinstance(response, AIMessage)
++    assert isinstance(response.content, str)
++
++
++def test_extra_kwargs() -> None:
++    chat = ChatHunyuan(temperature=0.88, top_p=0.7)
++    assert chat.temperature == 0.88
++    assert chat.top_p == 0.7
+diff --git a/libs/langchain/tests/integration_tests/test_compile.py b/libs/langchain/tests/integration_tests/test_compile.py
+new file mode 100644
+index 0000000000000..33ecccdfa0fbd
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/test_compile.py
+@@ -0,0 +1,7 @@
++import pytest
++
++
++@pytest.mark.compile
++def test_placeholder() -> None:
++    """Used for compiling integration tests without running any real tests."""
++    pass
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_alibabacloud_opensearch.py b/libs/langchain/tests/integration_tests/vectorstores/test_alibabacloud_opensearch.py
+index aef700abcf0cf..5e324f9570787 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_alibabacloud_opensearch.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_alibabacloud_opensearch.py
+@@ -1,15 +1,12 @@
+ import time
+ from typing import List
+ 
+-from libs.langchain.tests.integration_tests.vectorstores.fake_embeddings import (
+-    FakeEmbeddings,
+-)
+-
+ from langchain.schema import Document
+ from langchain.vectorstores.alibabacloud_opensearch import (
+     AlibabaCloudOpenSearch,
+     AlibabaCloudOpenSearchSettings,
+ )
++from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
+ 
+ OS_TOKEN_COUNT = 1536
+ 
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_chroma.py b/libs/langchain/tests/integration_tests/vectorstores/test_chroma.py
+index cde5d3cc95a5a..b9af9fcfe17db 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_chroma.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_chroma.py
+@@ -316,7 +316,10 @@ def is_api_accessible(url: str) -> bool:
+ 
+ 
+ def batch_support_chroma_version() -> bool:
+-    import chromadb
++    try:
++        import chromadb
++    except Exception:
++        return False
+ 
+     major, minor, patch = chromadb.__version__.split(".")
+     if int(major) == 0 and int(minor) >= 4 and int(patch) >= 10:
+diff --git a/libs/langchain/tests/unit_tests/chat_models/test_hunyuan.py b/libs/langchain/tests/unit_tests/chat_models/test_hunyuan.py
+new file mode 100644
+index 0000000000000..5bec5eb95d639
+--- /dev/null
++++ b/libs/langchain/tests/unit_tests/chat_models/test_hunyuan.py
+@@ -0,0 +1,114 @@
++import pytest
++
++from langchain.chat_models.hunyuan import (
++    _convert_delta_to_message_chunk,
++    _convert_dict_to_message,
++    _convert_message_to_dict,
++    _signature,
++)
++from langchain.pydantic_v1 import SecretStr
++from langchain.schema.messages import (
++    AIMessage,
++    AIMessageChunk,
++    ChatMessage,
++    FunctionMessage,
++    HumanMessage,
++    HumanMessageChunk,
++    SystemMessage,
++)
++
++
++def test__convert_message_to_dict_human() -> None:
++    message = HumanMessage(content="foo")
++    result = _convert_message_to_dict(message)
++    expected_output = {"role": "user", "content": "foo"}
++    assert result == expected_output
++
++
++def test__convert_message_to_dict_ai() -> None:
++    message = AIMessage(content="foo")
++    result = _convert_message_to_dict(message)
++    expected_output = {"role": "assistant", "content": "foo"}
++    assert result == expected_output
++
++
++def test__convert_message_to_dict_system() -> None:
++    message = SystemMessage(content="foo")
++    with pytest.raises(TypeError) as e:
++        _convert_message_to_dict(message)
++    assert "Got unknown type" in str(e)
++
++
++def test__convert_message_to_dict_function() -> None:
++    message = FunctionMessage(name="foo", content="bar")
++    with pytest.raises(TypeError) as e:
++        _convert_message_to_dict(message)
++    assert "Got unknown type" in str(e)
++
++
++def test__convert_dict_to_message_human() -> None:
++    message_dict = {"role": "user", "content": "foo"}
++    result = _convert_dict_to_message(message_dict)
++    expected_output = HumanMessage(content="foo")
++    assert result == expected_output
++
++
++def test__convert_dict_to_message_ai() -> None:
++    message_dict = {"role": "assistant", "content": "foo"}
++    result = _convert_dict_to_message(message_dict)
++    expected_output = AIMessage(content="foo")
++    assert result == expected_output
++
++
++def test__convert_dict_to_message_other_role() -> None:
++    message_dict = {"role": "system", "content": "foo"}
++    result = _convert_dict_to_message(message_dict)
++    expected_output = ChatMessage(role="system", content="foo")
++    assert result == expected_output
++
++
++def test__convert_delta_to_message_assistant() -> None:
++    delta = {"role": "assistant", "content": "foo"}
++    result = _convert_delta_to_message_chunk(delta, AIMessageChunk)
++    expected_output = AIMessageChunk(content="foo")
++    assert result == expected_output
++
++
++def test__convert_delta_to_message_human() -> None:
++    delta = {"role": "user", "content": "foo"}
++    result = _convert_delta_to_message_chunk(delta, HumanMessageChunk)
++    expected_output = HumanMessageChunk(content="foo")
++    assert result == expected_output
++
++
++def test__signature() -> None:
++    secret_key = SecretStr("YOUR_SECRET_KEY")
++    url = "https://hunyuan.cloud.tencent.com/hyllm/v1/chat/completions"
++
++    result = _signature(
++        secret_key=secret_key,
++        url=url,
++        payload={
++            "app_id": "YOUR_APP_ID",
++            "secret_id": "YOUR_SECRET_ID",
++            "query_id": "test_query_id_cb5d8156-0ce2-45af-86b4-d02f5c26a142",
++            "messages": [
++                {
++                    "role": "user",
++                    "content": "You are a helpful assistant that translates English"
++                    " to French.Translate this sentence from English to"
++                    " French. I love programming.",
++                }
++            ],
++            "temperature": 0.0,
++            "top_p": 0.8,
++            "stream": 1,
++            "timestamp": 1697738378,
++            "expired": 1697824778,
++        },
++    )
++
++    # The signature was generated by the demo provided by Huanyuan.
++    # https://hunyuan-sdk-1256237915.cos.ap-guangzhou.myqcloud.com/python.zip
++    expected_output = "MXBvqNCXyxJWfEyBwk1pYBVnxzo="
++    assert result == expected_output
+diff --git a/libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py b/libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py
+index 9b08523395798..5bc55cca31cca 100644
+--- a/libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py
++++ b/libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py
+@@ -1,4 +1,5 @@
+ import sys
++from functools import partial
+ from operator import itemgetter
+ from typing import (
+     Any,
+@@ -925,6 +926,17 @@ def test_configurable_fields() -> None:
+     ).invoke({"name": "John"}) == {"llm1": "c", "llm2": "c", "llm3": "d"}
+ 
+ 
++def test_configurable_alts_factory() -> None:
++    fake_llm = FakeListLLM(responses=["a"]).configurable_alternatives(
++        ConfigurableField(id="llm", name="LLM"),
++        chat=partial(FakeListLLM, responses=["b"]),
++    )
++
++    assert fake_llm.invoke("...") == "a"
++
++    assert fake_llm.with_config(configurable={"llm": "chat"}).invoke("...") == "b"
++
++
+ def test_configurable_fields_example() -> None:
+     fake_chat = FakeListChatModel(responses=["b"]).configurable_fields(
+         responses=ConfigurableFieldMultiOption(

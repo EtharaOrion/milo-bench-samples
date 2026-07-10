@@ -1,0 +1,200 @@
+@@ -19,13 +27,19 @@ export interface UsePrecisionOptions {
+  */
+ export function usePrecision(
+   value: MaybeRefOrGetter<number>,
+-  digits: MaybeRefOrGetter<number>,
++  digits?: MaybeRefOrGetter<number>,
+   options?: MaybeRefOrGetter<UsePrecisionOptions>,
+ ): ComputedRef<number> {
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++
++    if (_digits === undefined)
++      return _value
++
++    return shiftDecimal(
++      Math[toValue(options)?.math || 'round'](shiftDecimal(_value, _digits)),
++      -_digits,
++    )
+   })
+ }
+$ cd /workspace/vueuse && node -r esbuild-register - <<'NODE'
+$ const { JSDOM } = require('jsdom')
+$ const dom = new JSDOM('<!doctype html><html><body></body></html>')
+$ Object.assign(globalThis, {
+$   window: dom.window,
+$   document: dom.window.document,
+$   SVGElement: dom.window.SVGElement,
+$   Element: dom.window.Element,
+$   HTMLElement: dom.window.HTMLElement,
+$   Image: dom.window.Image,
+$ })
+$ const { mount } = require('@vue/test-utils')
+$ const { UseImage } = require('./packages/core/useImage/component.ts')
+$ const warnings = []
+$ const originalWarn = console.warn
+$ console.warn = (...args) => warnings.push(args.join(' '))
+$ mount(UseImage, {
+$   props: {
+$     src: 'https://example.com/a.png',
+$     alt: 'Fallback Information',
+$     class: 'relative',
+$     crossorigin: 'use-credentials',
+$     loading: 'lazy',
+$   },
+$   slots: { loading: 'Loading' },
+$ })
+$ console.warn = originalWarn
+$ if (warnings.some(w => w.includes('Extraneous non-props attributes')))
+$   throw new Error(warnings.join('\n'))
+$ console.log('UseImage warning check passed')
+$ NODE
+UseImage warning check passed
+$ cd /workspace/vueuse && grep -R "interface HTMLAttributes\|type HTMLAttributes" -n node_modules/vue-demi node_modules/vue | head -20
+$ cd /workspace/vueuse && rm reproduce-issues.ts && git status --short
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+$ cd /workspace/vueuse && npm run lint -- --no-cache
+> @vueuse/monorepo@10.1.0 lint
+> eslint --cache . --no-cache
+
+
+/workspace/vueuse/packages/core/createTemplatePromise/index.ts
+  122:3  error  Use "@ts-expect-error" to ensure an error is actually being suppressed  @typescript-eslint/prefer-ts-expect-error
+
+✖ 1 problem (1 error, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+$ cd /workspace/vueuse && sed -n '30,45p' packages/core/useDisplayMedia/index.ts && sed -n '46,56p' packages/core/useEventBus/index.ts && ./node_modules/.bin/eslint --no-cache packages/core/useDisplayMedia/index.ts packages/core/useEventBus/index.ts packages/core/createTemplatePromise/index.ts || true
+*/
+export function useDisplayMedia(options: UseDisplayMediaOptions = {}) {
+  const enabled = ref(options.enabled ?? false)
+  const video = options.video
+  const audio = options.audio
+  const { navigator = defaultNavigator } = options
+  const isSupported = useSupported(() => navigator?.mediaDevices?.getDisplayMedia)
+
+  // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+  // @ts-ignore Type mismatch in different version of TS
+  const constraint: MediaStreamConstraints = { audio, video }
+
+  const stream: Ref<MediaStream | undefined> = shallowRef()
+
+  async function _start() {
+    if (!isSupported.value || stream.value)
+    listeners.add(listener)
+    events.set(key, listeners)
+
+    const _off = () => off(listener)
+    // auto unsubscribe when scope get disposed
+    // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+    // @ts-ignore vue3 and vue2 mis-align
+    scope?.cleanups?.push(_off)
+    return _off
+  }
+
+
+/workspace/vueuse/packages/core/createTemplatePromise/index.ts
+  122:3  error  Use "@ts-expect-error" to ensure an error is actually being suppressed  @typescript-eslint/prefer-ts-expect-error
+
+✖ 1 problem (1 error, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+# file_editor: Add lint suppression for required ts-ignore
+The file /workspace/vueuse/packages/core/createTemplatePromise/index.ts has been edited. Here's the result of running `cat -n` on a snippet of /workspace/vueuse/packages/core/createTemplatePromise/index.ts:
+   119	    return renderList
+   120	  })
+   121	
+   122	  // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+   123	  // @ts-ignore Type mismatch with Vue 3.3
+   124	  component.start = start
+   125	
+   126	  return component as any
+   127	}
+   128	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/vueuse && npm run lint -- --no-cache
+> @vueuse/monorepo@10.1.0 lint
+> eslint --cache . --no-cache
+$ cd /workspace/vueuse && npm run typecheck
+> @vueuse/monorepo@10.1.0 typecheck
+> tsc --noEmit
+$ cd /workspace/vueuse && git status --short && git --no-pager diff --stat && git --no-pager diff --check
+M packages/core/createTemplatePromise/index.ts
+ M packages/core/useCloned/index.md
+ M packages/core/useEventListener/index.md
+ M packages/core/useEventSource/index.ts
+ M packages/core/useImage/component.ts
+ M packages/core/useImage/index.ts
+ M packages/core/useInfiniteScroll/index.ts
+ M packages/core/useManualRefHistory/index.ts
+ M packages/integrations/useDrauu/index.ts
+ M packages/math/usePrecision/index.ts
+ packages/core/createTemplatePromise/index.ts |  2 ++
+ packages/core/useCloned/index.md             |  6 +++---
+ packages/core/useEventListener/index.md      | 12 ++++++++++++
+ packages/core/useEventSource/index.ts        |  2 +-
+ packages/core/useImage/component.ts          |  4 ++++
+ packages/core/useImage/index.ts              | 18 +++++++++++++++++-
+ packages/core/useInfiniteScroll/index.ts     |  3 +--
+ packages/core/useManualRefHistory/index.ts   |  2 +-
+ packages/integrations/useDrauu/index.ts      |  6 +++---
+ packages/math/usePrecision/index.ts          | 20 +++++++++++++++++---
+ 10 files changed, 61 insertions(+), 14 deletions(-)
+# think: Reflect on issue coverage and edge cases
+Your thought has been logged.
+# task_tracker: Mark all tasks complete
+Task list has been updated with 6 item(s).
+# finish: Finish implementation summary and validation results
+Implemented the requested non-test changes in `/workspace/vueuse`.
+
+Summary of changes:
+- `useImage`
+  - Added support for `alt`, `class`, `crossorigin`, and `loading` in `UseImageOptions`.
+  - Applies those attributes to the preloaded `Image` instance.
+  - Added the same props to the `UseImage` component to avoid extraneous non-props attribute warnings.
+- `usePrecision`
+  - Improved floating-point precision using decimal shifting instead of direct multiplication/division.
+  - Made `digits` optional; when omitted, the original value is returned.
+- `useInfiniteScroll`
+  - Removed the recursive post-load `checkAndLoad()` call that caused repeated/infinite load events while still at the same edge.
+- `useEventSource`
+  - Widened `url` argument type to `string | URL`.
+- `useDrauu`
+  - Forwarded the `committed` event payload (`SVGElement | undefined`) through `onCommitted`.
+- `createTemplatePromise`
+  - Added the requested Vue 3.3 `@ts-ignore` workaround with the necessary lint suppression.
+- Documentation/comment fixes
+  - Fixed `useCloned` docs to access refs with `.value`.
+  - Fixed the `useManualRefHistory` `commit` comment typo.
+  - Added an SSR/Nuxt-oriented note to `useEventListener` docs.
+
+Validation performed:
+- Created a temporary TypeScript reproduction script and confirmed failures before the fix.
+  - `ts-node` was not installed in this environment, so I ran it with `node -r esbuild-register` instead.
+  - Expanded it with edge cases for precision and infinite scroll; it passed after the fixes.
+  - Removed the temporary script afterward.
+- Ran related tests:
+  - `vitest run packages/math/usePrecision/index.test.ts packages/core/useInfiniteScroll/directive.test.ts packages/core/useEventListener/index.test.ts packages/core/useCloned/index.test.ts packages/core/useManualRefHistory/index.test.ts packages/core/useMutationObserver/index.test.ts`
+  - Result: 48 passed.
+- Ran full test suite:
+  - `vitest run`
+  - Result: 146 test files / 933 tests passed.
+- Ran lint:
+  - `npm run lint -- --no-cache`
+  - Result: passed.
+- Ran typecheck:
+  - Initial `npm run typecheck` needed generated ignored metadata.
+  - `npm run update` failed due the repo’s `esno`/`tsx` loader issue under this Node environment, so I generated metadata with `node -r esbuild-register packages/metadata/scripts/update.ts`.
+  - Re-ran `npm run typecheck`; result: passed.
+
+No test files were modified.

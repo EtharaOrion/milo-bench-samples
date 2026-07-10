@@ -1,0 +1,200 @@
+def render_tables():
+    console = Console(
+        width=60,
+        force_terminal=True,
+        file=io.StringIO(),
+        legacy_windows=False,
+        color_system=None,
+    )
+
+    table = Table(title="test table", caption="table caption", expand=True)
+    table.add_column("foo", footer=Text("total"), no_wrap=True, overflow="ellipsis")
+    table.add_column("bar", justify="center")
+    table.add_column("baz", justify="right")
+
+    table.add_row("Averlongwordgoeshere", "banana pancakes", None)
+
+    assert Measurement.get(console, table, 80) == Measurement(41, 48)
+
+    for width in range(10, 60, 5):
+        console.print(table, width=width)
+
+import io
+import re
+
+from rich.console import Console, RenderableType
+from rich.__main__ import make_test_card
+
+from ._card_render import expected
+
+re_link_ids = re.compile(r"id=[\d\.\-]*?;.*?\x1b")
+
+
+def replace_link_ids(render: str) -> str:
+    """Link IDs have a random ID and system path which is a problem for
+    reproducible tests.
+
+    """
+    return re_link_ids.sub("id=0;foo\x1b", render)
+
+
+def render(renderable: RenderableType) -> str:
+    console = Console(
+        width=100, file=io.StringIO(), color_system="truecolor", legacy_windows=False
+    )
+    console.print(renderable)
+    output = replace_link_ids(console.file.getvalue())
+    return output
+
+
+def test_card_render():
+    card = make_test_card()
+    result = render(card)
+    assert result == expected
+
+
+if __name__ == "__main__":
+# think: Reason through issue completeness and old test conflicts
+Your thought has been logged.
+$ cd /workspace/rich && python /workspace/reproduce_rich_issues.py
+All reproduction and edge-case checks passed
+$ cd /workspace/rich && git status --short && echo '--- stat ---' && git --no-pager diff --stat && echo '--- untracked tree/doc refs ---' && find rich docs/source/reference -maxdepth 1 \( -name tree.py -o -name tree.rst \) -print -exec sed -n '1,60p' {} \;
+cd /workspace/rich && git status --short && echo '--- stat ---' && git --no-pager diff --stat && echo '--- untracked tree/doc refs ---' && find rich docs/source/reference -maxdepth 1 \( -name tree.py -o -name tree.rst \) -print -exec sed -n '1,60p' {} \;
+ M docs/requirements.txt
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M poetry.lock
+ M rich/console.py
+ M rich/default_styles.py
+ M rich/style.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+--- stat ---
+ docs/requirements.txt     |  4 ++--
+ docs/source/progress.rst  |  2 ++
+ docs/source/reference.rst |  1 +
+ poetry.lock               |  6 +++---
+ rich/console.py           | 11 ++++++++---
+ rich/default_styles.py    |  2 ++
+ rich/style.py             | 55 ++++++++++++++++++++++++++++++++-----------------------
+ 7 files changed, 50 insertions(+), 31 deletions(-)
+--- untracked tree/doc refs ---
+rich/tree.py
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+from ._loop import loop_last
+from .cells import cell_len
+from .jupyter import JupyterMixin
+from .measure import Measurement
+from .segment import Segment
+from .style import Style, StyleType
+
+if TYPE_CHECKING:
+    from .console import Console, ConsoleOptions, RenderResult, RenderableType
+
+
+Guide = Tuple[str, Style]
+
+
+class Tree(JupyterMixin):
+    """A tree renderable.
+
+    Args:
+        label (RenderableType): The renderable or text for the tree label.
+        style (StyleType, optional): Style of this tree. Defaults to "tree".
+        guide_style (StyleType, optional): Style of the branch guide lines.
+            Defaults to "tree.line".
+        expanded (bool, optional): Also display children. Defaults to True.
+        highlight (bool, optional): Highlight labels. Defaults to False.
+        hide_root (bool, optional): Hide the root node. Defaults to False.
+    """
+
+    def __init__(
+        self,
+        label: "RenderableType",
+        *,
+        style: StyleType = "tree",
+        guide_style: StyleType = "tree.line",
+        expanded: bool = True,
+        highlight: bool = False,
+        hide_root: bool = False,
+    ) -> None:
+        self.label = label
+        self.style = style
+        self.guide_style = guide_style
+        self.expanded = expanded
+        self.highlight = highlight
+        self.hide_root = hide_root
+        self.children: List["Tree"] = []
+
+    def add(
+        self,
+        label: "RenderableType",
+        *,
+        style: StyleType = None,
+        guide_style: StyleType = None,
+        expanded: bool = True,
+        highlight: Optional[bool] = None,
+    ) -> "Tree":
+        """Add a child tree.
+
+        Args:
+            label (RenderableType): The renderable or text for the tree label.
+docs/source/reference/tree.rst
+Tree
+====
+
+.. automodule:: rich.tree
+    :members:
+$ rm /workspace/reproduce_rich_issues.py && test ! -e /workspace/reproduce_rich_issues.py && echo removed
+removed
+$ cd /workspace/rich && git status --short && echo '--- focused tests last run commands ---' && python -m pytest tests/test_console.py tests/test_style.py tests/test_theme.py -q
+M docs/requirements.txt
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M poetry.lock
+ M rich/console.py
+ M rich/default_styles.py
+ M rich/style.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+--- focused tests last run commands ---
+...........................................................................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      [100%]
+75 passed in 0.12s
+# task_tracker: Record final verification results in task plan
+Task list has been updated with 5 item(s).
+# finish: Summarize implemented Rich changes and verification results
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary:
+- Added a new `rich.tree.Tree` renderable with:
+  - nested child rendering
+  - Unicode and ASCII guide lines
+  - `expanded=False` support
+  - `hide_root` support
+  - per-node label and guide styling
+  - measurement support
+- Added default theme styles for Tree:
+  - `tree`
+  - `tree.line`
+- Added Tree API reference docs and included it in the reference toctree.
+- Fixed `Console`/`Style` behavior for issue #882:
+  - `force_terminal=True, color_system=None` now preserves non-color ANSI attributes such as bold/italic while omitting color codes.
+  - `force_terminal=False` now suppresses terminal styling/control output even if `color_system` is explicitly set.
+  - Existing explicit `color_system` behavior for StringIO without `force_terminal=False` is preserved for compatibility.
+- Fixed the Progress advanced usage docs example by adding `import time`.
+- Bumped docs dependency pins:
+  - `Sphinx==3.4.3`
+  - `sphinx-rtd-theme==0.5.1`
+- Bumped `ipywidgets` in `poetry.lock` from `7.6.2` to `7.6.3` with updated hashes.
+
+Verification performed:
+- Created a temporary reproduction script covering the described failures and edge cases, confirmed failures before changes, then confirmed all checks passed after changes.
+- Removed the temporary reproduction script afterward.
+- Ran focused tests successfully:
+  - `python -m pytest tests/test_console.py tests/test_style.py tests/test_theme.py -q`
+  - Result: `75 passed`
+- Ran compile checks on modified Python files successfully.
+- Ran the full test suite with `python -m pytest -q`; it does not pass against the repository’s current local test snapshots. I did not modify tests. The failures include Python-version-sensitive snapshot differences and tests that still assert the old `color_system=None` behavior of disabling all styles, which conflicts with issue #882’s new required behavior.
+
+Note: I attempted to run Black on the modified Python files, but `black` is not installed in this environment (`No module named black`).

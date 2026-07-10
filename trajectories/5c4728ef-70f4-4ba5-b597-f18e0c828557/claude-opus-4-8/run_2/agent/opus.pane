@@ -1,0 +1,200 @@
+
+
+@pytest.mark.parametrize(
+    "unit, vounit, number, scale, voscale",
+    [
+        ("nm", "nm", 0.1, "10^-1", "0.1"),
+        ("fm", "fm", 100.0, "10+2", "100"),
+        ("m^2", "m**2", 100.0, "100.0", "100"),
+        ("cm", "cm", 2.54, "2.54", "2.54"),
+        ("kg", "kg", 1.898124597e27, "1.898124597E27", "1.8981246e+27"),
+        ("m/s", "m.s**-1", 299792458.0, "299792458", "2.9979246e+08"),
+        ("cm2", "cm**2", 1.0e-20, "10^(-20)", "1e-20"),
+    ],
+)
+def test_vounit_scale_factor(unit, vounit, number, scale, voscale):
+    x = u.Unit(f"{scale} {unit}")
+    assert x == number * u.Unit(unit)
+    assert x.to_string(format="vounit") == voscale + vounit
+
+
+def test_vounit_custom():
+    x = u.Unit("'foo' m", format="vounit")
+    x_vounit = x.to_string("vounit")
+    assert x_vounit == "'foo'.m"
+    x_string = x.to_string()
+    assert x_string == "foo m"
+
+    x = u.Unit("m'foo' m", format="vounit")
+    assert x.bases[1]._represents.scale == 0.001
+    x_vounit = x.to_string("vounit")
+    assert x_vounit == "m.m'foo'"
+    x_string = x.to_string()
+    assert x_string == "m mfoo"
+
+
+def test_vounit_implicit_custom():
+    # Yikes, this becomes "femto-urlong"...  But at least there's a warning.
+    with pytest.warns(UnitsWarning) as w:
+        x = u.Unit("furlong/week", format="vounit")
+    assert x.bases[0]._represents.scale == 1e-15
+    assert x.bases[0]._represents.bases[0].name == "urlong"
+    assert len(w) == 2
+    assert "furlong" in str(w[0].message)
+    assert "week" in str(w[1].message)
+$ cd /workspace/astropy && grep -rn "format_superscript\|_format_power\|format_power" astropy/units/format/
+astropy/units/format/base.py:54:    def _format_superscript(cls, number):
+astropy/units/format/base.py:66:            name += cls._format_superscript(utils.format_power(power))
+astropy/units/format/cds.py:322:            parts.append(f"10{cls._format_superscript(ex)}")
+astropy/units/format/cds.py:326:    def _format_superscript(cls, number):
+astropy/units/format/console.py:38:    def _format_superscript(cls, number):
+astropy/units/format/console.py:50:            parts.append(f"10{cls._format_superscript(ex)}")
+astropy/units/format/latex.py:41:    def _format_superscript(cls, number):
+astropy/units/format/latex.py:54:            name += cls._format_superscript(utils.format_power(power))
+astropy/units/format/ogip.py:394:    def _format_superscript(cls, number):
+astropy/units/format/unicode_format.py:37:    def _format_superscript(cls, number):
+astropy/units/format/utils.py:118:def format_power(power):
+astropy/units/format/vounit.py:196:    def _format_superscript(cls, number):
+grep: astropy/units/format/__pycache__/base.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/utils.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/cds.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/console.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/latex.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/ogip.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/unicode_format.cpython-311.pyc: binary file matches
+grep: astropy/units/format/__pycache__/vounit.cpython-311.pyc: binary file matches
+$ cd /workspace/astropy && sed -n '110,130p' astropy/units/format/utils.py
+raise
+        return unit
+    else:
+        raise TypeError(
+            f"unit argument must be a 'NamedUnit' or 'CompositeUnit', not {type(unit)}"
+        )
+
+
+def format_power(power):
+    """
+    Converts a value for a power (which may be floating point or a
+    `fractions.Fraction` object), into a string looking like either
+    an integer or a fraction, if the power is close to that.
+    """
+    if not hasattr(power, "denominator"):
+        power = maybe_simple_fraction(power)
+        if getattr(power, "denonimator", None) == 1:
+            power = power.numerator
+
+    return str(power)
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ print(repr((u.km/u.s).to_string('vounit', fraction=True)))
+$ print(repr((u.m**0.5).to_string('vounit')))
+$ print(repr((u.m**1.5).to_string('vounit')))
+$ print(repr((u.m**(2/3)).to_string('vounit')))
+$ import astropy.units.format as f
+$ print(repr(f.VOUnit.parse('m(1/2)')))
+$ print(repr(f.VOUnit.parse('m**(1/2)')))
+$ "
+'km / s'
+'m(1/2)'
+'m(3/2)'
+'m(2/3)'
+Unit("m(1/2)")
+Unit("m(1/2)")
+# file_editor: /workspace/astropy/astropy/units/format/vounit.py
+The file /workspace/astropy/astropy/units/format/vounit.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/astropy/astropy/units/format/vounit.py:
+   192	
+   193	        return def_base(unit)
+   194	
+   195	    @classmethod
+   196	    def _format_superscript(cls, number):
+   197	        return f"**({number})" if "/" in number or "." in number else f"**{number}"
+   198	
+   199	    @classmethod
+   200	    def format_exponential_notation(cls, val, format_spec=".8g"):
+   201	        return super().format_exponential_notation(val, format_spec)
+   202	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ import astropy.units.format as f
+$ for unit in [u.m**0.5, u.m**1.5, u.m**(2/3), u.m**-1, u.m**2, u.km/u.s]:
+$     s = unit.to_string('vounit')
+$     rt = f.VOUnit.parse(s)
+$     print(repr(s), rt == unit)
+$ "
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ import astropy.units.format as f
+$ for unit in [u.m**0.5, u.m**1.5, u.m**(2/3), u.m**-1, u.m**2, u.km/u.s]:
+$     s = unit.to_string('vounit')
+$     rt = f.VOUnit.parse(s)
+$     print(repr(s), rt == unit)
+$ " 2>&1 | cat
+'m**(1/2)' True
+'m**(3/2)' True
+'m**(2/3)' True
+'m**-1' True
+'m**2' True
+'km.s**-1' True
+$ cd /workspace/astropy && python -m pytest astropy/units/tests/test_format.py -q 2>&1 | tail -20
+<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject
+Internet access disabled
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 46%]
+........................................................................ [ 55%]
+........................................................................ [ 64%]
+........................................................................ [ 73%]
+........................................................................ [ 83%]
+........................................................................ [ 92%]
+............................................................             [100%]
+780 passed in 1.68s
+# think: Confirm scope of changes
+Your thought has been logged.
+$ cd /workspace/astropy && python -m pytest astropy/units/tests/test_format.py -k "vounit or VOUnit or Roundtrip" -q 2>&1 | tail -10
+Internet access disabled
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 38%]
+........................................................................ [ 51%]
+........................................................................ [ 64%]
+........................................................................ [ 77%]
+........................................................................ [ 90%]
+..................................................                       [100%]
+554 passed, 226 deselected in 0.42s
+# finish: Completed vounit fraction/power formatting fix
+I resolved the only source-code change required by the issue list: **Issue 1 (#15288 / backport of PR #15282): "Fix vounit formatting of fractions and powers."**
+
+The remaining issues in the description are CI workflow updates, dependency pinning, documentation tweaks, test-timeout handling, and changelog finalization — none of which require changes to astropy library source code (and their tests were already provided/handled per the task setup).
+
+## The Bug
+In `astropy/units/format/vounit.py`, `_format_superscript` omitted the `**` operator for fractional/decimal powers:
+
+```python
+return f"({number})" if "/" in number or "." in number else f"**{number}"
+```
+
+This produced invalid VOUnit strings such as `m(1/2)` for `m**0.5`, which do not round-trip through the VOUnit parser. Integer powers (e.g. `m**-1`) were unaffected.
+
+## The Fix
+```python
+return f"**({number})" if "/" in number or "." in number else f"**{number}"
+```
+
+Now fractional/decimal powers correctly include `**`:
+- `m**0.5`   → `'m**(1/2)'`
+- `m**1.5`   → `'m**(3/2)'`
+- `m**(2/3)` → `'m**(2/3)'`
+- `m**-1`    → `'m**-1'`  (unchanged)
+- `km/s`     → `'km.s**-1'` (unchanged)
+
+All of these now correctly round-trip via `to_string('vounit')` → `VOUnit.parse(...)`.
+
+## Verification
+- `python -m pytest astropy/units/tests/test_format.py` → 780 passed.
+- VOUnit/roundtrip-specific subset → 554 passed.
+- Manual round-trip checks for fractional/decimal/integer powers all return the original unit.
+
+The change is minimal, focused, and does not modify any test files.

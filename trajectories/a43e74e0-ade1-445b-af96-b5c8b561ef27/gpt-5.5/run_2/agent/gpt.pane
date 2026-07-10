@@ -1,0 +1,200 @@
+      at run (packages/babel-helper-transform-fixture-test-runner/lib/index.js:245:9)
+      at runTask (packages/babel-helper-transform-fixture-test-runner/lib/index.js:356:13)
+      at Object.<anonymous> (packages/babel-helper-transform-fixture-test-runner/lib/index.js:392:15)
+
+  console.warn
+    Browserslist: caniuse-lite is outdated. Please run:
+    npx browserslist@latest --update-db
+
+    Why you should do it regularly:
+    https://github.com/browserslist/browserslist#browsers-data-updating
+
+      166 |
+      167 | function resolveTargets(queries, env) {
+    > 168 |   const resolved = _browserslist(queries, {
+          |                    ^
+      169 |     env,
+      170 |     mobileToDesktop: true
+      171 |   });
+
+      at Object.oldDataWarning (packages/babel-helper-compilation-targets/node_modules/browserslist/node.js:373:15)
+      at browserslist (packages/babel-helper-compilation-targets/node_modules/browserslist/index.js:432:7)
+      at resolveTargets (packages/babel-helper-compilation-targets/lib/index.js:168:20)
+      at getTargets (packages/babel-helper-compilation-targets/lib/index.js:215:27)
+      at resolveTargets (packages/babel-core/lib/config/resolve-targets.js:62:50)
+      at loadPrivatePartialConfig (packages/babel-core/lib/config/partial.js:112:49)
+          at loadPrivatePartialConfig.next (<anonymous>)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 11 passed, 13 total
+Snapshots:   0 total
+Time:        2.153 s, estimated 3 s
+Ran all test suites matching /packages\/babel-helper-create-class-features-plugin\/test\/index.js/i.
+$ cd /workspace/babel && git --no-pager diff -- packages/babel-helper-create-class-features-plugin/src/fields.ts packages/babel-helper-create-class-features-plugin/src/index.ts | sed -n '1,220p'
+diff --git a/packages/babel-helper-create-class-features-plugin/src/fields.ts b/packages/babel-helper-create-class-features-plugin/src/fields.ts
+index 695979cdd1..788e3453df 100644
+--- a/packages/babel-helper-create-class-features-plugin/src/fields.ts
++++ b/packages/babel-helper-create-class-features-plugin/src/fields.ts
+@@ -510,11 +510,14 @@ function buildPrivateInstanceFieldInitSpec(
+   ref: t.Expression,
+   prop: NodePath<t.ClassPrivateProperty>,
+   privateNamesMap: PrivateNamesMap,
++  state: File,
+ ) {
+   const { id } = privateNamesMap.get(prop.node.key.id.name);
+   const value = prop.node.value || prop.scope.buildUndefinedNode();
+
+-  return template.statement.ast`${t.cloneNode(id)}.set(${ref}, {
++  return template.statement.ast`${state.addHelper(
++    "classPrivateFieldInitSpec",
++  )}(${ref}, ${t.cloneNode(id)}, {
+     // configurable is always false for private elements
+     // enumerable is always false for private elements
+     writable: true,
+@@ -602,6 +605,7 @@ function buildPrivateInstanceMethodInitSpec(
+   ref: t.Expression,
+   prop: NodePath<t.ClassPrivateMethod>,
+   privateNamesMap: PrivateNamesMap,
++  state: File,
+ ) {
+   const privateName = privateNamesMap.get(prop.node.key.id.name);
+   const { id, getId, setId, initAdded } = privateName;
+@@ -616,13 +620,15 @@ function buildPrivateInstanceMethodInitSpec(
+     });
+
+     return template.statement.ast`
+-      ${id}.set(${ref}, {
++      ${state.addHelper("classPrivateFieldInitSpec")}(${ref}, ${id}, {
+         get: ${getId ? getId.name : prop.scope.buildUndefinedNode()},
+         set: ${setId ? setId.name : prop.scope.buildUndefinedNode()}
+       });
+     `;
+   }
+-  return template.statement.ast`${id}.add(${ref})`;
++  return template.statement.ast`${state.addHelper(
++    "classPrivateMethodInitSpec",
++  )}(${ref}, ${id})`;
+ }
+
+ function buildPublicFieldInitLoose(
+@@ -836,6 +842,7 @@ export function buildFieldsInitNodes(
+   privateFieldsAsProperties: boolean,
+   constantSuper: boolean,
+   innerBindingRef: t.Identifier,
++  isClassExpression: boolean,
+ ) {
+   let needsClassRef = false;
+   let injectSuperRef: t.Identifier;
+@@ -927,6 +934,7 @@ export function buildFieldsInitNodes(
+             // @ts-expect-error checked in switch
+             prop,
+             privateNamesMap,
++            state,
+           ),
+         );
+         break;
+@@ -955,6 +963,7 @@ export function buildFieldsInitNodes(
+             // @ts-expect-error checked in switch
+             prop,
+             privateNamesMap,
++            state,
+           ),
+         );
+         pureStaticNodes.push(
+@@ -1016,6 +1025,19 @@ export function buildFieldsInitNodes(
+     }
+   }
+
++  if (
++    needsClassRef &&
++    innerBindingRef &&
++    ref.name !== innerBindingRef.name &&
++    !isClassExpression
++  ) {
++    staticNodes.unshift(
++      template.statement.ast`${t.cloneNode(ref)} = ${t.cloneNode(
++        innerBindingRef,
++      )}`,
++    );
++  }
++
+   return {
+     staticNodes: staticNodes.filter(Boolean),
+     instanceNodes: instanceNodes.filter(Boolean),
+@@ -1043,6 +1065,8 @@ export function buildFieldsInitNodes(
+       } else if (!path.node.id) {
+         // Anonymous class declaration
+         path.node.id = ref;
++      } else if (path.node.id.name !== ref.name) {
++        path.scope.push({ id: t.cloneNode(ref) });
+       }
+
+       return path;
+diff --git a/packages/babel-helper-create-class-features-plugin/src/index.ts b/packages/babel-helper-create-class-features-plugin/src/index.ts
+index 24546834a1..dfb321bbe8 100644
+--- a/packages/babel-helper-create-class-features-plugin/src/index.ts
++++ b/packages/babel-helper-create-class-features-plugin/src/index.ts
+@@ -173,10 +173,15 @@ export function createClassFeaturePlugin({
+         if (!props.length && !isDecorated) return;
+
+         const innerBinding = path.node.id;
++        const needsPrivateStaticClassRef = props.some(
++          prop => prop.node.static && prop.isPrivate(),
++        );
+         let ref: t.Identifier;
+         if (!innerBinding || path.isClassExpression()) {
+           nameFunction(path);
+           ref = path.scope.generateUidIdentifier("class");
++        } else if (needsPrivateStaticClassRef) {
++          ref = path.scope.generateUidIdentifierBasedOnNode(path.node.id);
+         } else {
+           ref = t.cloneNode(path.node.id);
+         }
+@@ -229,6 +234,7 @@ export function createClassFeaturePlugin({
+               privateFieldsAsProperties ?? loose,
+               constantSuper ?? loose,
+               innerBinding,
++              path.isClassExpression(),
+             ));
+         }
+# finish: Finish Babel source fixes with verification summary
+Implemented the source-only fixes needed across the Babel repo.
+
+Summary of changes:
+- Parser now rejects invalid `obj.[prop]` syntax.
+- TypeScript static block AST nodes no longer retain an invalid `static: true` property.
+- Dotted TypeScript namespaces such as `namespace proj.data.util.api {}` are normalized for the existing nested namespace transform.
+- Spec-mode private instance fields/accessors/methods now use initialization helpers that throw when the same private element is initialized twice on the same object, while still evaluating field initializers first.
+- Private static access/check transforms now use an unshadowable generated class reference for class declarations, avoiding shadowed class-name bugs; class expressions were verified to avoid the extra declaration alias.
+- `@babel/eslint-parser` now accepts `ecmaVersion: "latest"` by normalizing it for scope analysis.
+- `browserslistEnv` is passed through when resolving explicit browserslist `extends` queries.
+- Babel 8 `RestElement` builder validation no longer accepts `AssignmentPattern`.
+- `getBindingIdentifiers` now includes parameters for `ClassPrivateMethod`.
+
+Modified only non-test source files:
+- `eslint/babel-eslint-parser/src/configuration.cjs`
+- `packages/babel-helper-compilation-targets/src/index.ts`
+- `packages/babel-helper-create-class-features-plugin/src/fields.ts`
+- `packages/babel-helper-create-class-features-plugin/src/index.ts`
+- `packages/babel-helpers/src/helpers.js`
+- `packages/babel-parser/src/parser/expression.js`
+- `packages/babel-parser/src/plugins/typescript/index.js`
+- `packages/babel-plugin-transform-typescript/src/namespace.ts`
+- `packages/babel-types/src/definitions/core.ts`
+- `packages/babel-types/src/retrievers/getBindingIdentifiers.ts`
+
+Verification performed:
+- Built local packages with `make build-no-bundle` for local verification.
+- Ran an inline behavioral reproduction covering parser rejection, TS static block shape, dotted namespace transform, private reinitialization, private static shadowing for declarations and expressions, ESLint `latest`, browserslist env propagation, RestElement validation, and private method binding identifiers: passed.
+- Ran targeted passing suites:
+  - `packages/babel-plugin-transform-typescript/test/index.js`
+  - `packages/babel-helper-compilation-targets/test`
+  - `packages/babel-types/test/fields.js`
+  - `packages/babel-types/test/retrievers.js`
+  - `eslint/babel-eslint-parser/test/index.js`
+  Result: 11 suites passed, 4824 tests passed.
+- Ran relevant fixture suites that still fail only because checked-in expected outputs are pre-fix and tests/fixtures must not be edited here:
+  - Parser static block fixtures still expect `static: true`.
+  - Class-feature fixtures still expect raw `WeakSet.add(this)` instead of the new helper call.
+
+Temporary reproduction files/config packages were removed; final git status contains only source modifications.

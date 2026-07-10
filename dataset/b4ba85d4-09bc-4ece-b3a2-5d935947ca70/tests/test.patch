@@ -1,0 +1,573 @@
+diff --git a/.github/workflows/_test.yml b/.github/workflows/_test.yml
+index 3cc424cb7a1bd..179b6303d7690 100644
+--- a/.github/workflows/_test.yml
++++ b/.github/workflows/_test.yml
+@@ -7,10 +7,6 @@ on:
+         required: true
+         type: string
+         description: "From which folder this pipeline executes"
+-      test_type:
+-        type: string
+-        description: "Test types to run"
+-        default: '["core", "extended", "core-pydantic-2"]'
+ 
+ env:
+   POETRY_VERSION: "1.5.1"
+@@ -28,8 +24,7 @@ jobs:
+           - "3.9"
+           - "3.10"
+           - "3.11"
+-        test_type: ${{ fromJSON(inputs.test_type) }}
+-    name: Python ${{ matrix.python-version }} ${{ matrix.test_type }}
++    name: Python ${{ matrix.python-version }}
+     steps:
+       - uses: actions/checkout@v3
+       - name: Set up Python ${{ matrix.python-version }}
+@@ -38,51 +33,8 @@ jobs:
+           python-version: ${{ matrix.python-version }}
+           working-directory: ${{ inputs.working-directory }}
+           poetry-version: ${{ env.POETRY_VERSION }}
+-          cache-key: ${{ matrix.test_type }}
+-          install-command: |
+-              if [ "${{ matrix.test_type }}" == "core" ]; then
+-                echo "Running core tests, installing dependencies with poetry..."
+-                poetry install
+-              elif [ "${{ matrix.test_type }}" == "core-pydantic-2" ]; then
+-                echo "Running core-pydantic-v2 tests, installing dependencies with poetry..."
+-                poetry install
+-
+-                # Install via `pip` instead of `poetry add` to avoid changing lockfile,
+-                # which would prevent caching from working: the cache would get saved
+-                # to a different key than where it gets loaded from.
+-                poetry run pip install 'pydantic>=2.1,<3'
+-              else
+-                echo "Running extended tests, installing dependencies with poetry..."
+-                poetry install -E extended_testing
+-              fi
+-      - name: Verify pydantic version
+-        run: |
+-          if [ "${{ matrix.test_type }}" == "core-pydantic-2" ]; then
+-            EXPECTED_VERSION=2
+-          else
+-            EXPECTED_VERSION=1
+-          fi
+-          echo "Checking pydantic version... Expecting ${EXPECTED_VERSION}"
+-
+-          # Determine the major part of pydantic version
+-          VERSION=$(poetry run python -c "import pydantic; print(pydantic.__version__)" | cut -d. -f1)
+-
+-          # Check that the major part of pydantic version is as expected, if not
+-          # raise an error
+-          if [[ "$VERSION" -ne $EXPECTED_VERSION ]]; then
+-            echo "Error: pydantic version must be equal to ${EXPECTED_VERSION}; Found: ${VERSION}"
+-            exit 1
+-          fi
+-          echo "Found pydantic version ${VERSION}, as expected"
+-        shell: bash
+-      - name: Run ${{matrix.test_type}} tests
+-        run: |
+-          case "${{ matrix.test_type }}" in
+-              core | core-pydantic-2)
+-                  make test
+-                  ;;
+-              *)
+-                  make extended_tests
+-                  ;;
+-          esac
++          cache-key: core
++          install-command: poetry install
++      - name: Run core tests
+         shell: bash
++        run: make test
+diff --git a/libs/langchain/tests/integration_tests/agent/test_ainetwork_agent.py b/libs/langchain/tests/integration_tests/agent/test_ainetwork_agent.py
+new file mode 100644
+index 0000000000000..58dd462ba6629
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/agent/test_ainetwork_agent.py
+@@ -0,0 +1,175 @@
++import asyncio
++import os
++import time
++import urllib.request
++import uuid
++from enum import Enum
++from typing import Any
++from urllib.error import HTTPError
++
++import pytest
++
++from langchain.agents import AgentType, initialize_agent
++from langchain.agents.agent_toolkits.ainetwork.toolkit import AINetworkToolkit
++from langchain.chat_models import ChatOpenAI
++from langchain.tools.ainetwork.utils import authenticate
++
++
++class Match(Enum):
++    __test__ = False
++    ListWildcard = 1
++    StrWildcard = 2
++    DictWildcard = 3
++    IntWildcard = 4
++    FloatWildcard = 5
++    ObjectWildcard = 6
++
++    @classmethod
++    def match(cls, value: Any, template: Any) -> bool:
++        if template is cls.ListWildcard:
++            return isinstance(value, list)
++        elif template is cls.StrWildcard:
++            return isinstance(value, str)
++        elif template is cls.DictWildcard:
++            return isinstance(value, dict)
++        elif template is cls.IntWildcard:
++            return isinstance(value, int)
++        elif template is cls.FloatWildcard:
++            return isinstance(value, float)
++        elif template is cls.ObjectWildcard:
++            return True
++        elif type(value) != type(template):
++            return False
++        elif isinstance(value, dict):
++            if len(value) != len(template):
++                return False
++            for k, v in value.items():
++                if k not in template or not cls.match(v, template[k]):
++                    return False
++            return True
++        elif isinstance(value, list):
++            if len(value) != len(template):
++                return False
++            for i in range(len(value)):
++                if not cls.match(value[i], template[i]):
++                    return False
++            return True
++        else:
++            return value == template
++
++
++@pytest.mark.requires("ain")
++def test_ainetwork_toolkit() -> None:
++    def get(path: str, type: str = "value", default: Any = None) -> Any:
++        ref = ain.db.ref(path)
++        value = asyncio.run(
++            {
++                "value": ref.getValue,
++                "rule": ref.getRule,
++                "owner": ref.getOwner,
++            }[type]()
++        )
++        return default if value is None else value
++
++    def validate(path: str, template: Any, type: str = "value") -> bool:
++        value = get(path, type)
++        return Match.match(value, template)
++
++    if not os.environ.get("AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY", None):
++        from ain.account import Account
++
++        account = Account.create()
++        os.environ["AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY"] = account.private_key
++
++    interface = authenticate(network="testnet")
++    toolkit = AINetworkToolkit(network="testnet", interface=interface)
++    llm = ChatOpenAI(model="gpt-4", temperature=0)
++    agent = initialize_agent(
++        tools=toolkit.get_tools(),
++        llm=llm,
++        verbose=True,
++        agent=AgentType.OPENAI_FUNCTIONS,
++    )
++    ain = interface
++    self_address = ain.wallet.defaultAccount.address
++    co_address = "0x6813Eb9362372EEF6200f3b1dbC3f819671cBA69"
++
++    # Test creating an app
++    UUID = uuid.UUID(
++        int=(int(time.time() * 1000) << 64) | (uuid.uuid4().int & ((1 << 64) - 1))
++    )
++    app_name = f"_langchain_test__{str(UUID).replace('-', '_')}"
++    agent.run(f"""Create app {app_name}""")
++    validate(f"/manage_app/{app_name}/config", {"admin": {self_address: True}})
++    validate(f"/apps/{app_name}/DB", None, "owner")
++
++    # Test reading owner config
++    agent.run(f"""Read owner config of /apps/{app_name}/DB .""")
++    assert ...
++
++    # Test granting owner config
++    agent.run(
++        f"""Grant owner authority to {co_address} for edit write rule permission of /apps/{app_name}/DB_co ."""  # noqa: E501
++    )
++    validate(
++        f"/apps/{app_name}/DB_co",
++        {
++            ".owner": {
++                "owners": {
++                    co_address: {
++                        "branch_owner": False,
++                        "write_function": False,
++                        "write_owner": False,
++                        "write_rule": True,
++                    }
++                }
++            }
++        },
++        "owner",
++    )
++
++    # Test reading owner config
++    agent.run(f"""Read owner config of /apps/{app_name}/DB_co .""")
++    assert ...
++
++    # Test reading owner config
++    agent.run(f"""Read owner config of /apps/{app_name}/DB .""")
++    assert ...  # Check if owner {self_address} exists
++
++    # Test reading a value
++    agent.run(f"""Read value in /apps/{app_name}/DB""")
++    assert ...  # empty
++
++    # Test writing a value
++    agent.run(f"""Write value {{1: 1904, 2: 43}} in /apps/{app_name}/DB""")
++    validate(f"/apps/{app_name}/DB", {1: 1904, 2: 43})
++
++    # Test reading a value
++    agent.run(f"""Read value in /apps/{app_name}/DB""")
++    assert ...  # check value
++
++    # Test reading a rule
++    agent.run(f"""Read write rule of app {app_name} .""")
++    assert ...  # check rule that self_address exists
++
++    # Test sending AIN
++    self_balance = get(f"/accounts/{self_address}/balance", default=0)
++    transaction_history = get(f"/transfer/{self_address}/{co_address}", default={})
++    if self_balance < 1:
++        try:
++            with urllib.request.urlopen(
++                f"http://faucet.ainetwork.ai/api/test/{self_address}/"
++            ) as response:
++                try_test = response.getcode()
++        except HTTPError as e:
++            try_test = e.getcode()
++    else:
++        try_test = 200
++
++    if try_test == 200:
++        agent.run(f"""Send 1 AIN to {co_address}""")
++        transaction_update = get(f"/transfer/{self_address}/{co_address}", default={})
++        assert any(
++            transaction_update[key]["value"] == 1
++            for key in transaction_update.keys() - transaction_history.keys()
++        )
+diff --git a/libs/langchain/tests/integration_tests/chains/test_graph_database_arangodb.py b/libs/langchain/tests/integration_tests/chains/test_graph_database_arangodb.py
+index 32494beb05f02..d6ce507567145 100644
+--- a/libs/langchain/tests/integration_tests/chains/test_graph_database_arangodb.py
++++ b/libs/langchain/tests/integration_tests/chains/test_graph_database_arangodb.py
+@@ -55,6 +55,21 @@ def test_connect_arangodb() -> None:
+     assert ["hello_world"] == sample_aql_result
+ 
+ 
++def test_empty_schema_on_no_data() -> None:
++    """Test that the schema is empty for an empty ArangoDB Database"""
++    db = get_arangodb_client()
++    db.delete_graph("GameOfThrones", drop_collections=True, ignore_missing=True)
++    db.delete_collection("empty_collection", ignore_missing=True)
++    db.create_collection("empty_collection")
++
++    graph = ArangoGraph(db)
++
++    assert graph.schema == {
++        "Graph Schema": [],
++        "Collection Schema": [],
++    }
++
++
+ def test_aql_generation() -> None:
+     """Test that AQL statement is correctly generated and executed."""
+     db = get_arangodb_client()
+diff --git a/libs/langchain/tests/integration_tests/document_loaders/test_polars_dataframe.py b/libs/langchain/tests/integration_tests/document_loaders/test_polars_dataframe.py
+new file mode 100644
+index 0000000000000..bd8e129dafae6
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/document_loaders/test_polars_dataframe.py
+@@ -0,0 +1,48 @@
++import polars as pl
++import pytest
++
++from langchain.document_loaders import PolarsDataFrameLoader
++from langchain.schema import Document
++
++
++@pytest.fixture
++def sample_data_frame() -> pl.DataFrame:
++    data = {
++        "text": ["Hello", "World"],
++        "author": ["Alice", "Bob"],
++        "date": ["2022-01-01", "2022-01-02"],
++    }
++    return pl.DataFrame(data)
++
++
++def test_load_returns_list_of_documents(sample_data_frame: pl.DataFrame) -> None:
++    loader = PolarsDataFrameLoader(sample_data_frame)
++    docs = loader.load()
++    assert isinstance(docs, list)
++    assert all(isinstance(doc, Document) for doc in docs)
++    assert len(docs) == 2
++
++
++def test_load_converts_dataframe_columns_to_document_metadata(
++    sample_data_frame: pl.DataFrame,
++) -> None:
++    loader = PolarsDataFrameLoader(sample_data_frame)
++    docs = loader.load()
++
++    for i, doc in enumerate(docs):
++        df: pl.DataFrame = sample_data_frame[i]
++        assert df is not None
++        assert doc.metadata["author"] == df.select("author").item()
++        assert doc.metadata["date"] == df.select("date").item()
++
++
++def test_load_uses_page_content_column_to_create_document_text(
++    sample_data_frame: pl.DataFrame,
++) -> None:
++    sample_data_frame = sample_data_frame.rename(mapping={"text": "dummy_test_column"})
++    loader = PolarsDataFrameLoader(
++        sample_data_frame, page_content_column="dummy_test_column"
++    )
++    docs = loader.load()
++    assert docs[0].page_content == "Hello"
++    assert docs[1].page_content == "World"
+diff --git a/libs/langchain/tests/integration_tests/llms/test_promptguard.py b/libs/langchain/tests/integration_tests/llms/test_promptguard.py
+new file mode 100644
+index 0000000000000..599df595a0a28
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/llms/test_promptguard.py
+@@ -0,0 +1,84 @@
++import langchain.utilities.promptguard as pgf
++from langchain import LLMChain, PromptTemplate
++from langchain.llms import OpenAI
++from langchain.llms.promptguard import PromptGuard
++from langchain.memory import ConversationBufferWindowMemory
++from langchain.schema.output_parser import StrOutputParser
++from langchain.schema.runnable import RunnableMap
++
++prompt_template = """
++As an AI assistant, you will answer questions according to given context.
++
++Sensitive personal information in the question is masked for privacy.
++For instance, if the original text says "Giana is good," it will be changed
++to "PERSON_998 is good."
++
++Here's how to handle these changes:
++* Consider these masked phrases just as placeholders, but still refer to
++them in a relevant way when answering.
++* It's possible that different masked terms might mean the same thing.
++Stick with the given term and don't modify it.
++* All masked terms follow the "TYPE_ID" pattern.
++* Please don't invent new masked terms. For instance, if you see "PERSON_998,"
++don't come up with "PERSON_997" or "PERSON_999" unless they're already in the question.
++
++Conversation History: ```{history}```
++Context : ```During our recent meeting on February 23, 2023, at 10:30 AM,
++John Doe provided me with his personal details. His email is johndoe@example.com
++and his contact number is 650-456-7890. He lives in New York City, USA, and
++belongs to the American nationality with Christian beliefs and a leaning towards
++the Democratic party. He mentioned that he recently made a transaction using his
++credit card 4111 1111 1111 1111 and transferred bitcoins to the wallet address
++1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa. While discussing his European travels, he
++noted down his IBAN as GB29 NWBK 6016 1331 9268 19. Additionally, he provided
++his website as https://johndoeportfolio.com. John also discussed
++some of his US-specific details. He said his bank account number is
++1234567890123456 and his drivers license is Y12345678. His ITIN is 987-65-4321,
++and he recently renewed his passport,
++the number for which is 123456789. He emphasized not to share his SSN, which is
++669-45-6789. Furthermore, he mentioned that he accesses his work files remotely
++through the IP 192.168.1.1 and has a medical license number MED-123456. ```
++Question: ```{question}```
++"""
++
++
++def test_promptguard() -> None:
++    chain = LLMChain(
++        prompt=PromptTemplate.from_template(prompt_template),
++        llm=PromptGuard(llm=OpenAI()),
++        memory=ConversationBufferWindowMemory(k=2),
++    )
++
++    output = chain.run(
++        {
++            "question": "Write a text message to remind John to do password reset \
++                for his website through his email to stay secure."
++        }
++    )
++    assert isinstance(output, str)
++
++
++def test_promptguard_functions() -> None:
++    prompt = (PromptTemplate.from_template(prompt_template),)
++    llm = OpenAI()
++    pg_chain = (
++        pgf.sanitize
++        | RunnableMap(
++            {
++                "response": (lambda x: x["sanitized_input"])  # type: ignore
++                | prompt
++                | llm
++                | StrOutputParser(),
++                "secure_context": lambda x: x["secure_context"],
++            }
++        )
++        | (lambda x: pgf.desanitize(x["response"], x["secure_context"]))
++    )
++
++    pg_chain.invoke(
++        {
++            "question": "Write a text message to remind John to do password reset\
++                 for his website through his email to stay secure.",
++            "history": "",
++        }
++    )
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_epsilla.py b/libs/langchain/tests/integration_tests/vectorstores/test_epsilla.py
+new file mode 100644
+index 0000000000000..af40d698bfdad
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_epsilla.py
+@@ -0,0 +1,31 @@
++"""Test Epsilla functionality."""
++from pyepsilla import vectordb
++
++from langchain.vectorstores import Epsilla
++from tests.integration_tests.vectorstores.fake_embeddings import (
++    FakeEmbeddings,
++    fake_texts,
++)
++
++
++def _test_from_texts() -> Epsilla:
++    embeddings = FakeEmbeddings()
++    client = vectordb.Client()
++    return Epsilla.from_texts(fake_texts, embeddings, client)
++
++
++def test_epsilla() -> None:
++    instance = _test_from_texts()
++    search = instance.similarity_search(query="bar", k=1)
++    result_texts = [doc.page_content for doc in search]
++    assert "bar" in result_texts
++
++
++def test_epsilla_add_texts() -> None:
++    embeddings = FakeEmbeddings()
++    client = vectordb.Client()
++    db = Epsilla(client, embeddings)
++    db.add_texts(fake_texts)
++    search = db.similarity_search(query="foo", k=1)
++    result_texts = [doc.page_content for doc in search]
++    assert "foo" in result_texts
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py b/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
+index 4821ee2dc2a04..94549735a678b 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
+@@ -158,6 +158,7 @@ def test_marqo_multimodal() -> None:
+                 "mainline/examples/ImageSearchGuide/data/image2.jpg",
+             },
+         ],
++        tensor_fields=["caption", "image"],
+     )
+ 
+     def get_content(res: Dict[str, str]) -> str:
+diff --git a/libs/langchain/tests/unit_tests/document_loaders/test_confluence.py b/libs/langchain/tests/unit_tests/document_loaders/test_confluence.py
+index a3d371bf783e9..42de78598a6b7 100644
+--- a/libs/langchain/tests/unit_tests/document_loaders/test_confluence.py
++++ b/libs/langchain/tests/unit_tests/document_loaders/test_confluence.py
+@@ -3,6 +3,7 @@
+ from unittest.mock import MagicMock, patch
+ 
+ import pytest
++import requests
+ 
+ from langchain.docstore.document import Document
+ from langchain.document_loaders.confluence import ConfluenceLoader
+@@ -23,7 +24,7 @@ class TestConfluenceLoader:
+ 
+     def test_confluence_loader_initialization(self, mock_confluence: MagicMock) -> None:
+         ConfluenceLoader(
+-            url=self.CONFLUENCE_URL,
++            self.CONFLUENCE_URL,
+             username=self.MOCK_USERNAME,
+             api_key=self.MOCK_API_TOKEN,
+         )
+@@ -34,6 +35,36 @@ def test_confluence_loader_initialization(self, mock_confluence: MagicMock) -> N
+             cloud=True,
+         )
+ 
++    def test_confluence_loader_initialization_invalid(self) -> None:
++        with pytest.raises(ValueError):
++            ConfluenceLoader(
++                self.CONFLUENCE_URL,
++                username=self.MOCK_USERNAME,
++                api_key=self.MOCK_API_TOKEN,
++                token="foo",
++            )
++
++        with pytest.raises(ValueError):
++            ConfluenceLoader(
++                self.CONFLUENCE_URL,
++                username=self.MOCK_USERNAME,
++                api_key=self.MOCK_API_TOKEN,
++                oauth2={
++                    "access_token": "bar",
++                    "access_token_secret": "bar",
++                    "consumer_key": "bar",
++                    "key_cert": "bar",
++                },
++            )
++
++        with pytest.raises(ValueError):
++            ConfluenceLoader(
++                self.CONFLUENCE_URL,
++                username=self.MOCK_USERNAME,
++                api_key=self.MOCK_API_TOKEN,
++                session=requests.Session(),
++            )
++
+     def test_confluence_loader_initialization_from_env(
+         self, mock_confluence: MagicMock
+     ) -> None:
+@@ -51,7 +82,7 @@ def test_confluence_loader_initialization_from_env(
+ 
+     def test_confluence_loader_load_data_invalid_args(self) -> None:
+         confluence_loader = ConfluenceLoader(
+-            url=self.CONFLUENCE_URL,
++            self.CONFLUENCE_URL,
+             username=self.MOCK_USERNAME,
+             api_key=self.MOCK_API_TOKEN,
+         )
+@@ -125,7 +156,7 @@ def _get_mock_confluence_loader(
+         self, mock_confluence: MagicMock
+     ) -> ConfluenceLoader:
+         confluence_loader = ConfluenceLoader(
+-            url=self.CONFLUENCE_URL,
++            self.CONFLUENCE_URL,
+             username=self.MOCK_USERNAME,
+             api_key=self.MOCK_API_TOKEN,
+         )
+diff --git a/libs/langchain/tests/unit_tests/tools/test_public_api.py b/libs/langchain/tests/unit_tests/tools/test_public_api.py
+index 43c2fb905aed1..6d58dd92ef2af 100644
+--- a/libs/langchain/tests/unit_tests/tools/test_public_api.py
++++ b/libs/langchain/tests/unit_tests/tools/test_public_api.py
+@@ -2,6 +2,11 @@
+ from langchain.tools import __all__ as public_api
+ 
+ _EXPECTED = [
++    "AINAppOps",
++    "AINOwnerOps",
++    "AINRuleOps",
++    "AINTransfer",
++    "AINValueOps",
+     "AIPluginTool",
+     "APIOperation",
+     "ArxivQueryRun",

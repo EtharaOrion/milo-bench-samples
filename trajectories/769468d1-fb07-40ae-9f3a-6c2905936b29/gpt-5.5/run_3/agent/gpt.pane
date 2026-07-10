@@ -1,0 +1,200 @@
+)
+func MarshalCustom(v types.Custom) graphql.Marshaler { return graphql.WriterFunc(func(w io.Writer){ io.WriteString(w, strconv.Quote(string(v))) }) }
+func UnmarshalCustom(v interface{}) (types.Custom, error) { s, ok := v.(string); if !ok { return "", fmt.Errorf("bad") }; return types.Custom(s), nil }
+`), 0644))
+        must(os.Chdir(app))
+        err = codegen.Generate(codegen.Config{
+                SchemaStr: "scalar Custom\n\ntype Query { custom(input: Custom): Custom! }\n",
+                Exec: codegen.PackageConfig{Filename:"generated.go", Package:"app"},
+                Model: codegen.PackageConfig{Filename:"models_gen.go", Package:"app"},
+                Models: codegen.TypeMap{"Custom": {Model:"example.com/scalar/marshal"}},
+        })
+        if err != nil { panic(err) }
+        b, err := ioutil.ReadFile(filepath.Join(app, "generated.go")); must(err)
+        out := string(b)
+        for _, want := range []string{"marshal.MarshalCustom(res)", "types.Custom", "marshal.UnmarshalCustom"} {
+                if !strings.Contains(out, want) { panic(fmt.Sprintf("missing %s", want)) }
+        }
+        cmd := exec.Command("go", "test", "example.com/app")
+        testOut, err := cmd.CombinedOutput(); if err != nil { panic(fmt.Sprintf("go test failed: %v\n%s", err, testOut)) }
+        fmt.Println("package-only external scalar marshaller passed")
+}
+EOF
+
+
+go run repro_tmp_issue180.go
+$ cd /workspace/gqlgen && ls repro_tmp_issue180.go 2>/dev/null || true && git status --short
+M codegen/build.go
+ M codegen/codegen.go
+ M codegen/import.go
+ M codegen/import_build.go
+ M codegen/type_build.go
+ M codegen/util.go
+ M go.mod
+ M handler/graphql.go
+ M neelance/validation/validation.go
+?? example/scalars/vendor/external/go.mod
+?? test/vendor/remote_api/go.mod
+$ cd /workspace/gqlgen && go test ./...
+?       github.com/vektah/gqlgen        [no test files]
+ok      github.com/vektah/gqlgen/client (cached)
+ok      github.com/vektah/gqlgen/codegen        16.285s
+ok      github.com/vektah/gqlgen/codegen/templates      (cached)
+?       github.com/vektah/gqlgen/codegen/templates/inliner      [no test files]
+ok      github.com/vektah/gqlgen/example/chat   (cached)
+?       github.com/vektah/gqlgen/example/chat/server    [no test files]
+ok      github.com/vektah/gqlgen/example/dataloader     (cached)
+?       github.com/vektah/gqlgen/example/dataloader/server      [no test files]
+ok      github.com/vektah/gqlgen/example/scalars        (cached)
+?       github.com/vektah/gqlgen/example/scalars/server [no test files]
+ok      github.com/vektah/gqlgen/example/selection      (cached)
+?       github.com/vektah/gqlgen/example/selection/server       [no test files]
+ok      github.com/vektah/gqlgen/example/starwars       (cached)
+?       github.com/vektah/gqlgen/example/starwars/server        [no test files]
+ok      github.com/vektah/gqlgen/example/todo   (cached)
+?       github.com/vektah/gqlgen/example/todo/server    [no test files]
+ok      github.com/vektah/gqlgen/graphql        (cached)
+ok      github.com/vektah/gqlgen/handler        (cached)
+?       github.com/vektah/gqlgen/neelance/common        [no test files]
+?       github.com/vektah/gqlgen/neelance/errors        [no test files]
+?       github.com/vektah/gqlgen/neelance/introspection [no test files]
+?       github.com/vektah/gqlgen/neelance/query [no test files]
+?       github.com/vektah/gqlgen/neelance/schema        [no test files]
+ok      github.com/vektah/gqlgen/neelance/tests (cached)
+?       github.com/vektah/gqlgen/neelance/validation    [no test files]
+?       github.com/vektah/gqlgen/opentracing    [no test files]
+ok      github.com/vektah/gqlgen/test   (cached)
+?       github.com/vektah/gqlgen/test/models    [no test files]
+# task_tracker: Mark all development tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/gqlgen && grep -R "importPath\|pkgAndType\|sanitizePackageName" -n codegen --include='*_test.go' codegen/*.go | sed -n '1,200p'
+codegen/codegen_test.go:17:             ok := assert.NotPanics(t, func() { got = importPath("/b/src/y/foo/bar", "bar") })
+codegen/codegen_test.go:26:             ok := assert.NotPanics(t, func() { got = importPath("/a/src/x/foo/bar", "bar") })
+codegen/codegen_test.go:17:             ok := assert.NotPanics(t, func() { got = importPath("/b/src/y/foo/bar", "bar") })
+codegen/codegen_test.go:26:             ok := assert.NotPanics(t, func() { got = importPath("/a/src/x/foo/bar", "bar") })
+# file_editor: View importPath unit tests
+NOTE: We only show up to 31 since there're only 31 lines in this file.
+Here's the result of running `cat -n` on /workspace/gqlgen/codegen/codegen_test.go:
+     1	package codegen
+     2	
+     3	import (
+     4		"go/build"
+     5		"testing"
+     6	
+     7		"github.com/stretchr/testify/assert"
+     8	)
+     9	
+    10	func Test_fullPackageName(t *testing.T) {
+    11		origBuildContext := build.Default
+    12		defer func() { build.Default = origBuildContext }()
+    13	
+    14		t.Run("gopath longer than package name", func(t *testing.T) {
+    15			build.Default.GOPATH = "/a/src/xxxxxxxxxxxxxxxxxxxxxxxx:/b/src/y"
+    16			var got string
+    17			ok := assert.NotPanics(t, func() { got = importPath("/b/src/y/foo/bar", "bar") })
+    18			if ok {
+    19				assert.Equal(t, "/b/src/y/foo/bar", got)
+    20			}
+    21		})
+    22		t.Run("stop searching on first hit", func(t *testing.T) {
+    23			build.Default.GOPATH = "/a/src/x:/b/src/y"
+    24	
+    25			var got string
+    26			ok := assert.NotPanics(t, func() { got = importPath("/a/src/x/foo/bar", "bar") })
+    27			if ok {
+    28				assert.Equal(t, "/a/src/x/foo/bar", got)
+    29			}
+    30		})
+    31	}
+# file_editor: Robustly parse module directive in go.mod
+The file /workspace/gqlgen/codegen/codegen.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/codegen/codegen.go:
+   150	func moduleImportPath(dir string) string {
+   151		for current := dir; ; current = filepath.Dir(current) {
+   152			gomod := filepath.Join(current, "go.mod")
+   153			if contents, err := ioutil.ReadFile(gomod); err == nil {
+   154				for _, line := range strings.Split(string(contents), "\n") {
+   155					fields := strings.Fields(line)
+   156					if len(fields) < 2 || fields[0] != "module" {
+   157						continue
+   158					}
+   159					module := strings.Trim(fields[1], "\"")
+   160					rel, err := filepath.Rel(current, dir)
+   161					if err != nil || rel == "." {
+   162						return module
+   163					}
+   164					return module + "/" + filepath.ToSlash(rel)
+   165				}
+   166			}
+   167			parent := filepath.Dir(current)
+   168			if parent == current {
+   169				return ""
+   170			}
+   171		}
+   172	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/gqlgen && gofmt -w codegen/codegen.go && go test ./codegen && go test ./...
+ok      github.com/vektah/gqlgen/codegen        15.989s
+?       github.com/vektah/gqlgen        [no test files]
+ok      github.com/vektah/gqlgen/client (cached)
+ok      github.com/vektah/gqlgen/codegen        (cached)
+ok      github.com/vektah/gqlgen/codegen/templates      (cached)
+?       github.com/vektah/gqlgen/codegen/templates/inliner      [no test files]
+ok      github.com/vektah/gqlgen/example/chat   (cached)
+?       github.com/vektah/gqlgen/example/chat/server    [no test files]
+ok      github.com/vektah/gqlgen/example/dataloader     (cached)
+?       github.com/vektah/gqlgen/example/dataloader/server      [no test files]
+ok      github.com/vektah/gqlgen/example/scalars        (cached)
+?       github.com/vektah/gqlgen/example/scalars/server [no test files]
+ok      github.com/vektah/gqlgen/example/selection      (cached)
+?       github.com/vektah/gqlgen/example/selection/server       [no test files]
+ok      github.com/vektah/gqlgen/example/starwars       (cached)
+?       github.com/vektah/gqlgen/example/starwars/server        [no test files]
+ok      github.com/vektah/gqlgen/example/todo   (cached)
+?       github.com/vektah/gqlgen/example/todo/server    [no test files]
+ok      github.com/vektah/gqlgen/graphql        (cached)
+ok      github.com/vektah/gqlgen/handler        (cached)
+?       github.com/vektah/gqlgen/neelance/common        [no test files]
+?       github.com/vektah/gqlgen/neelance/errors        [no test files]
+?       github.com/vektah/gqlgen/neelance/introspection [no test files]
+?       github.com/vektah/gqlgen/neelance/query [no test files]
+?       github.com/vektah/gqlgen/neelance/schema        [no test files]
+ok      github.com/vektah/gqlgen/neelance/tests (cached)
+?       github.com/vektah/gqlgen/neelance/validation    [no test files]
+?       github.com/vektah/gqlgen/opentracing    [no test files]
+ok      github.com/vektah/gqlgen/test   (cached)
+?       github.com/vektah/gqlgen/test/models    [no test files]
+$ cd /workspace/gqlgen && git status --short && find . -maxdepth 2 -name 'repro*' -o -name '*tmp*' | sed -n '1,80p'
+M codegen/build.go
+ M codegen/codegen.go
+ M codegen/import.go
+ M codegen/import_build.go
+ M codegen/type_build.go
+ M codegen/util.go
+ M go.mod
+ M handler/graphql.go
+ M neelance/validation/validation.go
+?? example/scalars/vendor/external/go.mod
+?? test/vendor/remote_api/go.mod
+# finish: Finish gqlgen issue fixes with passing tests
+Implemented the gqlgen fixes and completed validation.
+
+What changed:
+- Fixed typemap parsing so package paths with dots (for example `example.com/foo-bar`) are no longer mistaken for package `example` plus type `com/foo-bar`.
+- Added support for package-only typemap entries by defaulting the Go type name to the GraphQL type name.
+- Changed generated import resolution to return ordinary errors instead of panicking, so bad input from CLI/codegen fails gracefully.
+- Improved same-package/self-import detection, including `package main`, GOPATH paths, and module paths.
+- Fixed generated import-path derivation to use the output directory and added a module-aware fallback.
+- Fixed external scalar marshaller handling where the marshaller package and marshalled Go type package differ.
+- Added local module replacements for the legacy vendored `external` and `remote_api` example packages so the full module test suite can run.
+- Fixed a few Go vet dynamic-format-string failures in non-test files.
+
+Validation performed:
+- Wrote and ran temporary `go run` reproduction scripts, then removed them.
+- Confirmed the original package-main/path-only typemap panic was reproduced before the fix.
+- Confirmed post-fix generation succeeds for `package main` without self-imports.
+- Confirmed bad imports return errors without panics.
+- Confirmed package-only external scalar marshaller generation produces valid code and compiles.
+- Ran related tests: `go test ./codegen`.
+- Ran full test suite: `go test ./...`.
+
+All tests pass. No test files were modified.

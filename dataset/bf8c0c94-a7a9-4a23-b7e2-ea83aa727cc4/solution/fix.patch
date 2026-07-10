@@ -1,0 +1,1708 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index bdcf3ad2605..0e2d1efd28a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
+ <!-- next-header -->
+ ## [Unreleased] - ReleaseDate
+ 
++## [4.1.5] - 2023-02-15
++
++### Fixes
++
++- *(help)* Don't show long help for `--help` just because a hidden arg has a possible value with a description
++
+ ## [4.1.4] - 2023-01-24
+ 
+ ### Fixes
+@@ -4119,7 +4125,8 @@ Minimum version of Rust is now v1.13.0 (Stable)
+ * **arg**  allow lifetimes other than 'static in arguments ([9e8c1fb9](https://github.com/clap-rs/clap/commit/9e8c1fb9406f8448873ca58bab07fe905f1551e5))
+ 
+ <!-- next-url -->
+-[Unreleased]: https://github.com/clap-rs/clap/compare/v4.1.4...HEAD
++[Unreleased]: https://github.com/clap-rs/clap/compare/v4.1.5...HEAD
++[4.1.5]: https://github.com/clap-rs/clap/compare/v4.1.4...v4.1.5
+ [4.1.4]: https://github.com/clap-rs/clap/compare/v4.1.3...v4.1.4
+ [4.1.3]: https://github.com/clap-rs/clap/compare/v4.1.2...v4.1.3
+ [4.1.2]: https://github.com/clap-rs/clap/compare/v4.1.1...v4.1.2
+diff --git a/Cargo.lock b/Cargo.lock
+index 5cbab71b174..0c1ad9f90b9 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -126,7 +126,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap"
+-version = "4.1.4"
++version = "4.1.5"
+ dependencies = [
+  "backtrace",
+  "bitflags",
+@@ -153,16 +153,16 @@ dependencies = [
+ name = "clap_bench"
+ version = "0.0.0"
+ dependencies = [
+- "clap 4.1.4",
++ "clap 4.1.5",
+  "criterion",
+  "lazy_static",
+ ]
+ 
+ [[package]]
+ name = "clap_complete"
+-version = "4.1.1"
++version = "4.1.2"
+ dependencies = [
+- "clap 4.1.4",
++ "clap 4.1.5",
+  "clap_lex 0.3.1",
+  "is_executable",
+  "os_str_bytes",
+@@ -175,9 +175,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap_complete_fig"
+-version = "4.1.0"
++version = "4.1.1"
+ dependencies = [
+- "clap 4.1.4",
++ "clap 4.1.5",
+  "clap_complete",
+  "snapbox",
+ ]
+@@ -211,9 +211,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap_mangen"
+-version = "0.2.7"
++version = "0.2.8"
+ dependencies = [
+- "clap 4.1.4",
++ "clap 4.1.5",
+  "roff",
+  "snapbox",
+ ]
+diff --git a/Cargo.toml b/Cargo.toml
+index 7fc4c57de4d..6ef541c988d 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -24,7 +24,7 @@ include = [
+ 
+ [package]
+ name = "clap"
+-version = "4.1.4"
++version = "4.1.5"
+ description = "A simple to use, efficient, and full-featured Command Line Argument Parser"
+ repository = "https://github.com/clap-rs/clap"
+ categories = ["command-line-interface"]
+diff --git a/clap_complete/CHANGELOG.md b/clap_complete/CHANGELOG.md
+index 55d489584c8..bac3222ef80 100644
+--- a/clap_complete/CHANGELOG.md
++++ b/clap_complete/CHANGELOG.md
+@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
+ <!-- next-header -->
+ ## [Unreleased] - ReleaseDate
+ 
++## [4.1.2] - 2023-02-15
++
+ ## [4.1.1] - 2023-01-23
+ 
+ ### Fixes
+@@ -109,7 +111,8 @@ MSRV changed to 1.64.0
+ ## [3.0.1] - 2022-01-03
+ 
+ <!-- next-url -->
+-[Unreleased]: https://github.com/clap-rs/clap/compare/clap_complete-v4.1.1...HEAD
++[Unreleased]: https://github.com/clap-rs/clap/compare/clap_complete-v4.1.2...HEAD
++[4.1.2]: https://github.com/clap-rs/clap/compare/clap_complete-v4.1.1...clap_complete-v4.1.2
+ [4.1.1]: https://github.com/clap-rs/clap/compare/clap_complete-v4.1.0...clap_complete-v4.1.1
+ [4.1.0]: https://github.com/clap-rs/clap/compare/clap_complete-v4.0.7...clap_complete-v4.1.0
+ [4.0.7]: https://github.com/clap-rs/clap/compare/clap_complete-v4.0.6...clap_complete-v4.0.7
+diff --git a/clap_complete/Cargo.toml b/clap_complete/Cargo.toml
+index 94a18d32436..f28a327b733 100644
+--- a/clap_complete/Cargo.toml
++++ b/clap_complete/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "clap_complete"
+-version = "4.1.1"
++version = "4.1.2"
+ description = "Generate shell completion scripts for your clap::Command"
+ repository = "https://github.com/clap-rs/clap/tree/master/clap_complete"
+ categories = ["command-line-interface"]
+diff --git a/clap_complete/README.md b/clap_complete/README.md
+index e500809f784..b955edf0e7a 100644
+--- a/clap_complete/README.md
++++ b/clap_complete/README.md
+@@ -5,16 +5,16 @@
+ 
+ [![Crates.io](https://img.shields.io/crates/v/clap_complete?style=flat-square)](https://crates.io/crates/clap_complete)
+ [![Crates.io](https://img.shields.io/crates/d/clap_complete?style=flat-square)](https://crates.io/crates/clap_complete)
+-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.1/LICENSE-APACHE)
+-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.1/LICENSE-MIT)
++[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.2/LICENSE-APACHE)
++[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.2/LICENSE-MIT)
+ 
+ Dual-licensed under [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
+ 
+ 1. [About](#about)
+ 2. [API Reference](https://docs.rs/clap_complete)
+ 3. [Questions & Discussions](https://github.com/clap-rs/clap/discussions)
+-4. [CONTRIBUTING](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.1/clap_complete/CONTRIBUTING.md)
+-5. [Sponsors](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.1/README.md#sponsors)
++4. [CONTRIBUTING](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.2/clap_complete/CONTRIBUTING.md)
++5. [Sponsors](https://github.com/clap-rs/clap/blob/clap_complete-v4.1.2/README.md#sponsors)
+ 
+ ## About
+ 
+diff --git a/clap_complete/examples/completion-derive.rs b/clap_complete/examples/completion-derive.rs
+index 8eeebf89d46..9ca70f76e36 100644
+--- a/clap_complete/examples/completion-derive.rs
++++ b/clap_complete/examples/completion-derive.rs
+@@ -75,9 +75,9 @@ fn main() {
+ 
+     if let Some(generator) = opt.generator {
+         let mut cmd = Opt::command();
+-        eprintln!("Generating completion file for {:?}...", generator);
++        eprintln!("Generating completion file for {generator:?}...");
+         print_completions(generator, &mut cmd);
+     } else {
+-        println!("{:#?}", opt);
++        println!("{opt:#?}");
+     }
+ }
+diff --git a/clap_complete/examples/completion.rs b/clap_complete/examples/completion.rs
+index 0455d4f9c1f..70487b3b91f 100644
+--- a/clap_complete/examples/completion.rs
++++ b/clap_complete/examples/completion.rs
+@@ -103,7 +103,7 @@ fn main() {
+ 
+     if let Some(generator) = matches.get_one::<Shell>("generator") {
+         let mut cmd = build_cli();
+-        eprintln!("Generating completion file for {}...", generator);
++        eprintln!("Generating completion file for {generator}...");
+         print_completions(*generator, &mut cmd);
+     }
+ }
+diff --git a/clap_complete/src/shells/bash.rs b/clap_complete/src/shells/bash.rs
+index df9557611ec..b66634098f6 100644
+--- a/clap_complete/src/shells/bash.rs
++++ b/clap_complete/src/shells/bash.rs
+@@ -10,7 +10,7 @@ pub struct Bash;
+ 
+ impl Generator for Bash {
+     fn file_name(&self, name: &str) -> String {
+-        format!("{}.bash", name)
++        format!("{name}.bash")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn Write) {
+@@ -114,9 +114,6 @@ fn all_subcommands(cmd: &Command) -> String {
+             "{parent_fn_name},{name})
+                 cmd=\"{fn_name}\"
+                 ;;",
+-            parent_fn_name = parent_fn_name,
+-            name = name,
+-            fn_name = fn_name,
+         ));
+     }
+ 
+@@ -221,10 +218,10 @@ fn all_options_for_path(cmd: &Command, path: &str) -> String {
+ 
+     let mut opts = String::new();
+     for short in utils::shorts_and_visible_aliases(p) {
+-        write!(&mut opts, "-{} ", short).unwrap();
++        write!(&mut opts, "-{short} ").unwrap();
+     }
+     for long in utils::longs_and_visible_aliases(p) {
+-        write!(&mut opts, "--{} ", long).unwrap();
++        write!(&mut opts, "--{long} ").unwrap();
+     }
+     for pos in p.get_positionals() {
+         if let Some(vals) = utils::possible_values(pos) {
+@@ -232,11 +229,11 @@ fn all_options_for_path(cmd: &Command, path: &str) -> String {
+                 write!(&mut opts, "{} ", value.get_name()).unwrap();
+             }
+         } else {
+-            write!(&mut opts, "{} ", pos).unwrap();
++            write!(&mut opts, "{pos} ").unwrap();
+         }
+     }
+     for (sc, _) in utils::subcommands(p) {
+-        write!(&mut opts, "{} ", sc).unwrap();
++        write!(&mut opts, "{sc} ").unwrap();
+     }
+     opts.pop();
+ 
+diff --git a/clap_complete/src/shells/elvish.rs b/clap_complete/src/shells/elvish.rs
+index 07da2834802..48a0f852bbf 100644
+--- a/clap_complete/src/shells/elvish.rs
++++ b/clap_complete/src/shells/elvish.rs
+@@ -12,7 +12,7 @@ pub struct Elvish;
+ 
+ impl Generator for Elvish {
+     fn file_name(&self, name: &str) -> String {
+-        format!("{}.elv", name)
++        format!("{name}.elv")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn Write) {
+@@ -46,8 +46,6 @@ set edit:completion:arg-completer[{bin_name}] = {{|@words|
+     $completions[$command]
+ }}
+ "#,
+-            bin_name = bin_name,
+-            subcommands_cases = subcommands_cases
+         );
+ 
+         w!(buf, result.as_bytes());
+@@ -83,7 +81,7 @@ fn generate_inner(p: &Command, previous_command_name: &str) -> String {
+             let tooltip = get_tooltip(option.get_help(), shorts[0]);
+             for short in shorts {
+                 completions.push_str(&preamble);
+-                completions.push_str(format!("-{} '{}'", short, tooltip).as_str());
++                completions.push_str(format!("-{short} '{tooltip}'").as_str());
+             }
+         }
+ 
+@@ -91,7 +89,7 @@ fn generate_inner(p: &Command, previous_command_name: &str) -> String {
+             let tooltip = get_tooltip(option.get_help(), longs[0]);
+             for long in longs {
+                 completions.push_str(&preamble);
+-                completions.push_str(format!("--{} '{}'", long, tooltip).as_str());
++                completions.push_str(format!("--{long} '{tooltip}'").as_str());
+             }
+         }
+     }
+@@ -101,7 +99,7 @@ fn generate_inner(p: &Command, previous_command_name: &str) -> String {
+             let tooltip = get_tooltip(flag.get_help(), shorts[0]);
+             for short in shorts {
+                 completions.push_str(&preamble);
+-                completions.push_str(format!("-{} '{}'", short, tooltip).as_str());
++                completions.push_str(format!("-{short} '{tooltip}'").as_str());
+             }
+         }
+ 
+@@ -109,7 +107,7 @@ fn generate_inner(p: &Command, previous_command_name: &str) -> String {
+             let tooltip = get_tooltip(flag.get_help(), longs[0]);
+             for long in longs {
+                 completions.push_str(&preamble);
+-                completions.push_str(format!("--{} '{}'", long, tooltip).as_str());
++                completions.push_str(format!("--{long} '{tooltip}'").as_str());
+             }
+         }
+     }
+@@ -119,7 +117,7 @@ fn generate_inner(p: &Command, previous_command_name: &str) -> String {
+         let tooltip = get_tooltip(subcommand.get_about(), data);
+ 
+         completions.push_str(&preamble);
+-        completions.push_str(format!("{} '{}'", data, tooltip).as_str());
++        completions.push_str(format!("{data} '{tooltip}'").as_str());
+     }
+ 
+     let mut subcommands_cases = format!(
+diff --git a/clap_complete/src/shells/fish.rs b/clap_complete/src/shells/fish.rs
+index fd2f3a4f80a..77a72f7ebde 100644
+--- a/clap_complete/src/shells/fish.rs
++++ b/clap_complete/src/shells/fish.rs
+@@ -12,7 +12,7 @@ pub struct Fish;
+ 
+ impl Generator for Fish {
+     fn file_name(&self, name: &str) -> String {
+-        format!("{}.fish", name)
++        format!("{name}.fish")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn Write) {
+@@ -56,7 +56,7 @@ fn gen_fish_inner(
+     //      -n "__fish_use_subcommand"               # complete for command "myprog"
+     //      -n "__fish_seen_subcommand_from subcmd1" # complete for command "myprog subcmd1"
+ 
+-    let mut basic_template = format!("complete -c {}", root_command);
++    let mut basic_template = format!("complete -c {root_command}");
+ 
+     if parent_commands.is_empty() {
+         if cmd.has_subcommands() {
+@@ -68,10 +68,10 @@ fn gen_fish_inner(
+                 " -n \"{}\"",
+                 parent_commands
+                     .iter()
+-                    .map(|command| format!("__fish_seen_subcommand_from {}", command))
++                    .map(|command| format!("__fish_seen_subcommand_from {command}"))
+                     .chain(
+                         cmd.get_subcommands()
+-                            .map(|command| format!("not __fish_seen_subcommand_from {}", command))
++                            .map(|command| format!("not __fish_seen_subcommand_from {command}"))
+                     )
+                     .collect::<Vec<_>>()
+                     .join("; and ")
+@@ -87,7 +87,7 @@ fn gen_fish_inner(
+ 
+         if let Some(shorts) = option.get_short_and_visible_aliases() {
+             for short in shorts {
+-                template.push_str(format!(" -s {}", short).as_str());
++                template.push_str(format!(" -s {short}").as_str());
+             }
+         }
+ 
+@@ -113,7 +113,7 @@ fn gen_fish_inner(
+ 
+         if let Some(shorts) = flag.get_short_and_visible_aliases() {
+             for short in shorts {
+-                template.push_str(format!(" -s {}", short).as_str());
++                template.push_str(format!(" -s {short}").as_str());
+             }
+         }
+ 
+diff --git a/clap_complete/src/shells/powershell.rs b/clap_complete/src/shells/powershell.rs
+index 0d3a2a55f73..92467d53c84 100644
+--- a/clap_complete/src/shells/powershell.rs
++++ b/clap_complete/src/shells/powershell.rs
+@@ -12,7 +12,7 @@ pub struct PowerShell;
+ 
+ impl Generator for PowerShell {
+     fn file_name(&self, name: &str) -> String {
+-        format!("_{}.ps1", name)
++        format!("_{name}.ps1")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn Write) {
+diff --git a/clap_complete/src/shells/shell.rs b/clap_complete/src/shells/shell.rs
+index 4ae4a79ce9f..52cb2e9b741 100644
+--- a/clap_complete/src/shells/shell.rs
++++ b/clap_complete/src/shells/shell.rs
+@@ -42,7 +42,7 @@ impl FromStr for Shell {
+                 return Ok(*variant);
+             }
+         }
+-        Err(format!("invalid variant: {}", s))
++        Err(format!("invalid variant: {s}"))
+     }
+ }
+ 
+diff --git a/clap_complete/src/shells/zsh.rs b/clap_complete/src/shells/zsh.rs
+index 15a9ed126dc..d2e29ddb3cc 100644
+--- a/clap_complete/src/shells/zsh.rs
++++ b/clap_complete/src/shells/zsh.rs
+@@ -11,7 +11,7 @@ pub struct Zsh;
+ 
+ impl Generator for Zsh {
+     fn file_name(&self, name: &str) -> String {
+-        format!("_{}", name)
++        format!("_{name}")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn Write) {
+@@ -111,8 +111,8 @@ _{bin_name_underscore}_commands() {{
+     all_subcommands.sort();
+     all_subcommands.dedup();
+ 
+-    for &(_, ref bin_name) in &all_subcommands {
+-        debug!("subcommand_details:iter: bin_name={}", bin_name);
++    for (_, ref bin_name) in &all_subcommands {
++        debug!("subcommand_details:iter: bin_name={bin_name}");
+ 
+         ret.push(format!(
+             "\
+@@ -223,14 +223,12 @@ fn get_subcommands_of(parent: &Command) -> String {
+     let subcommand_names = utils::subcommands(parent);
+     let mut all_subcommands = vec![];
+ 
+-    for &(ref name, ref bin_name) in &subcommand_names {
++    for (ref name, ref bin_name) in &subcommand_names {
+         debug!(
+-            "get_subcommands_of:iter: parent={}, name={}, bin_name={}",
++            "get_subcommands_of:iter: parent={}, name={name}, bin_name={bin_name}",
+             parent.get_name(),
+-            name,
+-            bin_name,
+         );
+-        let mut segments = vec![format!("({})", name)];
++        let mut segments = vec![format!("({name})")];
+         let subcommand_args = get_args_of(
+             parser_of(parent, bin_name).expect(INTERNAL_ERROR_MSG),
+             Some(parent),
+@@ -458,8 +456,8 @@ fn write_opts_of(p: &Command, p_global: Option<&Command>) -> String {
+             Some(val) => val[0].to_string(),
+         };
+         let vc = match value_completion(o) {
+-            Some(val) => format!(":{}:{}", vn, val),
+-            None => format!(":{}: ", vn),
++            Some(val) => format!(":{vn}:{val}"),
++            None => format!(":{vn}: "),
+         };
+         let vc = vc.repeat(o.get_num_args().expect("built").min_values());
+ 
+@@ -502,11 +500,11 @@ fn arg_conflicts(cmd: &Command, arg: &Arg, app_global: Option<&Command>) -> Stri
+     fn push_conflicts(conflicts: &[&Arg], res: &mut Vec<String>) {
+         for conflict in conflicts {
+             if let Some(s) = conflict.get_short() {
+-                res.push(format!("-{}", s));
++                res.push(format!("-{s}"));
+             }
+ 
+             if let Some(l) = conflict.get_long() {
+-                res.push(format!("--{}", l));
++                res.push(format!("--{l}"));
+             }
+         }
+     }
+@@ -568,13 +566,7 @@ fn write_flags_of(p: &Command, p_global: Option<&Command>) -> String {
+ 
+             if let Some(short_aliases) = f.get_visible_short_aliases() {
+                 for alias in short_aliases {
+-                    let s = format!(
+-                        "'{conflicts}{multiple}-{arg}[{help}]' \\",
+-                        multiple = multiple,
+-                        conflicts = conflicts,
+-                        arg = alias,
+-                        help = help
+-                    );
++                    let s = format!("'{conflicts}{multiple}-{alias}[{help}]' \\",);
+ 
+                     debug!("write_flags_of:iter: Wrote...{}", &*s);
+ 
+diff --git a/clap_complete_fig/CHANGELOG.md b/clap_complete_fig/CHANGELOG.md
+index 5b331afc96b..e1251d73b86 100644
+--- a/clap_complete_fig/CHANGELOG.md
++++ b/clap_complete_fig/CHANGELOG.md
+@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
+ <!-- next-header -->
+ ## [Unreleased] - ReleaseDate
+ 
++## [4.1.1] - 2023-02-15
++
+ ## [4.1.0] - 2023-01-13
+ 
+ ### Compatibility
+@@ -63,7 +65,8 @@ MSRV changed to 1.64.0
+ ## [3.0.1] - 2022-01-03
+ 
+ <!-- next-url -->
+-[Unreleased]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.1.0...HEAD
++[Unreleased]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.1.1...HEAD
++[4.1.1]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.1.0...clap_complete_fig-v4.1.1
+ [4.1.0]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.0.2...clap_complete_fig-v4.1.0
+ [4.0.2]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.0.1...clap_complete_fig-v4.0.2
+ [4.0.1]: https://github.com/clap-rs/clap/compare/clap_complete_fig-v4.0.0...clap_complete_fig-v4.0.1
+diff --git a/clap_complete_fig/Cargo.toml b/clap_complete_fig/Cargo.toml
+index be90f65e9ab..89592db2d5a 100644
+--- a/clap_complete_fig/Cargo.toml
++++ b/clap_complete_fig/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "clap_complete_fig"
+-version = "4.1.0"
++version = "4.1.1"
+ description = "A generator library used with clap for Fig completion scripts"
+ repository = "https://github.com/clap-rs/clap/tree/master/clap_complete_fig"
+ categories = ["command-line-interface"]
+diff --git a/clap_complete_fig/src/fig.rs b/clap_complete_fig/src/fig.rs
+index 6a81afaf6f5..07fb8a136c8 100644
+--- a/clap_complete_fig/src/fig.rs
++++ b/clap_complete_fig/src/fig.rs
+@@ -11,7 +11,7 @@ pub struct Fig;
+ 
+ impl Generator for Fig {
+     fn file_name(&self, name: &str) -> String {
+-        format!("{}.ts", name)
++        format!("{name}.ts")
+     }
+ 
+     fn generate(&self, cmd: &Command, buf: &mut dyn std::io::Write) {
+@@ -267,11 +267,11 @@ fn gen_options(cmd: &Command, indent: usize) -> String {
+             let mut flags = vec![];
+ 
+             if let Some(shorts) = flag.get_short_and_visible_aliases() {
+-                flags.extend(shorts.iter().map(|s| format!("-{}", s)));
++                flags.extend(shorts.iter().map(|s| format!("-{s}")));
+             }
+ 
+             if let Some(longs) = flag.get_long_and_visible_aliases() {
+-                flags.extend(longs.iter().map(|s| format!("--{}", s)));
++                flags.extend(longs.iter().map(|s| format!("--{s}")));
+             }
+ 
+             if flags.len() > 1 {
+diff --git a/clap_mangen/CHANGELOG.md b/clap_mangen/CHANGELOG.md
+index fbb4b9980af..74ec6525d24 100644
+--- a/clap_mangen/CHANGELOG.md
++++ b/clap_mangen/CHANGELOG.md
+@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
+ <!-- next-header -->
+ ## [Unreleased] - ReleaseDate
+ 
++## [0.2.8] - 2023-02-15
++
+ ## [0.2.7] - 2023-01-13
+ 
+ ### Compatibility
+@@ -72,7 +74,8 @@ MSRV changed to 1.64.0
+ - Expanded the documentation
+ 
+ <!-- next-url -->
+-[Unreleased]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.7...HEAD
++[Unreleased]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.8...HEAD
++[0.2.8]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.7...clap_mangen-v0.2.8
+ [0.2.7]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.6...clap_mangen-v0.2.7
+ [0.2.6]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.5...clap_mangen-v0.2.6
+ [0.2.5]: https://github.com/clap-rs/clap/compare/clap_mangen-v0.2.4...clap_mangen-v0.2.5
+diff --git a/clap_mangen/Cargo.toml b/clap_mangen/Cargo.toml
+index 7696c7c0bce..ffbfd673528 100644
+--- a/clap_mangen/Cargo.toml
++++ b/clap_mangen/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "clap_mangen"
+-version = "0.2.7"
++version = "0.2.8"
+ description = "A manpage generator for clap"
+ repository = "https://github.com/clap-rs/clap/tree/master/clap_mangen"
+ categories = ["command-line-interface"]
+diff --git a/clap_mangen/README.md b/clap_mangen/README.md
+index 138e4206f59..43804a2d3f6 100644
+--- a/clap_mangen/README.md
++++ b/clap_mangen/README.md
+@@ -5,16 +5,16 @@
+ 
+ [![Crates.io](https://img.shields.io/crates/v/clap_mangen?style=flat-square)](https://crates.io/crates/clap_mangen)
+ [![Crates.io](https://img.shields.io/crates/d/clap_mangen?style=flat-square)](https://crates.io/crates/clap_mangen)
+-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.7/LICENSE-APACHE)
+-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.7/LICENSE-MIT)
++[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.8/LICENSE-APACHE)
++[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.8/LICENSE-MIT)
+ 
+ Dual-licensed under [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
+ 
+ 1. [About](#about)
+ 2. [API Reference](https://docs.rs/clap_mangen)
+ 3. [Questions & Discussions](https://github.com/clap-rs/clap/discussions)
+-4. [CONTRIBUTING](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.7/clap_mangen/CONTRIBUTING.md)
+-5. [Sponsors](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.7/README.md#sponsors)
++4. [CONTRIBUTING](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.8/clap_mangen/CONTRIBUTING.md)
++5. [Sponsors](https://github.com/clap-rs/clap/blob/clap_mangen-v0.2.8/README.md#sponsors)
+ 
+ ## About
+ 
+@@ -25,10 +25,9 @@ Generate [ROFF](https://en.wikipedia.org/wiki/Roff_(software)) from a `clap::Com
+ We're going to assume you want to generate your man page as part of your
+ development rather than your shipped program having a flag to generate it.
+ 
+-In your `Cargo.toml`:
+-```toml
+-[build-dependencies]
+-clap_mangen = "0.1"
++Run
++```console
++$ cargo add --build clap_mangen
+ ```
+ 
+ In your `build.rs`:
+diff --git a/clap_mangen/src/render.rs b/clap_mangen/src/render.rs
+index ab9c9ec75c1..b88a7526bb0 100644
+--- a/clap_mangen/src/render.rs
++++ b/clap_mangen/src/render.rs
+@@ -36,19 +36,19 @@ pub(crate) fn synopsis(roff: &mut Roff, cmd: &clap::Command) {
+         match (opt.get_short(), opt.get_long()) {
+             (Some(short), Some(long)) => {
+                 line.push(roman(lhs));
+-                line.push(bold(format!("-{}", short)));
++                line.push(bold(format!("-{short}")));
+                 line.push(roman("|"));
+-                line.push(bold(format!("--{}", long)));
++                line.push(bold(format!("--{long}",)));
+                 line.push(roman(rhs));
+             }
+             (Some(short), None) => {
+                 line.push(roman(lhs));
+-                line.push(bold(format!("-{} ", short)));
++                line.push(bold(format!("-{short} ")));
+                 line.push(roman(rhs));
+             }
+             (None, Some(long)) => {
+                 line.push(roman(lhs));
+-                line.push(bold(format!("--{}", long)));
++                line.push(bold(format!("--{long}")));
+                 line.push(roman(rhs));
+             }
+             (None, None) => continue,
+@@ -168,7 +168,7 @@ pub(crate) fn options(roff: &mut Roff, cmd: &clap::Command) {
+         header.push(roman(rhs));
+ 
+         if let Some(defs) = option_default_values(pos) {
+-            header.push(roman(format!(" {}", defs)));
++            header.push(roman(format!(" {defs}")));
+         }
+ 
+         let mut body = vec![];
+@@ -273,11 +273,11 @@ fn markers(required: bool) -> (&'static str, &'static str) {
+ }
+ 
+ fn short_option(opt: char) -> Inline {
+-    bold(format!("-{}", opt))
++    bold(format!("-{opt}"))
+ }
+ 
+ fn long_option(opt: &str) -> Inline {
+-    bold(format!("--{}", opt))
++    bold(format!("--{opt}"))
+ }
+ 
+ fn option_help(opt: &clap::Arg) -> Option<&clap::builder::StyledStr> {
+@@ -319,7 +319,7 @@ fn option_default_values(opt: &clap::Arg) -> Option<String> {
+             .collect::<Vec<_>>()
+             .join(",");
+ 
+-        return Some(format!("[default: {}]", values));
++        return Some(format!("[default: {values}]"));
+     }
+ 
+     None
+@@ -343,7 +343,7 @@ fn format_possible_values(possibles: &Vec<&clap::builder::PossibleValue>) -> (Ve
+         for value in possibles {
+             let val_name = value.get_name();
+             match value.get_help() {
+-                Some(help) => lines.push(format!("{}: {}", val_name, help)),
++                Some(help) => lines.push(format!("{val_name}: {help}")),
+                 None => lines.push(val_name.to_string()),
+             }
+         }
+diff --git a/examples/cargo-example-derive.rs b/examples/cargo-example-derive.rs
+index d9603db896b..dfdd799fc19 100644
+--- a/examples/cargo-example-derive.rs
++++ b/examples/cargo-example-derive.rs
+@@ -3,18 +3,18 @@ use clap::Parser;
+ #[derive(Parser)] // requires `derive` feature
+ #[command(name = "cargo")]
+ #[command(bin_name = "cargo")]
+-enum Cargo {
+-    ExampleDerive(ExampleDerive),
++enum CargoCli {
++    ExampleDerive(ExampleDeriveArgs),
+ }
+ 
+ #[derive(clap::Args)]
+ #[command(author, version, about, long_about = None)]
+-struct ExampleDerive {
++struct ExampleDeriveArgs {
+     #[arg(long)]
+     manifest_path: Option<std::path::PathBuf>,
+ }
+ 
+ fn main() {
+-    let Cargo::ExampleDerive(args) = Cargo::parse();
++    let CargoCli::ExampleDerive(args) = CargoCli::parse();
+     println!("{:?}", args.manifest_path);
+ }
+diff --git a/examples/derive_ref/augment_args.rs b/examples/derive_ref/augment_args.rs
+index 458beb44c1e..39d837cfaf5 100644
+--- a/examples/derive_ref/augment_args.rs
++++ b/examples/derive_ref/augment_args.rs
+@@ -23,5 +23,5 @@ fn main() {
+     let derived_matches = DerivedArgs::from_arg_matches(&matches)
+         .map_err(|err| err.exit())
+         .unwrap();
+-    println!("Value of derived: {:#?}", derived_matches);
++    println!("Value of derived: {derived_matches:#?}");
+ }
+diff --git a/examples/derive_ref/augment_subcommands.rs b/examples/derive_ref/augment_subcommands.rs
+index 577527500c2..51cbe75d2a2 100644
+--- a/examples/derive_ref/augment_subcommands.rs
++++ b/examples/derive_ref/augment_subcommands.rs
+@@ -17,5 +17,5 @@ fn main() {
+     let derived_subcommands = Subcommands::from_arg_matches(&matches)
+         .map_err(|err| err.exit())
+         .unwrap();
+-    println!("Derived subcommands: {:#?}", derived_subcommands);
++    println!("Derived subcommands: {derived_subcommands:#?}");
+ }
+diff --git a/examples/derive_ref/flatten_hand_args.rs b/examples/derive_ref/flatten_hand_args.rs
+index 2ceeb7c0f57..36aac09323a 100644
+--- a/examples/derive_ref/flatten_hand_args.rs
++++ b/examples/derive_ref/flatten_hand_args.rs
+@@ -87,5 +87,5 @@ struct Cli {
+ 
+ fn main() {
+     let args = Cli::parse();
+-    println!("{:#?}", args);
++    println!("{args:#?}");
+ }
+diff --git a/examples/derive_ref/hand_subcommand.rs b/examples/derive_ref/hand_subcommand.rs
+index 5ea169cd1e1..4836e47ed70 100644
+--- a/examples/derive_ref/hand_subcommand.rs
++++ b/examples/derive_ref/hand_subcommand.rs
+@@ -75,5 +75,5 @@ struct Cli {
+ 
+ fn main() {
+     let args = Cli::parse();
+-    println!("{:#?}", args);
++    println!("{args:#?}");
+ }
+diff --git a/examples/git-derive.md b/examples/git-derive.md
+index b5c4794d30a..57edb612e9e 100644
+--- a/examples/git-derive.md
++++ b/examples/git-derive.md
+@@ -102,13 +102,13 @@ Options:
+   -h, --help  Print help
+ 
+ $ git-derive stash -m "Prototype"
+-Pushing StashPush { message: Some("Prototype") }
++Pushing StashPushArgs { message: Some("Prototype") }
+ 
+ $ git-derive stash pop
+ Popping None
+ 
+ $ git-derive stash push -m "Prototype"
+-Pushing StashPush { message: Some("Prototype") }
++Pushing StashPushArgs { message: Some("Prototype") }
+ 
+ $ git-derive stash pop
+ Popping None
+diff --git a/examples/git-derive.rs b/examples/git-derive.rs
+index 519982d1b97..ad82e0cea78 100644
+--- a/examples/git-derive.rs
++++ b/examples/git-derive.rs
+@@ -53,7 +53,7 @@ enum Commands {
+         #[arg(required = true)]
+         path: Vec<PathBuf>,
+     },
+-    Stash(Stash),
++    Stash(StashArgs),
+     #[command(external_subcommand)]
+     External(Vec<OsString>),
+ }
+@@ -76,23 +76,23 @@ impl std::fmt::Display for ColorWhen {
+ 
+ #[derive(Debug, Args)]
+ #[command(args_conflicts_with_subcommands = true)]
+-struct Stash {
++struct StashArgs {
+     #[command(subcommand)]
+     command: Option<StashCommands>,
+ 
+     #[command(flatten)]
+-    push: StashPush,
++    push: StashPushArgs,
+ }
+ 
+ #[derive(Debug, Subcommand)]
+ enum StashCommands {
+-    Push(StashPush),
++    Push(StashPushArgs),
+     Pop { stash: Option<String> },
+     Apply { stash: Option<String> },
+ }
+ 
+ #[derive(Debug, Args)]
+-struct StashPush {
++struct StashPushArgs {
+     #[arg(short, long)]
+     message: Option<String>,
+ }
+@@ -102,7 +102,7 @@ fn main() {
+ 
+     match args.command {
+         Commands::Clone { remote } => {
+-            println!("Cloning {}", remote);
++            println!("Cloning {remote}");
+         }
+         Commands::Diff {
+             mut base,
+@@ -136,22 +136,22 @@ fn main() {
+             );
+         }
+         Commands::Push { remote } => {
+-            println!("Pushing to {}", remote);
++            println!("Pushing to {remote}");
+         }
+         Commands::Add { path } => {
+-            println!("Adding {:?}", path);
++            println!("Adding {path:?}");
+         }
+         Commands::Stash(stash) => {
+             let stash_cmd = stash.command.unwrap_or(StashCommands::Push(stash.push));
+             match stash_cmd {
+                 StashCommands::Push(push) => {
+-                    println!("Pushing {:?}", push);
++                    println!("Pushing {push:?}");
+                 }
+                 StashCommands::Pop { stash } => {
+-                    println!("Popping {:?}", stash);
++                    println!("Popping {stash:?}");
+                 }
+                 StashCommands::Apply { stash } => {
+-                    println!("Applying {:?}", stash);
++                    println!("Applying {stash:?}");
+                 }
+             }
+         }
+diff --git a/examples/git.rs b/examples/git.rs
+index 8a2fcc72dfd..bd05e531582 100644
+--- a/examples/git.rs
++++ b/examples/git.rs
+@@ -86,7 +86,7 @@ fn main() {
+             let base = base.unwrap_or("stage");
+             let head = head.unwrap_or("worktree");
+             let path = path.unwrap_or("");
+-            println!("Diffing {}..{} {} (color={})", base, head, path, color);
++            println!("Diffing {base}..{head} {path} (color={color})");
+         }
+         Some(("push", sub_matches)) => {
+             println!(
+@@ -100,22 +100,22 @@ fn main() {
+                 .into_iter()
+                 .flatten()
+                 .collect::<Vec<_>>();
+-            println!("Adding {:?}", paths);
++            println!("Adding {paths:?}");
+         }
+         Some(("stash", sub_matches)) => {
+             let stash_command = sub_matches.subcommand().unwrap_or(("push", sub_matches));
+             match stash_command {
+                 ("apply", sub_matches) => {
+                     let stash = sub_matches.get_one::<String>("STASH");
+-                    println!("Applying {:?}", stash);
++                    println!("Applying {stash:?}");
+                 }
+                 ("pop", sub_matches) => {
+                     let stash = sub_matches.get_one::<String>("STASH");
+-                    println!("Popping {:?}", stash);
++                    println!("Popping {stash:?}");
+                 }
+                 ("push", sub_matches) => {
+                     let message = sub_matches.get_one::<String>("message");
+-                    println!("Pushing {:?}", message);
++                    println!("Pushing {message:?}");
+                 }
+                 (name, _) => {
+                     unreachable!("Unsupported subcommand `{}`", name)
+@@ -128,9 +128,9 @@ fn main() {
+                 .into_iter()
+                 .flatten()
+                 .collect::<Vec<_>>();
+-            println!("Calling out to {:?} with {:?}", ext, args);
++            println!("Calling out to {ext:?} with {args:?}");
+         }
+-        _ => unreachable!(), // If all subcommands are defined above, anything else is unreachabe!()
++        _ => unreachable!(), // If all subcommands are defined above, anything else is unreachable!()
+     }
+ 
+     // Continued program logic goes here...
+diff --git a/examples/pacman.rs b/examples/pacman.rs
+index 12e7ffaf275..7ab30db953f 100644
+--- a/examples/pacman.rs
++++ b/examples/pacman.rs
+@@ -78,7 +78,7 @@ fn main() {
+                     .map(|s| s.as_str())
+                     .collect();
+                 let values = packages.join(", ");
+-                println!("Searching for {}...", values);
++                println!("Searching for {values}...");
+                 return;
+             }
+ 
+@@ -90,18 +90,18 @@ fn main() {
+             let values = packages.join(", ");
+ 
+             if sync_matches.get_flag("info") {
+-                println!("Retrieving info for {}...", values);
++                println!("Retrieving info for {values}...");
+             } else {
+-                println!("Installing {}...", values);
++                println!("Installing {values}...");
+             }
+         }
+         Some(("query", query_matches)) => {
+             if let Some(packages) = query_matches.get_many::<String>("info") {
+                 let comma_sep = packages.map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+-                println!("Retrieving info for {}...", comma_sep);
++                println!("Retrieving info for {comma_sep}...");
+             } else if let Some(queries) = query_matches.get_many::<String>("search") {
+                 let comma_sep = queries.map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+-                println!("Searching Locally for {}...", comma_sep);
++                println!("Searching Locally for {comma_sep}...");
+             } else {
+                 println!("Displaying all locally installed packages...");
+             }
+diff --git a/examples/repl.rs b/examples/repl.rs
+index ef265911588..2806ac8e9d4 100644
+--- a/examples/repl.rs
++++ b/examples/repl.rs
+@@ -17,7 +17,7 @@ fn main() -> Result<(), String> {
+                 }
+             }
+             Err(err) => {
+-                write!(std::io::stdout(), "{}", err).map_err(|e| e.to_string())?;
++                write!(std::io::stdout(), "{err}").map_err(|e| e.to_string())?;
+                 std::io::stdout().flush().map_err(|e| e.to_string())?;
+             }
+         }
+diff --git a/examples/tutorial_derive/01_quick.rs b/examples/tutorial_derive/01_quick.rs
+index 960e7ea18c9..0edcd251f97 100644
+--- a/examples/tutorial_derive/01_quick.rs
++++ b/examples/tutorial_derive/01_quick.rs
+@@ -35,7 +35,7 @@ fn main() {
+ 
+     // You can check the value provided by positional arguments, or option arguments
+     if let Some(name) = cli.name.as_deref() {
+-        println!("Value for name: {}", name);
++        println!("Value for name: {name}");
+     }
+ 
+     if let Some(config_path) = cli.config.as_deref() {
+diff --git a/examples/tutorial_derive/03_04_subcommands.rs b/examples/tutorial_derive/03_04_subcommands.rs
+index 279a5fff54f..da7c644c704 100644
+--- a/examples/tutorial_derive/03_04_subcommands.rs
++++ b/examples/tutorial_derive/03_04_subcommands.rs
+@@ -21,7 +21,7 @@ fn main() {
+     // matches just as you would the top level cmd
+     match &cli.command {
+         Commands::Add { name } => {
+-            println!("'myapp add' was used, name is: {:?}", name)
++            println!("'myapp add' was used, name is: {name:?}")
+         }
+     }
+ }
+diff --git a/examples/tutorial_derive/03_04_subcommands_alt.rs b/examples/tutorial_derive/03_04_subcommands_alt.rs
+index 8b70dba0a9f..80b0ec6b958 100644
+--- a/examples/tutorial_derive/03_04_subcommands_alt.rs
++++ b/examples/tutorial_derive/03_04_subcommands_alt.rs
+@@ -11,11 +11,11 @@ struct Cli {
+ #[derive(Subcommand)]
+ enum Commands {
+     /// Adds files to myapp
+-    Add(Add),
++    Add(AddArgs),
+ }
+ 
+ #[derive(Args)]
+-struct Add {
++struct AddArgs {
+     name: Option<String>,
+ }
+ 
+diff --git a/examples/tutorial_derive/04_02_validate.rs b/examples/tutorial_derive/04_02_validate.rs
+index 513084dffb1..3391d5b72d5 100644
+--- a/examples/tutorial_derive/04_02_validate.rs
++++ b/examples/tutorial_derive/04_02_validate.rs
+@@ -21,7 +21,7 @@ const PORT_RANGE: RangeInclusive<usize> = 1..=65535;
+ fn port_in_range(s: &str) -> Result<u16, String> {
+     let port: usize = s
+         .parse()
+-        .map_err(|_| format!("`{}` isn't a port number", s))?;
++        .map_err(|_| format!("`{s}` isn't a port number"))?;
+     if PORT_RANGE.contains(&port) {
+         Ok(port as u16)
+     } else {
+diff --git a/examples/tutorial_derive/04_03_relations.rs b/examples/tutorial_derive/04_03_relations.rs
+index e366095702e..cbe491deb4b 100644
+--- a/examples/tutorial_derive/04_03_relations.rs
++++ b/examples/tutorial_derive/04_03_relations.rs
+@@ -56,10 +56,10 @@ fn main() {
+             (_, _, true) => patch += 1,
+             _ => unreachable!(),
+         };
+-        format!("{}.{}.{}", major, minor, patch)
++        format!("{major}.{minor}.{patch}")
+     };
+ 
+-    println!("Version: {}", version);
++    println!("Version: {version}");
+ 
+     // Check for usage of -c
+     if let Some(config) = cli.config.as_deref() {
+@@ -67,6 +67,6 @@ fn main() {
+             .input_file
+             .as_deref()
+             .unwrap_or_else(|| cli.spec_in.as_deref().unwrap());
+-        println!("Doing work using input {} and config {}", input, config);
++        println!("Doing work using input {input} and config {config}");
+     }
+ }
+diff --git a/examples/tutorial_derive/04_04_custom.rs b/examples/tutorial_derive/04_04_custom.rs
+index cbc460f19ca..a84b5ed5fe9 100644
+--- a/examples/tutorial_derive/04_04_custom.rs
++++ b/examples/tutorial_derive/04_04_custom.rs
+@@ -66,10 +66,10 @@ fn main() {
+                 .exit();
+             }
+         };
+-        format!("{}.{}.{}", major, minor, patch)
++        format!("{major}.{minor}.{patch}")
+     };
+ 
+-    println!("Version: {}", version);
++    println!("Version: {version}");
+ 
+     // Check for usage of -c
+     if let Some(config) = cli.config.as_deref() {
+@@ -86,6 +86,6 @@ fn main() {
+                 )
+                 .exit()
+             });
+-        println!("Doing work using input {} and config {}", input, config);
++        println!("Doing work using input {input} and config {config}");
+     }
+ }
+diff --git a/examples/typed-derive.rs b/examples/typed-derive.rs
+index bdf8a580911..8d7a84e9672 100644
+--- a/examples/typed-derive.rs
++++ b/examples/typed-derive.rs
+@@ -54,7 +54,7 @@ where
+ {
+     let pos = s
+         .find('=')
+-        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
++        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
+     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+ }
+ 
+@@ -98,5 +98,5 @@ mod foreign_crate {
+ 
+ fn main() {
+     let args = Args::parse();
+-    println!("{:?}", args);
++    println!("{args:?}");
+ }
+diff --git a/src/_derive/_tutorial.rs b/src/_derive/_tutorial.rs
+index eb95c875414..f3f55c3392d 100644
+--- a/src/_derive/_tutorial.rs
++++ b/src/_derive/_tutorial.rs
+@@ -75,7 +75,7 @@
+ #![doc = include_str!("../../examples/tutorial_derive/03_03_positional.md")]
+ //!
+ //! Note that the default [`ArgAction`][crate::ArgAction] is [`Set`][crate::ArgAction::Set].  To
+-//! accept multiple values, use [`Append`][crate::ArgAction::Append]:
++//! accept multiple values, use [`Append`][crate::ArgAction::Append] via `Vec`:
+ //! ```rust
+ #![doc = include_str!("../../examples/tutorial_derive/03_03_positional_mult.rs")]
+ //! ```
+@@ -98,7 +98,7 @@
+ #![doc = include_str!("../../examples/tutorial_derive/03_02_option.md")]
+ //!
+ //! Note that the default [`ArgAction`][crate::ArgAction] is [`Set`][crate::ArgAction::Set].  To
+-//! accept multiple occurrences, use [`Append`][crate::ArgAction::Append]:
++//! accept multiple occurrences, use [`Append`][crate::ArgAction::Append] via `Vec`:
+ //! ```rust
+ #![doc = include_str!("../../examples/tutorial_derive/03_02_option_mult.rs")]
+ //! ```
+diff --git a/src/builder/arg.rs b/src/builder/arg.rs
+index ca2d6acbc2b..40f90b9584a 100644
+--- a/src/builder/arg.rs
++++ b/src/builder/arg.rs
+@@ -4122,7 +4122,7 @@ impl Arg {
+             if self.val_names.len() > 1 {
+                 self.val_names
+                     .iter()
+-                    .map(|n| format!("<{}>", n))
++                    .map(|n| format!("<{n}>"))
+                     .collect::<Vec<_>>()
+                     .join(delim)
+             } else {
+@@ -4206,9 +4206,9 @@ impl Arg {
+         debug_assert!(self.is_takes_value_set());
+         for (n, val_name) in val_names.iter().enumerate() {
+             let arg_name = if self.is_positional() && (num_vals.min_values() == 0 || !required) {
+-                format!("[{}]", val_name)
++                format!("[{val_name}]")
+             } else {
+-                format!("<{}>", val_name)
++                format!("<{val_name}>")
+             };
+ 
+             if n != 0 {
+diff --git a/src/builder/arg_settings.rs b/src/builder/arg_settings.rs
+index 0f63e439611..b8bc069c5db 100644
+--- a/src/builder/arg_settings.rs
++++ b/src/builder/arg_settings.rs
+@@ -113,7 +113,7 @@ mod test {
+         assert!(m.is_required_set());
+ 
+         let m = m.unset_setting(ArgSettings::Required);
+-        assert!(!m.is_required_set(), "{:#?}", m);
++        assert!(!m.is_required_set(), "{m:#?}");
+     }
+ 
+     #[test]
+@@ -138,8 +138,8 @@ mod test {
+         assert!(m.is_last_set());
+ 
+         let m = m.unset_setting(ArgSettings::Required | ArgSettings::Hidden | ArgSettings::Last);
+-        assert!(!m.is_required_set(), "{:#?}", m);
+-        assert!(!m.is_hide_set(), "{:#?}", m);
+-        assert!(!m.is_last_set(), "{:#?}", m);
++        assert!(!m.is_required_set(), "{m:#?}");
++        assert!(!m.is_hide_set(), "{m:#?}");
++        assert!(!m.is_last_set(), "{m:#?}");
+     }
+ }
+diff --git a/src/builder/command.rs b/src/builder/command.rs
+index fc2c983e4d9..b587fb01b04 100644
+--- a/src/builder/command.rs
++++ b/src/builder/command.rs
+@@ -243,7 +243,7 @@ impl Command {
+         let a = self
+             .args
+             .remove_by_name(id)
+-            .unwrap_or_else(|| panic!("Argument `{}` is undefined", id));
++            .unwrap_or_else(|| panic!("Argument `{id}` is undefined"));
+ 
+         self.args.push(f(a));
+         self
+@@ -287,7 +287,7 @@ impl Command {
+         let subcmd = if let Some(idx) = pos {
+             self.subcommands.remove(idx)
+         } else {
+-            panic!("Command `{}` is undefined", name)
++            panic!("Command `{name}` is undefined")
+         };
+ 
+         self.subcommands.push(f(subcmd));
+@@ -822,7 +822,7 @@ impl Command {
+         let mut styled = StyledStr::new();
+         let usage = Usage::new(self);
+         write_help(&mut styled, self, &usage, false);
+-        ok!(write!(w, "{}", styled));
++        ok!(write!(w, "{styled}"));
+         w.flush()
+     }
+ 
+@@ -837,7 +837,7 @@ impl Command {
+         let mut styled = StyledStr::new();
+         let usage = Usage::new(self);
+         write_help(&mut styled, self, &usage, true);
+-        ok!(write!(w, "{}", styled));
++        ok!(write!(w, "{styled}"));
+         w.flush()
+     }
+ 
+@@ -3947,22 +3947,22 @@ impl Command {
+         sc_names.push_str(sc.name.as_str());
+         let mut flag_subcmd = false;
+         if let Some(l) = sc.get_long_flag() {
+-            write!(sc_names, "|--{}", l).unwrap();
++            write!(sc_names, "|--{l}").unwrap();
+             flag_subcmd = true;
+         }
+         if let Some(s) = sc.get_short_flag() {
+-            write!(sc_names, "|-{}", s).unwrap();
++            write!(sc_names, "|-{s}").unwrap();
+             flag_subcmd = true;
+         }
+ 
+         if flag_subcmd {
+-            sc_names = format!("{{{}}}", sc_names);
++            sc_names = format!("{{{sc_names}}}");
+         }
+ 
+         let usage_name = self
+             .bin_name
+             .as_ref()
+-            .map(|bin_name| format!("{}{}{}", bin_name, mid_string, sc_names))
++            .map(|bin_name| format!("{bin_name}{mid_string}{sc_names}"))
+             .unwrap_or(sc_names);
+         sc.usage_name = Some(usage_name);
+ 
+@@ -4044,19 +4044,19 @@ impl Command {
+                     sc_names.push_str(sc.name.as_str());
+                     let mut flag_subcmd = false;
+                     if let Some(l) = sc.get_long_flag() {
+-                        write!(sc_names, "|--{}", l).unwrap();
++                        write!(sc_names, "|--{l}").unwrap();
+                         flag_subcmd = true;
+                     }
+                     if let Some(s) = sc.get_short_flag() {
+-                        write!(sc_names, "|-{}", s).unwrap();
++                        write!(sc_names, "|-{s}").unwrap();
+                         flag_subcmd = true;
+                     }
+ 
+                     if flag_subcmd {
+-                        sc_names = format!("{{{}}}", sc_names);
++                        sc_names = format!("{{{sc_names}}}");
+                     }
+ 
+-                    let usage_name = format!("{}{}{}", self_bin_name, mid_string, sc_names);
++                    let usage_name = format!("{self_bin_name}{mid_string}{sc_names}");
+                     debug!(
+                         "Command::_build_bin_names:iter: Setting usage_name of {} to {:?}",
+                         sc.name, usage_name
+@@ -4334,7 +4334,7 @@ impl Command {
+                 .unwrap_or_default()
+         };
+         let display_name = self.get_display_name().unwrap_or_else(|| self.get_name());
+-        format!("{} {}\n", display_name, ver)
++        format!("{display_name} {ver}\n")
+     }
+ 
+     pub(crate) fn format_group(&self, g: &Id) -> StyledStr {
+@@ -4593,12 +4593,13 @@ impl Command {
+         // specified by the user is sent through. If hide_short_help is not included,
+         // then items specified with hidden_short_help will also be hidden.
+         let should_long = |v: &Arg| {
+-            v.get_long_help().is_some()
+-                || v.is_hide_long_help_set()
+-                || v.is_hide_short_help_set()
+-                || v.get_possible_values()
+-                    .iter()
+-                    .any(PossibleValue::should_show_help)
++            !v.is_hide_set()
++                && (v.get_long_help().is_some()
++                    || v.is_hide_long_help_set()
++                    || v.is_hide_short_help_set()
++                    || v.get_possible_values()
++                        .iter()
++                        .any(PossibleValue::should_show_help))
+         };
+ 
+         // Subcommands aren't checked because we prefer short help for them, deferring to
+diff --git a/src/builder/debug_asserts.rs b/src/builder/debug_asserts.rs
+index bfebbb4c43f..86e36778cff 100644
+--- a/src/builder/debug_asserts.rs
++++ b/src/builder/debug_asserts.rs
+@@ -40,20 +40,20 @@ pub(crate) fn assert_app(cmd: &Command) {
+ 
+     for sc in cmd.get_subcommands() {
+         if let Some(s) = sc.get_short_flag().as_ref() {
+-            short_flags.push(Flag::Command(format!("-{}", s), sc.get_name()));
++            short_flags.push(Flag::Command(format!("-{s}"), sc.get_name()));
+         }
+ 
+         for short_alias in sc.get_all_short_flag_aliases() {
+-            short_flags.push(Flag::Command(format!("-{}", short_alias), sc.get_name()));
++            short_flags.push(Flag::Command(format!("-{short_alias}"), sc.get_name()));
+         }
+ 
+         if let Some(l) = sc.get_long_flag().as_ref() {
+             assert!(!l.starts_with('-'), "Command {}: long_flag {:?} must not start with a `-`, that will be handled by the parser", sc.get_name(), l);
+-            long_flags.push(Flag::Command(format!("--{}", l), sc.get_name()));
++            long_flags.push(Flag::Command(format!("--{l}"), sc.get_name()));
+         }
+ 
+         for long_alias in sc.get_all_long_flag_aliases() {
+-            long_flags.push(Flag::Command(format!("--{}", long_alias), sc.get_name()));
++            long_flags.push(Flag::Command(format!("--{long_alias}"), sc.get_name()));
+         }
+     }
+ 
+@@ -68,26 +68,20 @@ pub(crate) fn assert_app(cmd: &Command) {
+         );
+ 
+         if let Some(s) = arg.get_short() {
+-            short_flags.push(Flag::Arg(format!("-{}", s), arg.get_id().as_str()));
++            short_flags.push(Flag::Arg(format!("-{s}"), arg.get_id().as_str()));
+         }
+ 
+         for (short_alias, _) in &arg.short_aliases {
+-            short_flags.push(Flag::Arg(
+-                format!("-{}", short_alias),
+-                arg.get_id().as_str(),
+-            ));
++            short_flags.push(Flag::Arg(format!("-{short_alias}"), arg.get_id().as_str()));
+         }
+ 
+         if let Some(l) = arg.get_long() {
+             assert!(!l.starts_with('-'), "Argument {}: long {:?} must not start with a `-`, that will be handled by the parser", arg.get_id(), l);
+-            long_flags.push(Flag::Arg(format!("--{}", l), arg.get_id().as_str()));
++            long_flags.push(Flag::Arg(format!("--{l}"), arg.get_id().as_str()));
+         }
+ 
+         for (long_alias, _) in &arg.aliases {
+-            long_flags.push(Flag::Arg(
+-                format!("--{}", long_alias),
+-                arg.get_id().as_str(),
+-            ));
++            long_flags.push(Flag::Arg(format!("--{long_alias}"), arg.get_id().as_str()));
+         }
+ 
+         // Name conflicts
+@@ -429,19 +423,16 @@ fn detect_duplicate_flags(flags: &[Flag], short_or_long: &str) {
+     for (one, two) in find_duplicates(flags) {
+         match (one, two) {
+             (Command(flag, one), Command(_, another)) if one != another => panic!(
+-                "the '{}' {} flag is specified for both '{}' and '{}' subcommands",
+-                flag, short_or_long, one, another
++                "the '{flag}' {short_or_long} flag is specified for both '{one}' and '{another}' subcommands"
+             ),
+ 
+             (Arg(flag, one), Arg(_, another)) if one != another => panic!(
+-                "{} option names must be unique, but '{}' is in use by both '{}' and '{}'",
+-                short_or_long, flag, one, another
++                "{short_or_long} option names must be unique, but '{flag}' is in use by both '{one}' and '{another}'"
+             ),
+ 
+             (Arg(flag, arg), Command(_, sub)) | (Command(flag, sub), Arg(_, arg)) => panic!(
+-                "the '{}' {} flag for the '{}' argument conflicts with the short flag \
+-                     for '{}' subcommand",
+-                flag, short_or_long, arg, sub
++                "the '{flag}' {short_or_long} flag for the '{arg}' argument conflicts with the short flag \
++                     for '{sub}' subcommand"
+             ),
+ 
+             _ => {}
+@@ -529,10 +520,8 @@ fn _verify_positionals(cmd: &Command) -> bool {
+ 
+     assert!(
+         highest_idx == num_p,
+-        "Found positional argument whose index is {} but there \
+-             are only {} positional arguments defined",
+-        highest_idx,
+-        num_p
++        "Found positional argument whose index is {highest_idx} but there \
++             are only {num_p} positional arguments defined",
+     );
+ 
+     for arg in cmd.get_arguments() {
+diff --git a/src/builder/range.rs b/src/builder/range.rs
+index 3f077bd86e6..6ecf05369a5 100644
+--- a/src/builder/range.rs
++++ b/src/builder/range.rs
+@@ -183,7 +183,7 @@ impl std::fmt::Display for ValueRange {
+ 
+ impl std::fmt::Debug for ValueRange {
+     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+-        write!(f, "{}", self)
++        write!(f, "{self}")
+     }
+ }
+ 
+diff --git a/src/builder/str.rs b/src/builder/str.rs
+index c6689d31065..be69c3f6ee6 100644
+--- a/src/builder/str.rs
++++ b/src/builder/str.rs
+@@ -246,7 +246,10 @@ pub(crate) mod inner {
+         }
+ 
+         pub(crate) fn into_string(self) -> String {
+-            self.as_str().to_owned()
++            match self {
++                Self::Static(s) => s.to_owned(),
++                Self::Owned(s) => s.into(),
++            }
+         }
+     }
+ }
+diff --git a/src/builder/value_hint.rs b/src/builder/value_hint.rs
+index 812d5d8668b..ee286b194c8 100644
+--- a/src/builder/value_hint.rs
++++ b/src/builder/value_hint.rs
+@@ -89,7 +89,7 @@ impl FromStr for ValueHint {
+             "hostname" => ValueHint::Hostname,
+             "url" => ValueHint::Url,
+             "emailaddress" => ValueHint::EmailAddress,
+-            _ => return Err(format!("unknown ValueHint: `{}`", s)),
++            _ => return Err(format!("unknown ValueHint: `{s}`")),
+         })
+     }
+ }
+diff --git a/src/derive.rs b/src/derive.rs
+index a30f2da50ac..98bb0121b6e 100644
+--- a/src/derive.rs
++++ b/src/derive.rs
+@@ -385,7 +385,7 @@ pub trait ValueEnum: Sized + Clone {
+                     .matches(input, ignore_case)
+             })
+             .cloned()
+-            .ok_or_else(|| format!("invalid variant: {}", input))
++            .ok_or_else(|| format!("invalid variant: {input}"))
+     }
+ 
+     /// The canonical argument value.
+diff --git a/src/error/format.rs b/src/error/format.rs
+index 98d34b7ef4e..d3ce6c64c19 100644
+--- a/src/error/format.rs
++++ b/src/error/format.rs
+@@ -461,7 +461,7 @@ fn did_you_mean(styled: &mut StyledStr, context: &str, valid: &ContextValue) {
+ fn escape(s: impl AsRef<str>) -> String {
+     let s = s.as_ref();
+     if s.contains(char::is_whitespace) {
+-        format!("{:?}", s)
++        format!("{s:?}")
+     } else {
+         s.to_owned()
+     }
+diff --git a/src/error/mod.rs b/src/error/mod.rs
+index 9c8828574d4..2d8bf62e47c 100644
+--- a/src/error/mod.rs
++++ b/src/error/mod.rs
+@@ -692,7 +692,7 @@ impl<F: ErrorFormatter> Error<F> {
+                 Some((flag, None)) => {
+                     err = err.insert_context_unchecked(
+                         ContextKind::SuggestedArg,
+-                        ContextValue::String(format!("--{}", flag)),
++                        ContextValue::String(format!("--{flag}")),
+                     );
+                 }
+                 None => {}
+@@ -782,7 +782,7 @@ impl<F: ErrorFormatter> Display for Error<F> {
+         if let Some(backtrace) = self.inner.backtrace.as_ref() {
+             ok!(writeln!(f));
+             ok!(writeln!(f, "Backtrace:"));
+-            ok!(writeln!(f, "{}", backtrace));
++            ok!(writeln!(f, "{backtrace}"));
+         }
+         Ok(())
+     }
+diff --git a/src/output/help_template.rs b/src/output/help_template.rs
+index 6fe9db1b4a7..4c7adda9046 100644
+--- a/src/output/help_template.rs
++++ b/src/output/help_template.rs
+@@ -410,7 +410,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                         self.none("\n\n");
+                     }
+                     first = false;
+-                    self.header(format!("{}:\n", heading));
++                    self.header(format!("{heading}:\n"));
+                     self.write_args(&args, heading, option_sort_key);
+                 }
+             }
+@@ -485,7 +485,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+         debug!("HelpTemplate::short");
+ 
+         if let Some(s) = arg.get_short() {
+-            self.literal(format!("-{}", s));
++            self.literal(format!("-{s}"));
+         } else if arg.get_long().is_some() {
+             self.none("    ");
+         }
+@@ -498,7 +498,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+             if arg.get_short().is_some() {
+                 self.none(", ");
+             }
+-            self.literal(format!("--{}", long));
++            self.literal(format!("--{long}"));
+         }
+     }
+ 
+@@ -738,7 +738,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                 .map(|pvs| pvs.to_string_lossy())
+                 .map(|pvs| {
+                     if pvs.contains(char::is_whitespace) {
+-                        Cow::from(format!("{:?}", pvs))
++                        Cow::from(format!("{pvs:?}"))
+                     } else {
+                         pvs
+                     }
+@@ -746,7 +746,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                 .collect::<Vec<_>>()
+                 .join(" ");
+ 
+-            spec_vals.push(format!("[default: {}]", pvs));
++            spec_vals.push(format!("[default: {pvs}]"));
+         }
+ 
+         let als = a
+@@ -758,7 +758,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+             .join(", ");
+         if !als.is_empty() {
+             debug!("HelpTemplate::spec_vals: Found aliases...{:?}", a.aliases);
+-            spec_vals.push(format!("[aliases: {}]", als));
++            spec_vals.push(format!("[aliases: {als}]"));
+         }
+ 
+         let als = a
+@@ -773,7 +773,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                 "HelpTemplate::spec_vals: Found short aliases...{:?}",
+                 a.short_aliases
+             );
+-            spec_vals.push(format!("[short aliases: {}]", als));
++            spec_vals.push(format!("[short aliases: {als}]"));
+         }
+ 
+         let possible_vals = a.get_possible_values();
+@@ -792,7 +792,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                 .collect::<Vec<_>>()
+                 .join(", ");
+ 
+-            spec_vals.push(format!("[possible values: {}]", pvs));
++            spec_vals.push(format!("[possible values: {pvs}]"));
+         }
+         let connector = if self.use_long { "\n" } else { " " };
+         spec_vals.join(connector)
+@@ -835,11 +835,11 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+             styled.literal(subcommand.get_name());
+             if let Some(short) = subcommand.get_short_flag() {
+                 styled.none(", ");
+-                styled.literal(format!("-{}", short));
++                styled.literal(format!("-{short}"));
+             }
+             if let Some(long) = subcommand.get_long_flag() {
+                 styled.none(", ");
+-                styled.literal(format!("--{}", long));
++                styled.literal(format!("--{long}"));
+             }
+             longest = longest.max(styled.display_width());
+             ord_v.push((subcommand.get_display_order(), styled, subcommand));
+@@ -902,7 +902,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+ 
+         let mut short_als = a
+             .get_visible_short_flag_aliases()
+-            .map(|a| format!("-{}", a))
++            .map(|a| format!("-{a}"))
+             .collect::<Vec<_>>();
+         let als = a.get_visible_aliases().map(|s| s.to_string());
+         short_als.extend(als);
+@@ -916,7 +916,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
+                 "HelpTemplate::spec_vals: Found short flag aliases...{:?}",
+                 a.get_all_short_flag_aliases().collect::<Vec<_>>()
+             );
+-            spec_vals.push(format!("[aliases: {}]", all_als));
++            spec_vals.push(format!("[aliases: {all_als}]"));
+         }
+ 
+         spec_vals.join(" ")
+diff --git a/src/output/textwrap/core.rs b/src/output/textwrap/core.rs
+index b890c6c7bca..25c9eb6b0e9 100644
+--- a/src/output/textwrap/core.rs
++++ b/src/output/textwrap/core.rs
+@@ -105,7 +105,7 @@ mod tests {
+                 assert_eq!(ch.width().unwrap(), 1, "char: {}", desc);
+ 
+                 #[cfg(not(feature = "unicode"))]
+-                assert_eq!(ch_width(ch), 1, "char: {}", desc);
++                assert_eq!(ch_width(ch), 1, "char: {desc}");
+             }
+         }
+ 
+@@ -123,7 +123,7 @@ mod tests {
+                 assert!(ch.width().unwrap() <= 2, "char: {}", desc);
+ 
+                 #[cfg(not(feature = "unicode"))]
+-                assert_eq!(ch_width(ch), 1, "char: {}", desc);
++                assert_eq!(ch_width(ch), 1, "char: {desc}");
+             }
+         }
+ 
+diff --git a/src/parser/arg_matcher.rs b/src/parser/arg_matcher.rs
+index c7e94e67826..d584689cdbc 100644
+--- a/src/parser/arg_matcher.rs
++++ b/src/parser/arg_matcher.rs
+@@ -217,9 +217,9 @@ impl ArgMatcher {
+             raw_vals: Default::default(),
+             trailing_idx: None,
+         });
+-        debug_assert_eq!(pending.id, *id, "{}", INTERNAL_ERROR_MSG);
++        debug_assert_eq!(pending.id, *id, "{INTERNAL_ERROR_MSG}");
+         if ident.is_some() {
+-            debug_assert_eq!(pending.ident, ident, "{}", INTERNAL_ERROR_MSG);
++            debug_assert_eq!(pending.ident, ident, "{INTERNAL_ERROR_MSG}");
+         }
+         if trailing_values {
+             pending.trailing_idx.get_or_insert(pending.raw_vals.len());
+diff --git a/src/parser/error.rs b/src/parser/error.rs
+index 5652336139f..66b2bc79e85 100644
+--- a/src/parser/error.rs
++++ b/src/parser/error.rs
+@@ -27,10 +27,7 @@ impl MatchesError {
+             }
+             Err(err) => err,
+         };
+-        panic!(
+-            "Mismatch between definition and access of `{}`. {}",
+-            id, err
+-        )
++        panic!("Mismatch between definition and access of `{id}`. {err}",)
+     }
+ }
+ 
+@@ -42,8 +39,7 @@ impl std::fmt::Display for MatchesError {
+             Self::Downcast { actual, expected } => {
+                 writeln!(
+                     f,
+-                    "Could not downcast to {:?}, need to downcast to {:?}",
+-                    expected, actual
++                    "Could not downcast to {expected:?}, need to downcast to {actual:?}"
+                 )
+             }
+             Self::UnknownArgument {} => {
+diff --git a/src/parser/matches/arg_matches.rs b/src/parser/matches/arg_matches.rs
+index 23f53c02b9f..13ceea33f17 100644
+--- a/src/parser/matches/arg_matches.rs
++++ b/src/parser/matches/arg_matches.rs
+@@ -1302,10 +1302,9 @@ impl ArgMatches {
+             if arg == Id::EXTERNAL || self.valid_args.iter().any(|s| *s == arg) {
+             } else {
+                 panic!(
+-                    "`{:?}` is not an id of an argument or a group.\n\
++                    "`{arg:?}` is not an id of an argument or a group.\n\
+                      Make sure you're using the name of the argument itself \
+-                     and not the name of short or long flags.",
+-                    arg
++                     and not the name of short or long flags."
+                 );
+             }
+         }
+@@ -1320,7 +1319,7 @@ impl ArgMatches {
+         {
+             if name.is_empty() || self.valid_subcommands.iter().any(|s| *s == name) {
+             } else {
+-                panic!("`{}` is not a name of a subcommand.", name);
++                panic!("`{name}` is not a name of a subcommand.");
+             }
+         }
+ 
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index dc99e32ece6..25790343181 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -895,8 +895,7 @@ impl<'cmd> Parser<'cmd> {
+         debug_assert_eq!(
+             res,
+             Ok(()),
+-            "tracking of `flag_subcmd_skip` is off for `{:?}`",
+-            short_arg
++            "tracking of `flag_subcmd_skip` is off for `{short_arg:?}`"
+         );
+         while let Some(c) = short_arg.next_flag() {
+             let c = match c {
+@@ -982,7 +981,7 @@ impl<'cmd> Parser<'cmd> {
+                 Ok(ParseResult::FlagSubCommand(name))
+             } else {
+                 Ok(ParseResult::NoMatchingArg {
+-                    arg: format!("-{}", c),
++                    arg: format!("-{c}"),
+                 })
+             };
+         }
+@@ -1570,7 +1569,7 @@ impl<'cmd> Parser<'cmd> {
+             did_you_mean.is_none() && !trailing_values && self.cmd.has_positionals();
+         ClapError::unknown_argument(
+             self.cmd,
+-            format!("--{}", arg),
++            format!("--{arg}"),
+             did_you_mean,
+             suggested_trailing_arg,
+             Usage::new(self.cmd)
+diff --git a/src/parser/validator.rs b/src/parser/validator.rs
+index 991dc513f69..49d28a34f8c 100644
+--- a/src/parser/validator.rs
++++ b/src/parser/validator.rs
+@@ -519,13 +519,10 @@ fn gather_direct_conflicts(cmd: &Command, id: &Id) -> Vec<Id> {
+     } else if let Some(group) = cmd.find_group(id) {
+         gather_group_direct_conflicts(group)
+     } else {
+-        debug_assert!(false, "id={:?} is unknown", id);
++        debug_assert!(false, "id={id:?} is unknown");
+         Vec::new()
+     };
+-    debug!(
+-        "Conflicts::gather_direct_conflicts id={:?}, conflicts={:?}",
+-        id, conf
+-    );
++    debug!("Conflicts::gather_direct_conflicts id={id:?}, conflicts={conf:?}",);
+     conf
+ }
+ 
+diff --git a/src/util/color.rs b/src/util/color.rs
+index 4d59b2eb288..5a0a8ce6d69 100644
+--- a/src/util/color.rs
++++ b/src/util/color.rs
+@@ -82,7 +82,7 @@ impl std::str::FromStr for ColorChoice {
+                 return Ok(*variant);
+             }
+         }
+-        Err(format!("invalid variant: {}", s))
++        Err(format!("invalid variant: {s}"))
+     }
+ }
+ 

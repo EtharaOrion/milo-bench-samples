@@ -1,0 +1,233 @@
+        "context"
++       "errors"
+
+        "github.com/vektah/gqlparser/v2/ast"
+        "github.com/vektah/gqlparser/v2/gqlerror"
+@@ -79,7 +80,40 @@ func WrapErrorWithInputPath(ctx context.Context, err error) error {
+                        gerr.Path = path
+                }
+                return gerr
+-       } else {
+-               return gqlerror.WrapPath(path, err)
+        }
++
++       // If the error has already been wrapped at a deeper input level, keep that
++       // (more specific) path instead of overwriting it with the current one.
++       if _, ok := err.(*wrappedInputError); ok {
++               return err
++       }
++
++       // Do not collapse the error into a gqlerror here as that would discard the
++       // original error (its concrete type and any extensions). Wrapping it instead
++       // preserves it so that custom error presenters still receive the original
++       // error, while keeping the input path so it can be reported correctly.
++       return &wrappedInputError{err: err, path: path}
++}
++
++// wrappedInputError carries the path of an input field/argument alongside the
++// original error returned while unmarshalling it (for example, an error
++// returned from an INPUT_FIELD_DEFINITION directive). It keeps the original
++// error reachable via Unwrap so custom error presenters can inspect it.
++type wrappedInputError struct {
++       err  error
++       path ast.Path
++}
++
++func (w *wrappedInputError) Error() string { return w.err.Error() }
++
++func (w *wrappedInputError) Unwrap() error { return w.err }
++
++func (w *wrappedInputError) Path() ast.Path { return w.path }
++
++func (w *wrappedInputError) Extensions() map[string]interface{} {
++       var ee ExtendedError
++       if errors.As(w.err, &ee) {
++               return ee.Extensions()
++       }
++       return nil
+ }
+diff --git a/graphql/error.go b/graphql/error.go
+index 201058a..18a564b 100644
+--- a/graphql/error.go
++++ b/graphql/error.go
+@@ -3,6 +3,7 @@ package graphql
+ import (
+        "context"
+
++       "github.com/vektah/gqlparser/v2/ast"
+        "github.com/vektah/gqlparser/v2/gqlerror"
+ )
+
+@@ -12,6 +13,12 @@ type ExtendedError interface {
+        Extensions() map[string]interface{}
+ }
+
++// pathError is implemented by errors that carry their own path, such as errors
++// that occurred while unmarshalling a specific input field or argument.
++type pathError interface {
++       Path() ast.Path
++}
++
+ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+        if gqlerr, ok := err.(*gqlerror.Error); ok {
+                if gqlerr.Path == nil {
+@@ -20,6 +27,11 @@ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+                return gqlerr
+        }
+
++       path := GetFieldContext(ctx).Path()
++       if pe, ok := err.(pathError); ok && pe.Path() != nil {
++               path = pe.Path()
++       }
++
+        var extensions map[string]interface{}
+        if ee, ok := err.(ExtendedError); ok {
+                extensions = ee.Extensions()
+@@ -27,7 +39,7 @@ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+
+        return &gqlerror.Error{
+                Message:    err.Error(),
+-               Path:       GetFieldContext(ctx).Path(),
++               Path:       path,
+                Extensions: extensions,
+        }
+ }
+# think: One concern: `gqlerror` import in context_field_input.go — is it still used? After removing the `gqlerror.WrapPath` call, the only gqlerror use is `err.(*gqlerror.Error)`. Yes, that's still there. So the import is still needed. Good.
+
+Also `DefaultErrorPresenter`: when err is a wrappedInputError, `GetFieldContext(ctx).Path()` is computed first but then overridden by pe.Path(). GetFieldContext(ctx) could be nil — calling .Path() on nil *FieldContext... let me check FieldContext.Path() handles nil receiver. It iterates `for it := r; it != nil; ...` — with r being nil, the loop doesn't execute, returns empty path. So nil receiver is safe (it's a pointer method that handles nil). Good — the existing code already relied on this.
+
+Now, the ExtendedError check in DefaultErrorPresenter: `err.(ExtendedError)` — wrappedInputError implements Extensions(), so it satisfies ExtendedError. Good, extensions flow through.
+
+Everything looks correct. Let me also make sure I haven't left the `gqlerror` import unused in directive_input_error_test.go. It's used in SetErrorPresenter return type `*gqlerror.Error`. Good.
+
+Let me run go vet on the graphql package and testserver to confirm no unused imports.
+Your thought has been logged.
+$ cd /workspace/gqlgen && go vet ./graphql/ ./codegen/testserver/ 2>&1 | grep -v "writing stat cache" | head; echo "VET DONE"
+VET DONE
+$ cd /workspace/gqlgen && go test -count=1 ./graphql/ ./codegen/testserver/ -run "TestDirectives|TestInputDirectiveCustomError|TestErrorInsideMutationArgument|TestWrapError|TestDefaultError|TestAddError|TestGetFieldInputContext|TestErrorPresenter" 2>&1 | tail -20
+ok      github.com/99designs/gqlgen/graphql     0.071s
+ok      github.com/99designs/gqlgen/codegen/testserver  0.027s
+$ cd /workspace/gqlgen && GIT_PAGER=cat git diff --stat; echo "=== untracked ==="; git status --short | grep '??'
+README.md                       |  6 +++---
+ codegen/field.gotpl             |  1 +
+ docs/content/getting-started.md |  2 +-
+ graphql/context_field.go        |  2 ++
+ graphql/context_field_input.go  | 38 ++++++++++++++++++++++++++++++++++++--
+ graphql/error.go                | 14 +++++++++++++-
+ 6 files changed, 56 insertions(+), 7 deletions(-)
+=== untracked ===
+?? codegen/testserver/directive_input_error_test.go
+?? graphql/error_test.go
+Task list has been updated with 5 item(s).
+# think: The generation fails due to go/packages "package X without types" with Go 1.25 + old x/tools. Let me try a workaround: maybe the issue is the export data format. The go/packages from 2020 uses `go list -json -export` or the older "gcexportdata" path. With Go 1.25, the export data format changed. 
+
+Alternative: I could try installing a Go version compatible with the old x/tools (e.g., Go 1.13/1.14). But that's heavy and may not be available.
+
+Alternative 2: Manually patch the generated.go files to add `IsResolver: <bool>` after each `IsMethod: <bool>,` in field context constructions. The value of IsResolver corresponds to whether the field is bound to a user resolver. But I can't trivially determine that per-field with sed.
+
+Actually, wait — let me reconsider. The `IsMethod` value in generated code is `{{or $field.IsMethod $field.IsResolver}}`. And `IsResolver` is `{{ $field.IsResolver }}`. These differ. So I can't derive IsResolver from the generated IsMethod.
+
+Hmm. But actually — for a field with a user resolver, the generated code calls `ec.resolvers.XXX().Field(...)`. For a method/plain field, it accesses obj.Field directly. So I could determine IsResolver by inspecting whether the field body calls `ec.resolvers.`. That's complex to do reliably via sed.
+
+Given the constraints and that:
+1. No test checks IsResolver,
+2. The requested PR diff for #1315 ONLY touches context_field.go and field.gotpl (not generated.go),
+3. Regeneration is the maintainer's normal workflow and the env can't do it,
+
+manually editing thousands of generated.go lines is risky and not what the PR did. The struct field + template is the correct, complete source change.
+
+Let me instead try ONE more time to get generation working, because if it works, I can regenerate everything cleanly. Let me check if a newer Go toolchain via GOTOOLCHAIN or an older one is available, or whether upgrading x/tools to a minimal compatible version is feasible without breaking the build.
+
+Actually, the cleanest path: I should NOT try to upgrade dependencies (risky, changes go.mod/go.sum significantly, could break the build, and is out of scope). 
+
+Let me verify my reasoning that the generated.go not having IsResolver is acceptable by confirming the project still builds and all non-package-loading tests pass. They do. 
+
+I'm confident the solution is complete and correct for all 4 issues. The generated.go inconsistency is an environment limitation, not a defect in my changes, and matches the scope of the original PR.
+
+Let me do a final comprehensive test run to make sure everything that CAN run, passes.
+Your thought has been logged.
+$ cd /workspace/gqlgen && go build ./... 2>&1 | grep -v "writing stat cache"; echo "BUILD OK"
+BUILD OK
+$ cd /workspace/gqlgen && go test -count=1 ./graphql/... ./codegen/testserver/... ./codegen/ ./client/... 2>&1 | grep -vE "no test files" | tail -30; echo "=== EXIT $? ==="
+ok      github.com/99designs/gqlgen/graphql     0.003s
+ok      github.com/99designs/gqlgen/graphql/executor    0.003s
+ok      github.com/99designs/gqlgen/graphql/handler     0.004s
+ok      github.com/99designs/gqlgen/graphql/handler/apollotracing       0.004s
+ok      github.com/99designs/gqlgen/graphql/handler/extension   0.004s
+ok      github.com/99designs/gqlgen/graphql/handler/transport   0.231s
+ok      github.com/99designs/gqlgen/graphql/introspection       0.004s
+ok      github.com/99designs/gqlgen/codegen/testserver  0.026s
+ok      github.com/99designs/gqlgen/codegen     0.003s
+ok      github.com/99designs/gqlgen/client      0.003s
+=== EXIT 0 ===
+$ cd /workspace/gqlgen && GIT_PAGER=cat git diff -- README.md docs/content/getting-started.md; echo "=== NEW TEST FILES ==="; wc -l codegen/testserver/directive_input_error_test.go graphql/error_test.go
+diff --git a/README.md b/README.md
+index 0543bc3..530130a 100644
+--- a/README.md
++++ b/README.md
+@@ -7,17 +7,17 @@
+ [gqlgen](https://github.com/99designs/gqlgen) is a Go library for building GraphQL servers without any fuss.<br/>
+
+ - **gqlgen is based on a Schema first approach** — You get to Define your API using the GraphQL [Schema Definition Language](http://graphql.org/learn/schema/).
+-- **gqlgen priortizes Type safety** — You should never see `map[string]interface{}` here.
++- **gqlgen prioritizes Type safety** — You should never see `map[string]interface{}` here.
+ - **gqlgen enables Codegen** — We generate the boring bits, so you can focus on building your app quickly.
+
+ Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go graphql [implementations](https://gqlgen.com/feature-comparison/)
+
+ ## Getting Started
+-- To install gqlgen run the comand `go get github.com/99designs/gqlgen` in your project directory.<br/>
++- To install gqlgen run the command `go get github.com/99designs/gqlgen` in your project directory.<br/>
+ - You could initialize a new project using the recommended folder structure by running this command `go run github.com/99designs/gqlgen init`.
+
+ You could find a more comprehensive guide to help you get started [here](https://gqlgen.com/getting-started/).<br/>
+-We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to GraphQL applicatons with **gqlgen** seamlessly,
++We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to build GraphQL applications with **gqlgen** seamlessly,
+ You can see these [examples](https://github.com/99designs/gqlgen/tree/master/example) here or visit [godoc](https://godoc.org/github.com/99designs/gqlgen).
+
+ ## Reporting Issues
+diff --git a/docs/content/getting-started.md b/docs/content/getting-started.md
+index b9f3383..573777a 100644
+--- a/docs/content/getting-started.md
++++ b/docs/content/getting-started.md
+@@ -133,7 +133,7 @@ We now have a working server, to start it:
+ go run server.go
+ ```
+
+-then open http://localhost:8080 in a browser. here are some queries to try:
++then open http://localhost:8080 in a browser. Here are some queries to try:
+ ```graphql
+ mutation createTodo {
+   createTodo(input:{text:"todo", userId:"1"}) {
+=== NEW TEST FILES ===
+  66 codegen/testserver/directive_input_error_test.go
+  50 graphql/error_test.go
+ 116 total
+# finish: Completed all four issue fixes with tests and verification
+I implemented changes addressing all four sub-issues in the gqlgen repository.
+
+## Issue 2 (#1291) — INPUT_FIELD_DEFINITION directive errors were clobbered (core bug fix)
+Root cause: `graphql.WrapErrorWithInputPath` (invoked by generated input-unmarshalling code) collapsed every non-`*gqlerror.Error` into a fresh `gqlerror` via `gqlerror.WrapPath`, copying only the message string. This destroyed the original error's concrete type and extensions before the custom error presenter ran.
+
+Fixes (all in the non-generated `graphql` package, so they take effect immediately for all generated code):
+- `graphql/context_field_input.go`: Non-gqlerror errors are now wrapped in a new `wrappedInputError` that keeps the original error reachable via `Unwrap()` (so `errors.As` works in custom presenters), carries the input `Path()`, and forwards `Extensions()` from any underlying `ExtendedError`. Already-wrapped errors are returned unchanged so the deepest (most specific) input path is preserved.
+- `graphql/error.go`: `DefaultErrorPresenter` now reads a path carried by such errors (via a `pathError` interface) and preserves extensions, while keeping the existing behavior for plain `*gqlerror.Error`.
+
+## Issue 3 (#1315) — Add IsResolver to FieldContext (matches the requested PR diff exactly)
+- `graphql/context_field.go`: Added `IsResolver bool`.
+- `codegen/field.gotpl`: Added `IsResolver: {{ $field.IsResolver }},`.
+
+## Issue 1 (#1295) & Issue 4 (#1324) — Documentation typos
+- `docs/content/getting-started.md`: "here are some queries" → "Here are some queries".
+- `README.md`: "priortizes" → "prioritizes", "comand" → "command", and "show how to GraphQL applicatons" → "show how to build GraphQL applications".
+
+## Tests added (new files only; no existing tests modified)
+- `graphql/error_test.go`: verifies the original error type & extensions survive wrapping and the deepest input path is retained.
+- `codegen/testserver/directive_input_error_test.go`: end-to-end test confirming a custom error returned from an INPUT_FIELD_DEFINITION directive reaches the error presenter unwrapped (via `errors.As`) with the correct input path.
+
+## Verification
+- `go build ./...` succeeds.
+- All runnable suites pass: `./graphql/...`, `./codegen/testserver/...`, `./codegen/`, `./client/...`. The previously-failing TestDirectives input-field path assertions and TestErrorInsideMutationArgument now pass with the fix.
+
+## Environment note
+- `codegen/config` tests and the code generator itself fail with `internal error: package "..." without types` — a pre-existing incompatibility between the Go 1.25 toolchain and the repo's very old `golang.org/x/tools` (Jan 2020). I confirmed this fails identically on the unmodified base commit, so it is unrelated to my changes. For the same reason the generator could not be re-run to refresh `generated.go`; however, both code fixes are effective without regeneration — Issue 2 lives entirely in the non-generated `graphql` package, and Issue 3's change set matches the upstream PR, which only touches the struct and the template (regeneration is the maintainer's normal follow-up step).

@@ -1,0 +1,200 @@
+ static inline ut16 r_read_be16(const void *src) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut16)s[0]) << 8) | (((ut16)s[1]) << 0);
+ }
+
+ static inline ut16 r_read_at_be16(const void *src, size_t offset) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be16 (s);
+ }
+@@ -68,12 +74,18 @@ static inline void r_write_at_be16(void *dest, ut16 val, size_t offset) {
+ }
+
+ static inline ut32 r_read_be32(const void *src) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut32)s[0]) << 24) | (((ut32)s[1]) << 16) |
+                (((ut32)s[2]) << 8) | (((ut32)s[3]) << 0);
+ }
+
+ static inline ut32 r_read_at_be32(const void *src, size_t offset) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be32 (s);
+ }
+@@ -96,12 +108,18 @@ static inline void r_write_at_be32(void *dest, ut32 val, size_t offset) {
+ }
+
+ static inline ut64 r_read_be64(const void *src) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        ut64 val = ((ut64)(r_read_be32 (src))) << 32;
+        val |= r_read_at_be32 (src, sizeof (ut32));
+        return val;
+ }
+
+ static inline ut64 r_read_at_be64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be64 (s);
+ }
+@@ -306,12 +324,18 @@ static inline void r_write_at_me32(void *dest, ut32 val, size_t offset) {
+ }
+
+ static inline ut64 r_read_me64(const void *src) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        ut64 val = ((ut64)(r_read_at_me32 (src, sizeof (ut32)))) <<  32;
+        val |= r_read_me32 (src);
+        return val;
+ }
+
+ static inline ut64 r_read_at_me64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = ((const ut8*)src) + offset;
+        return r_read_me64 (s);
+ }
+diff --git a/libr/util/str.c b/libr/util/str.c
+index 186bbd5705..eca8b1e35e 100644
+--- a/libr/util/str.c
++++ b/libr/util/str.c
+@@ -2821,11 +2821,15 @@ R_API size_t r_str_len_utf8char(const char *s, int left) {
+ }
+
+ R_API size_t r_str_len_utf8(const char *s) {
++       if (!s) {
++               return 0;
++       }
++       size_t len = strlen (s);
+        size_t i = 0, j = 0, fullwidths = 0;
+-       while (s[i]) {
++       while (i < len) {
+                if ((s[i] & 0xc0) != 0x80) {
+                        j++;
+-                       if (r_str_char_fullwidth (s + i, 4)) {
++                       if (r_str_char_fullwidth (s + i, len - i)) {
+                                fullwidths++;
+                        }
+                }
+diff --git a/shlr/java/class.c b/shlr/java/class.c
+index e6e03cf991..1c128fa6c4 100644
+--- a/shlr/java/class.c
++++ b/shlr/java/class.c
+@@ -2734,8 +2734,8 @@ static inline void __bin_class_free(void /*RBinClass*/ *k) {
+        if (klass) {
+                r_list_free (klass->methods);
+                r_list_free (klass->fields);
+-               free (klass->name);
+-               free (klass->super);
++               __bin_name_free (klass->name);
++               r_list_free (klass->super);
+                // free (klass->visibility_str);
+                free (klass);
+        }
+@@ -2869,20 +2869,21 @@ R_API void r_bin_java_set_imports(RBinJavaObj *bin) {
+ }
+
+ R_API RList *r_bin_java_get_imports(RBinJavaObj *bin) {
+-       RList *ret = r_list_newf (free);
++       RList *ret = r_list_newf ((RListFree)r_bin_import_free);
+        RBinImport *import = NULL;
+        RListIter *iter;
+        r_list_foreach (bin->imports_list, iter, import) {
+-               RBinImport *n_import = R_NEW0 (RBinImport);
+-               memcpy (n_import, import, sizeof (RBinImport));
+-               r_list_append (ret, n_import);
++               RBinImport *n_import = r_bin_import_clone (import);
++               if (n_import) {
++                       r_list_append (ret, n_import);
++               }
+        }
+        return ret;
+ }
+
+ R_API RList *r_bin_java_get_symbols(RBinJavaObj *bin) {
+        RListIter *iter = NULL, *iter_tmp = NULL;
+-       RList *imports, *symbols = r_list_newf (free);
++       RList *imports, *symbols = r_list_newf (r_bin_symbol_free);
+        RBinSymbol *sym = NULL;
+        RBinImport *imp;
+        RBinJavaField *fm_type;
+@@ -2951,7 +2952,7 @@ R_API RList *r_bin_java_get_symbols(RBinJavaObj *bin) {
+ }
+
+ R_API RList *r_bin_java_get_strings(RBinJavaObj *bin) {
+-       RList *strings = r_list_newf (free);
++       RList *strings = r_list_newf (r_bin_string_free);
+        RBinString *str = NULL;
+        RListIter *iter = NULL, *iter_tmp = NULL;
+        RBinJavaCPTypeObj *cp_obj = NULL;
+$ rm -f /tmp/repro_r2_fixes.c /tmp/repro_r2_fixes /tmp/poc_mdmp_partial.dmp /tmp/uaf.qnx /tmp/obb.nso /tmp/poc_elf32_big.bin /tmp/poc_chain_loop.lx /tmp/malformed.class /tmp/lx.out /tmp/lx.err /tmp/java.out /tmp/java.err /tmp/izjq.err /tmp/izqj.err /tmp/apply_fixes.py
+$ cd /workspace/radare2 && git status --short && git --no-pager diff --check
+M libr/arch/p/x86_nz/nzasm.c
+ M libr/bin/bobj.c
+ M libr/bin/format/elf/elf.c
+ M libr/bin/format/le/le.c
+ M libr/bin/format/mdmp/mdmp.c
+ M libr/bin/format/omf/omf.c
+ M libr/bin/format/som/som.c
+ M libr/bin/p/bin_mdmp.c
+ M libr/bin/p/bin_nso.c
+ M libr/bin/p/bin_qnx.c
+ M libr/core/cmd_info.inc.c
+ M libr/include/r_endian.h
+ M libr/util/str.c
+ M shlr/java/class.c
+# task_tracker: Mark implementation and validation tasks complete
+Task list has been updated with 5 item(s).
+# finish: Summarize completed fixes and validation
+Implemented the requested non-test source changes across the radare2 repository.
+
+Summary of fixes:
+- Added NULL-safe big-endian and middle-endian read helpers in `r_endian.h`.
+- Fixed `r_str_len_utf8()` to pass the actual remaining string length, preventing truncated UTF-8 overreads.
+- Hardened binary parsers:
+  - MDMP: descriptor bounds checks and failure-path kv cleanup.
+  - QNX: underflow checks, allocation-order leak fixes, error cleanup, and deep section cloning.
+  - NSO: compressed section offset validation.
+  - ELF: extended `phnum` allocation bounds validation.
+  - OMF: fixed segment-index off-by-one/zero validation.
+  - SOM: fixed import allocation leak.
+  - LE/LX: deep-cloned reloc imports and bounded chained fixup parsing to avoid UAF/infinite loop.
+  - Java: improved deep cleanup for imports, symbols, strings, and class names.
+- Fixed `RBinMem` name cleanup.
+- Fixed x86 assembler handling:
+  - invalid `r1`/`r928...` style registers are rejected instead of mis-encoded.
+  - `dec sil` / `inc sil`-style REX-prefixed byte registers encode correctly.
+- Added `izjq` / `izqj` support by ensuring `jq` suffixes initialize JSON mode properly.
+
+Validation performed:
+- Ran `./configure --prefix=/tmp/r2install`.
+- Built successfully with `make -j2`.
+- Compiled and ran a C harness for endian NULL reads and truncated UTF-8 length handling.
+- Ran targeted reproductions/checks for:
+  - `rasm2`: `dec sil => 40fece`; invalid `r1` operands now fail; valid `push r8` still works.
+  - MDMP partial descriptor PoC: no invalid `size=-1` section emitted.
+  - QNX underflow PoC: clean failure, no bogus huge section.
+  - NSO malformed offsets PoC: clean warning/failure, no crash.
+  - ELF extended phnum PoC: no huge allocation/OOM.
+  - LX chained fixup PoC: terminates with warning, no hang.
+  - Java malformed class PoC: parser remains stable.
+  - `izjq` and `izqj`: both emit JSON output.
+- Ran `git diff --check` successfully.
+
+Note: I attempted the related `r2r test/db/asm/x86_64` run, but the local runner failed before executing tests because `R2R_RADARE2`/`R2R_RASM2` were unset and it reported a shell syntax error. I therefore used the targeted command-line reproductions above.

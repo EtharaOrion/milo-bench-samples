@@ -1,0 +1,595 @@
+diff --git a/internal/controller/apiextensions/claim/reconciler_test.go b/internal/controller/apiextensions/claim/reconciler_test.go
+index c7331c1ff18..203d8596b85 100644
+--- a/internal/controller/apiextensions/claim/reconciler_test.go
++++ b/internal/controller/apiextensions/claim/reconciler_test.go
+@@ -18,6 +18,7 @@ package claim
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -26,11 +27,13 @@ import (
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/unstructured/claim"
+@@ -40,6 +43,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	name := "coolclaim"
+ 
+ 	type args struct {
+@@ -487,7 +491,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.of, tc.args.with, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, tc.args.of, tc.args.with, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/apiextensions/composite/reconciler_test.go b/internal/controller/apiextensions/composite/reconciler_test.go
+index 34c01079ecd..d7c96ea8d41 100644
+--- a/internal/controller/apiextensions/composite/reconciler_test.go
++++ b/internal/controller/apiextensions/composite/reconciler_test.go
+@@ -18,6 +18,7 @@ package composite
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -27,10 +28,12 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/utils/pointer"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+@@ -42,6 +45,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	cd := managed.ConnectionDetails{"a": []byte("b")}
+ 
+ 	type args struct {
+@@ -840,7 +844,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.of, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, tc.args.of, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/apiextensions/composition/reconciler_test.go b/internal/controller/apiextensions/composition/reconciler_test.go
+index 3e3616c6c2e..ee9656b0d1a 100644
+--- a/internal/controller/apiextensions/composition/reconciler_test.go
++++ b/internal/controller/apiextensions/composition/reconciler_test.go
+@@ -18,6 +18,7 @@ package composition
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -26,11 +27,13 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+ 	v1 "github.com/crossplane/crossplane/apis/apiextensions/v1"
+@@ -39,6 +42,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	ctrl := true
+ 
+ 	comp := &v1.Composition{
+@@ -324,7 +328,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/apiextensions/definition/reconciler_test.go b/internal/controller/apiextensions/definition/reconciler_test.go
+index 467ef3ed7ea..5f549fd424f 100644
+--- a/internal/controller/apiextensions/definition/reconciler_test.go
++++ b/internal/controller/apiextensions/definition/reconciler_test.go
+@@ -18,6 +18,7 @@ package definition
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -29,11 +30,13 @@ import (
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
+ 	kcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/controller"
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -61,6 +64,7 @@ func (m *MockEngine) Err(name string) error {
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 	owner := types.UID("definitely-a-uuid")
+ 	ctrlr := true
+@@ -656,7 +660,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/apiextensions/offered/reconciler_test.go b/internal/controller/apiextensions/offered/reconciler_test.go
+index f7d616d91a4..36a56a181f1 100644
+--- a/internal/controller/apiextensions/offered/reconciler_test.go
++++ b/internal/controller/apiextensions/offered/reconciler_test.go
+@@ -18,6 +18,7 @@ package offered
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -29,11 +30,13 @@ import (
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
+ 	kcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/controller"
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -61,6 +64,7 @@ func (m *MockEngine) Err(name string) error {
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 	owner := types.UID("definitely-a-uuid")
+ 	ctrlr := true
+@@ -663,7 +667,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/pkg/manager/reconciler_test.go b/internal/controller/pkg/manager/reconciler_test.go
+index 83982f5c27c..c3d24bb50ec 100644
+--- a/internal/controller/pkg/manager/reconciler_test.go
++++ b/internal/controller/pkg/manager/reconciler_test.go
+@@ -18,6 +18,7 @@ package manager
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -27,6 +28,7 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
+@@ -54,6 +56,7 @@ func (m *MockRevisioner) Revision(context.Context, v1.Package) (string, error) {
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	pullAlways := corev1.PullAlways
+ 	trueVal := true
+ 	revHistory := int64(1)
+@@ -81,7 +84,7 @@ func TestReconcile(t *testing.T) {
+ 					client: resource.ClientApplicator{
+ 						Client: &test.MockClient{MockGet: test.NewMockGetFn(kerrors.NewNotFound(schema.GroupResource{}, ""))},
+ 					},
+-					log: logging.NewNopLogger(),
++					log: testLog,
+ 				},
+ 			},
+ 			want: want{
+@@ -97,7 +100,7 @@ func TestReconcile(t *testing.T) {
+ 					client: resource.ClientApplicator{
+ 						Client: &test.MockClient{MockGet: test.NewMockGetFn(errBoom)},
+ 					},
+-					log: logging.NewNopLogger(),
++					log: testLog,
+ 				},
+ 			},
+ 			want: want{
+@@ -117,7 +120,7 @@ func TestReconcile(t *testing.T) {
+ 							MockList: test.NewMockListFn(errBoom),
+ 						},
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -164,7 +167,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -213,7 +216,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -260,7 +263,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -318,7 +321,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -396,7 +399,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -455,7 +458,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -515,7 +518,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -612,7 +615,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+@@ -691,7 +694,7 @@ func TestReconcile(t *testing.T) {
+ 					pkg: &MockRevisioner{
+ 						MockRevision: NewMockRevisionFn("test-1234567", nil),
+ 					},
+-					log:    logging.NewNopLogger(),
++					log:    testLog,
+ 					record: event.NewNopRecorder(),
+ 				},
+ 			},
+diff --git a/internal/controller/pkg/resolver/reconciler_test.go b/internal/controller/pkg/resolver/reconciler_test.go
+index 85beaf5bf66..e03855f1aa2 100644
+--- a/internal/controller/pkg/resolver/reconciler_test.go
++++ b/internal/controller/pkg/resolver/reconciler_test.go
+@@ -18,6 +18,7 @@ package resolver
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -25,10 +26,12 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -41,6 +44,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 
+ 	type args struct {
+ 		mgr manager.Manager
+@@ -489,7 +493,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.rec...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.rec, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/pkg/revision/reconciler_test.go b/internal/controller/pkg/revision/reconciler_test.go
+index 826d091d164..883b91d634a 100644
+--- a/internal/controller/pkg/revision/reconciler_test.go
++++ b/internal/controller/pkg/revision/reconciler_test.go
+@@ -31,11 +31,13 @@ import (
+ 	"k8s.io/apimachinery/pkg/types"
+ 	"k8s.io/utils/pointer"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/parser"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+@@ -153,6 +155,7 @@ spec:
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 	pullPolicy := corev1.PullNever
+ 	trueVal := true
+@@ -1411,7 +1414,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.rec...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.rec, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/rbac/definition/reconciler_test.go b/internal/controller/rbac/definition/reconciler_test.go
+index 9721a5ec586..4fe3160b5a7 100644
+--- a/internal/controller/rbac/definition/reconciler_test.go
++++ b/internal/controller/rbac/definition/reconciler_test.go
+@@ -18,6 +18,7 @@ package definition
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -27,10 +28,12 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -39,6 +42,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 
+ 	type args struct {
+@@ -178,7 +182,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/rbac/namespace/reconciler_test.go b/internal/controller/rbac/namespace/reconciler_test.go
+index 384de076d48..a985bf0efd6 100644
+--- a/internal/controller/rbac/namespace/reconciler_test.go
++++ b/internal/controller/rbac/namespace/reconciler_test.go
+@@ -18,6 +18,7 @@ package namespace
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -28,10 +29,12 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -39,6 +42,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 
+ 	type args struct {
+@@ -198,7 +202,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/rbac/provider/binding/reconciler_test.go b/internal/controller/rbac/provider/binding/reconciler_test.go
+index ac388fa6660..dfc5999e4b0 100644
+--- a/internal/controller/rbac/provider/binding/reconciler_test.go
++++ b/internal/controller/rbac/provider/binding/reconciler_test.go
+@@ -18,6 +18,7 @@ package binding
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -26,10 +27,12 @@ import (
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -38,6 +41,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 
+ 	type args struct {
+@@ -193,7 +197,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
+diff --git a/internal/controller/rbac/provider/roles/reconciler_test.go b/internal/controller/rbac/provider/roles/reconciler_test.go
+index 939aa5793c8..da9b354dac5 100644
+--- a/internal/controller/rbac/provider/roles/reconciler_test.go
++++ b/internal/controller/rbac/provider/roles/reconciler_test.go
+@@ -18,6 +18,7 @@ package roles
+ 
+ import (
+ 	"context"
++	"io"
+ 	"testing"
+ 
+ 	"github.com/google/go-cmp/cmp"
+@@ -28,10 +29,12 @@ import (
+ 	"k8s.io/apimachinery/pkg/runtime"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"sigs.k8s.io/controller-runtime/pkg/client"
++	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+ 	"sigs.k8s.io/controller-runtime/pkg/manager"
+ 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+ 
+ 	"github.com/crossplane/crossplane-runtime/pkg/errors"
++	"github.com/crossplane/crossplane-runtime/pkg/logging"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource"
+ 	"github.com/crossplane/crossplane-runtime/pkg/resource/fake"
+ 	"github.com/crossplane/crossplane-runtime/pkg/test"
+@@ -40,6 +43,7 @@ import (
+ 
+ func TestReconcile(t *testing.T) {
+ 	errBoom := errors.New("boom")
++	testLog := logging.NewLogrLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(io.Discard)).WithName("testlog"))
+ 	now := metav1.Now()
+ 
+ 	type args struct {
+@@ -250,7 +254,7 @@ func TestReconcile(t *testing.T) {
+ 
+ 	for name, tc := range cases {
+ 		t.Run(name, func(t *testing.T) {
+-			r := NewReconciler(tc.args.mgr, tc.args.opts...)
++			r := NewReconciler(tc.args.mgr, append(tc.args.opts, WithLogger(testLog))...)
+ 			got, err := r.Reconcile(context.Background(), reconcile.Request{})
+ 
+ 			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {

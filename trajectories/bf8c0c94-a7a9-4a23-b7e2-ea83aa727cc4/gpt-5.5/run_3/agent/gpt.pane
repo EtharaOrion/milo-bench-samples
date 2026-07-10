@@ -1,0 +1,200 @@
+    /// Adds files to myapp
+    Add { name: Option<String> },
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    // You can check for the existence of subcommands, and if found use their
+    // matches just as you would the top level cmd
+    match &cli.command {
+        Commands::Add { name } => {
+            println!("'myapp add' was used, name is: {name:?}")
+        }
+    }
+}
+
+--- md ---
+```console
+$ 03_04_subcommands_derive help
+A simple to use, efficient, and full-featured Command Line Argument Parser
+
+Usage: 03_04_subcommands_derive[EXE] <COMMAND>
+
+Commands:
+  add   Adds files to myapp
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ 03_04_subcommands_derive help add
+Adds files to myapp
+
+Usage: 03_04_subcommands_derive[EXE] add [NAME]
+
+Arguments:
+  [NAME]
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ 03_04_subcommands_derive add bob
+'myapp add' was used, name is: Some("bob")
+
+```
+
+Because we used `command: Commands` instead of `command: Option<Commands>`:
+```console
+$ 03_04_subcommands_derive
+? failed
+A simple to use, efficient, and full-featured Command Line Argument Parser
+
+Usage: 03_04_subcommands_derive[EXE] <COMMAND>
+
+Commands:
+  add   Adds files to myapp
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+```
+
+Because we added `#[command(propagate_version = true)]`:
+```console
+$ 03_04_subcommands_derive --version
+clap [..]
+
+$ 03_04_subcommands_derive add --version
+clap-add [..]
+
+```
+
+--- builder counterpart ---
+use clap::{arg, command, Command};
+
+fn main() {
+    let matches = command!() // requires `cargo` feature
+        .propagate_version(true)
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("add")
+                .about("Adds files to myapp")
+                .arg(arg!([NAME])),
+        )
+        .get_matches();
+
+    match matches.subcommand() {
+        Some(("add", sub_matches)) => println!(
+            "'myapp add' was used, name is: {:?}",
+            sub_matches.get_one::<String>("NAME")
+        ),
+        _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
+    }
+}
+$ cd /workspace/clap && grep -R "myapp\|MyApp\|cargo\|git" -n examples/tutorial_derive examples/*derive.rs | head -120
+examples/tutorial_derive/02_apps.md:14:MyApp 1.0
+examples/tutorial_derive/02_apps.rs:4:#[command(name = "MyApp")]
+examples/tutorial_derive/03_04_subcommands.md:8:  add   Adds files to myapp
+examples/tutorial_derive/03_04_subcommands.md:16:Adds files to myapp
+examples/tutorial_derive/03_04_subcommands.md:28:'myapp add' was used, name is: Some("bob")
+examples/tutorial_derive/03_04_subcommands.md:41:  add   Adds files to myapp
+examples/tutorial_derive/03_04_subcommands.rs:13:    /// Adds files to myapp
+examples/tutorial_derive/03_04_subcommands.rs:24:            println!("'myapp add' was used, name is: {name:?}")
+examples/tutorial_derive/03_04_subcommands_alt.rs:13:    /// Adds files to myapp
+examples/tutorial_derive/03_04_subcommands_alt.rs:29:            println!("'myapp add' was used, name is: {:?}", name.name)
+examples/tutorial_derive/04_02_parse.md:19:error: invalid value 'foobar' for '<PORT>': invalid digit found in string
+examples/cargo-example-derive.rs:4:#[command(name = "cargo")]
+examples/cargo-example-derive.rs:5:#[command(bin_name = "cargo")]
+examples/git-derive.rs:9:#[command(name = "git")]
+# think: Assess issue coverage and remaining risks
+Your thought has been logged.
+$ cd /workspace/clap && git status --short && printf '\n--- last test summary commands attempted ---\n' && true
+M clap_complete/examples/completion-derive.rs
+ M clap_complete/examples/completion.rs
+ M clap_complete/examples/dynamic.rs
+ M clap_complete/src/dynamic.rs
+ M clap_complete/src/generator/mod.rs
+ M clap_complete/src/lib.rs
+ M clap_complete/src/shells/bash.rs
+ M clap_complete/src/shells/elvish.rs
+ M clap_complete/src/shells/fish.rs
+ M clap_complete/src/shells/powershell.rs
+ M clap_complete/src/shells/shell.rs
+ M clap_complete/src/shells/zsh.rs
+ M clap_complete_fig/src/fig.rs
+ M clap_lex/src/lib.rs
+ M clap_mangen/src/render.rs
+ M examples/cargo-example-derive.rs
+ M examples/cargo-example.rs
+ M examples/derive_ref/augment_args.rs
+ M examples/derive_ref/augment_subcommands.rs
+ M examples/derive_ref/flatten_hand_args.rs
+ M examples/derive_ref/hand_subcommand.rs
+ M examples/find.rs
+ M examples/git-derive.rs
+ M examples/git.rs
+ M examples/pacman.rs
+ M examples/tutorial_builder/01_quick.rs
+ M examples/tutorial_builder/04_01_enum.rs
+ M examples/tutorial_builder/04_02_parse.rs
+ M examples/tutorial_builder/04_02_validate.rs
+ M examples/tutorial_builder/04_03_relations.rs
+ M examples/tutorial_builder/04_04_custom.rs
+ M examples/tutorial_builder/05_01_assert.rs
+ M examples/tutorial_derive/01_quick.rs
+ M examples/tutorial_derive/03_04_subcommands.rs
+ M examples/tutorial_derive/04_02_validate.rs
+ M examples/tutorial_derive/04_03_relations.rs
+ M examples/tutorial_derive/04_04_custom.rs
+ M examples/typed-derive.rs
+ M src/builder/arg.rs
+ M src/builder/command.rs
+ M src/builder/debug_asserts.rs
+ M src/builder/range.rs
+ M src/builder/str.rs
+ M src/builder/value_hint.rs
+ M src/derive.rs
+ M src/error/format.rs
+ M src/error/mod.rs
+ M src/macros.rs
+ M src/output/fmt.rs
+ M src/output/help_template.rs
+ M src/output/usage.rs
+ M src/parser/arg_matcher.rs
+ M src/parser/matches/arg_matches.rs
+ M src/parser/parser.rs
+ M src/parser/validator.rs
+ M src/util/color.rs
+
+--- last test summary commands attempted ---
+# task_tracker: Mark all task tracker items complete
+Task list has been updated with 5 item(s).
+# finish: Finish with implementation and verification summary
+Implemented the requested non-test changes in `/workspace/clap`.
+
+Summary of changes:
+- Fixed long-help detection so fully hidden arguments no longer cause `--help` to render long help, including hidden args with possible-value descriptions.
+- Improved `builder::str::inner::Inner::into_string` to move `Box<str>` into `String` instead of copying.
+- Cleaned up many `clippy::uninlined_format_args` warnings across source and examples using captured format arguments.
+- Fixed the typo in `examples/git.rs` (`unreachabe` → `unreachable`).
+- Updated the cargo derive example so the Rust parser type is differentiated from the `cargo` command name.
+- Did not modify any files under `tests/`.
+
+Reproduction:
+- Created a temporary `src/bin/repro_4710.rs` binary that reproduced the hidden-possible-value long-help bug.
+- Expanded it with edge cases for hidden possible values, visible possible values, and `-h` vs `--help` behavior.
+- Confirmed it passed after the fix, then removed the temporary binary to keep the final diff minimal.
+
+Verification run:
+- `cargo check --bins --lib` ✅
+- `cargo test --test builder hide -- --nocapture` ✅
+- `cargo test --test builder possible -- --nocapture` ✅
+- `cargo test --test examples -- --nocapture` ✅
+- `cargo test --workspace` attempted but blocked by environment: Cargo cannot read cached crates under `/usr/local/cargo/registry/cache/...` due `Permission denied`.
+- `cargo clippy` and `cargo fmt` could not be run because `clippy` and `rustfmt` components are not installed for the active toolchain.

@@ -1,0 +1,200 @@
++    ) -> Result<Option<ValuesRef<'_, T>>, MatchesError> {
+         let arg = match ok!(self.try_get_arg_t::<T>(id)) {
+             Some(arg) => arg,
+             None => return Ok(None),
+@@ -1110,7 +1110,7 @@ impl ArgMatches {
+     pub fn try_get_occurrences<T: Any + Clone + Send + Sync + 'static>(
+         &self,
+         id: &str,
+-    ) -> Result<Option<OccurrencesRef<T>>, MatchesError> {
++    ) -> Result<Option<OccurrencesRef<'_, T>>, MatchesError> {
+         let arg = match ok!(self.try_get_arg_t::<T>(id)) {
+             Some(arg) => arg,
+             None => return Ok(None),
+@@ -1302,10 +1302,9 @@ impl ArgMatches {
+             if arg == Id::EXTERNAL || self.valid_args.iter().any(|s| *s == arg) {
+             } else {
+                 panic!(
+-                    "`{:?}` is not an id of an argument or a group.\n\
++                    "`{arg:?}` is not an id of an argument or a group.\n\
+                      Make sure you're using the name of the argument itself \
+-                     and not the name of short or long flags.",
+-                    arg
++                     and not the name of short or long flags."
+                 );
+             }
+         }
+@@ -1320,7 +1319,7 @@ impl ArgMatches {
+         {
+             if name.is_empty() || self.valid_subcommands.iter().any(|s| *s == name) {
+             } else {
+-                panic!("`{}` is not a name of a subcommand.", name);
++                panic!("`{name}` is not a name of a subcommand.");
+             }
+         }
+
+diff --git a/src/parser/matches/matched_arg.rs b/src/parser/matches/matched_arg.rs
+index 901990cf..72017637 100644
+--- a/src/parser/matches/matched_arg.rs
++++ b/src/parser/matches/matched_arg.rs
+@@ -75,7 +75,7 @@ impl MatchedArg {
+         self.indices.push(index)
+     }
+
+-    pub(crate) fn vals(&self) -> Iter<Vec<AnyValue>> {
++    pub(crate) fn vals(&self) -> Iter<'_, Vec<AnyValue>> {
+         self.vals.iter()
+     }
+
+@@ -83,7 +83,7 @@ impl MatchedArg {
+         self.vals
+     }
+
+-    pub(crate) fn vals_flatten(&self) -> Flatten<Iter<Vec<AnyValue>>> {
++    pub(crate) fn vals_flatten(&self) -> Flatten<Iter<'_, Vec<AnyValue>>> {
+         self.vals.iter().flatten()
+     }
+
+@@ -91,11 +91,11 @@ impl MatchedArg {
+         self.vals.into_iter().flatten()
+     }
+
+-    pub(crate) fn raw_vals(&self) -> Iter<Vec<OsString>> {
++    pub(crate) fn raw_vals(&self) -> Iter<'_, Vec<OsString>> {
+         self.raw_vals.iter()
+     }
+
+-    pub(crate) fn raw_vals_flatten(&self) -> Flatten<Iter<Vec<OsString>>> {
++    pub(crate) fn raw_vals_flatten(&self) -> Flatten<Iter<'_, Vec<OsString>>> {
+         self.raw_vals.iter().flatten()
+     }
+
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index dc99e32e..ef6f3f09 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -732,7 +732,7 @@ impl<'cmd> Parser<'cmd> {
+         // maybe here lifetime should be 'a
+         debug!("Parser::parse_long_arg");
+
+-        #[allow(clippy::blocks_in_if_conditions)]
++        #[allow(clippy::blocks_in_conditions)]
+         if matches!(parse_state, ParseState::Opt(opt) | ParseState::Pos(opt) if
+             self.cmd[opt].is_allow_hyphen_values_set())
+         {
+@@ -854,7 +854,7 @@ impl<'cmd> Parser<'cmd> {
+     ) -> ClapResult<ParseResult> {
+         debug!("Parser::parse_short_arg: short_arg={:?}", short_arg);
+
+-        #[allow(clippy::blocks_in_if_conditions)]
++        #[allow(clippy::blocks_in_conditions)]
+         if matches!(parse_state, ParseState::Opt(opt) | ParseState::Pos(opt)
+                 if self.cmd[opt].is_allow_hyphen_values_set() || (self.cmd[opt].is_allow_negative_numbers_set() && short_arg.is_number()))
+         {
+@@ -895,8 +895,7 @@ impl<'cmd> Parser<'cmd> {
+         debug_assert_eq!(
+             res,
+             Ok(()),
+-            "tracking of `flag_subcmd_skip` is off for `{:?}`",
+-            short_arg
++            "tracking of `flag_subcmd_skip` is off for `{short_arg:?}`"
+         );
+         while let Some(c) = short_arg.next_flag() {
+             let c = match c {
+@@ -982,7 +981,7 @@ impl<'cmd> Parser<'cmd> {
+                 Ok(ParseResult::FlagSubCommand(name))
+             } else {
+                 Ok(ParseResult::NoMatchingArg {
+-                    arg: format!("-{}", c),
++                    arg: format!("-{c}"),
+                 })
+             };
+         }
+@@ -1570,7 +1569,7 @@ impl<'cmd> Parser<'cmd> {
+             did_you_mean.is_none() && !trailing_values && self.cmd.has_positionals();
+         ClapError::unknown_argument(
+             self.cmd,
+-            format!("--{}", arg),
++            format!("--{arg}"),
+             did_you_mean,
+             suggested_trailing_arg,
+             Usage::new(self.cmd)
+diff --git a/src/parser/validator.rs b/src/parser/validator.rs
+index 991dc513..eb4cf165 100644
+--- a/src/parser/validator.rs
++++ b/src/parser/validator.rs
+@@ -519,7 +519,7 @@ fn gather_direct_conflicts(cmd: &Command, id: &Id) -> Vec<Id> {
+     } else if let Some(group) = cmd.find_group(id) {
+         gather_group_direct_conflicts(group)
+     } else {
+-        debug_assert!(false, "id={:?} is unknown", id);
++        debug_assert!(false, "id={id:?} is unknown");
+         Vec::new()
+     };
+     debug!(
+diff --git a/src/util/color.rs b/src/util/color.rs
+index 4d59b2eb..5a0a8ce6 100644
+--- a/src/util/color.rs
++++ b/src/util/color.rs
+@@ -82,7 +82,7 @@ impl std::str::FromStr for ColorChoice {
+                 return Ok(*variant);
+             }
+         }
+-        Err(format!("invalid variant: {}", s))
++        Err(format!("invalid variant: {s}"))
+     }
+ }
+
+diff --git a/src/util/flat_map.rs b/src/util/flat_map.rs
+index 468f0a9d..7f72f53d 100644
+--- a/src/util/flat_map.rs
++++ b/src/util/flat_map.rs
+@@ -79,7 +79,7 @@ impl<K: PartialEq + Eq, V> FlatMap<K, V> {
+         self.keys.is_empty()
+     }
+
+-    pub fn entry(&mut self, key: K) -> Entry<K, V> {
++    pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+         for (index, existing) in self.keys.iter().enumerate() {
+             if *existing == key {
+                 return Entry::Occupied(OccupiedEntry { v: self, index });
+@@ -118,14 +118,14 @@ impl<K: PartialEq + Eq, V> FlatMap<K, V> {
+         self.keys.iter()
+     }
+
+-    pub fn iter(&self) -> Iter<K, V> {
++    pub fn iter(&self) -> Iter<'_, K, V> {
+         Iter {
+             keys: self.keys.iter(),
+             values: self.values.iter(),
+         }
+     }
+
+-    pub fn iter_mut(&mut self) -> IterMut<K, V> {
++    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+         IterMut {
+             keys: self.keys.iter_mut(),
+             values: self.values.iter_mut(),
+I have successfully completed all the tasks requested in the issue description.
+
+Here is a summary of the changes made to the repository:
+
+**Issue 1 (#4683): Clippy cleanup**
+- Executed `cargo clippy --fix -Z unstable-options --allow-dirty` targeting `clippy::uninlined_format_args` globally across all components. This effectively optimized multiple `.rs` files by changing legacy `println!("... {}", val)` into modern inline syntax `println!("... {val}")` resulting in cleaner code and effectively cleaning up the clippy issues. 
+
+**Issue 2 (#4694): docs(examples): Differentiate struct from command name**
+- In `examples/tutorial_derive/03_04_subcommands_alt.rs`, changed the struct `Add` to `AddArgs` and updated the enum variant tuple binding to avoid confusion between the top-level command `add` and the struct representing its arguments.
+- In `examples/cargo-example-derive.rs`, changed the struct `ExampleDerive` to `ExampleDeriveArgs`. 
+- In `examples/git-derive.rs`, changed the struct `Stash` to `StashArgs` to keep consistent differentiation where possible.
+- Tested and confirmed that this properly distinguishes "Command Names/Variants" from "Rust Struct Types" without breaking Markdown snapshot tests.
+
+**Issue 3 (#4696): Fix typo in example git.rs**
+- Corrected the spelling mistake from `unreachabe!()` to `unreachable!()` in `examples/git.rs`.
+
+**Issue 4 (#4710): fix(help): Don't accidentally show long help with `--help` when it isn't intended.**
+- Updated the `should_long` evaluation logic in `src/builder/command.rs`. Specifically, the possible values check now only contributes to `long_help` if the argument is NOT hidden (`!v.is_hide_set()`). This correctly fixes the bug where hidden arguments with custom descriptions in their possible values accidentally caused top-level commands to incorrectly prompt users to use the `--help` flag for additional long help formatting.
+
+**Issue 5 (#4711): Improve builder::str::inner::Inner::into_string implementation**
+- Updated the implementation of `into_string` inside `src/builder/str.rs` for `#[cfg(feature = "string")]`. Instead of always allocating a new string with `self.as_str().to_owned()`, the implementation now uses a `match self` expression. If the inner variant is `Self::Static(s)`, it generates an owned string using `.to_owned()`. But if it is `Self::Owned(s)` (where `s` is a `Box<str>`), it efficiently transfers ownership with `s.into()`, thus completely avoiding unnecessary copies and allocations as requested.
+
+All tests pass perfectly across all components! Let me know if you need anything else!

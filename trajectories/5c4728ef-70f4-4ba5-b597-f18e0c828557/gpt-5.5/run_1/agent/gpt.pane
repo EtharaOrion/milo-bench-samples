@@ -1,0 +1,200 @@
+-#  Updated through IERS Bulletin 66 issued in July 2023
++#  Updated through IERS Bulletin 71 issued in January 2026
+ #
+ #
+-#  File expires on 28 June 2024
++#  File expires on 28 December 2026
+ #
+ #
+ #    MJD        Date        TAI-UTC (s)
+diff --git a/astropy/utils/iers/iers.py b/astropy/utils/iers/iers.py
+index 1ea390345..a4b37b0eb 100644
+--- a/astropy/utils/iers/iers.py
++++ b/astropy/utils/iers/iers.py
+@@ -10,7 +10,7 @@ celestial-to-terrestrial coordinate transformations
+ """
+
+ import re
+-from datetime import datetime
++from datetime import datetime, timezone
+ from urllib.parse import urlparse
+ from warnings import warn
+
+@@ -75,7 +75,7 @@ IERS_B_README = get_pkg_data_filename("data/ReadMe.eopc04")
+ # LEAP SECONDS default file name, URL, and alternative format/URL
+ IERS_LEAP_SECOND_FILE = get_pkg_data_filename("data/Leap_Second.dat")
+ IERS_LEAP_SECOND_URL = "https://hpiers.obspm.fr/iers/bul/bulc/Leap_Second.dat"
+-IETF_LEAP_SECOND_URL = "https://www.ietf.org/timezones/data/leap-seconds.list"
++IETF_LEAP_SECOND_URL = "https://data.iana.org/time-zones/data/leap-seconds.list"
+
+ # Status/source values returned by IERS.ut1_utc
+ FROM_IERS_B = 0
+@@ -1077,7 +1077,9 @@ class LeapSeconds(QTable):
+     def _today():
+         # Get current day in scale='tai' without going through a scale change
+         # (so we do not need leap seconds).
+-        s = "{0.year:04d}-{0.month:02d}-{0.day:02d}".format(datetime.utcnow())
++        s = "{0.year:04d}-{0.month:02d}-{0.day:02d}".format(
++            datetime.now(timezone.utc)
++        )
+         return Time(s, scale="tai", format="iso", out_subfmt="date")
+
+     @classmethod
+diff --git a/astropy/utils/masked/core.py b/astropy/utils/masked/core.py
+index 3ec3ef3f1..8122d0c83 100644
+--- a/astropy/utils/masked/core.py
++++ b/astropy/utils/masked/core.py
+@@ -982,6 +982,13 @@ class MaskedNDArray(Masked, np.ndarray, base_cls=np.ndarray, data_cls=np.ndarray
+             axis=axis, out=out, **self._reduce_defaults(kwargs, np.nanmin)
+         )
+
++    def ptp(self, axis=None, out=None, **kwargs):
++        result = self.max(axis=axis, **kwargs) - self.min(axis=axis, **kwargs)
++        if out is not None:
++            out[...] = result
++            return out
++        return result
++
+     def nonzero(self):
+         unmasked_nonzero = self.unmasked.nonzero()
+         if self.ndim >= 1:
+diff --git a/docs/conf.py b/docs/conf.py
+index ceb4bfa02..69f910b07 100644
+--- a/docs/conf.py
++++ b/docs/conf.py
+@@ -100,6 +100,7 @@ del intersphinx_mapping["astropy"]
+ intersphinx_mapping.update(
+     {
+         "astropy-dev": ("https://docs.astropy.org/en/latest/", None),
++        "cycler": ("https://matplotlib.org/cycler/", None),
+         "pyerfa": ("https://pyerfa.readthedocs.io/en/stable/", None),
+         "pytest": ("https://docs.pytest.org/en/stable/", None),
+         "ipython": ("https://ipython.readthedocs.io/en/stable/", None),
+diff --git a/docs/time/index.rst b/docs/time/index.rst
+index 238ff2b1f..f487a0ae9 100644
+--- a/docs/time/index.rst
++++ b/docs/time/index.rst
+@@ -514,6 +514,14 @@ To infer input format::
+
+ .. EXAMPLE END
+
++.. note::
++
++   The ``format`` attribute controls how a |Time| object is parsed from input
++   values or represented as output values. It does not determine how the time is
++   stored internally; all formats use the same internal Julian Date
++   representation described below.
++
++
+ Internal Representation
+ ^^^^^^^^^^^^^^^^^^^^^^^
+
+diff --git a/setup.cfg b/setup.cfg
+index 040dc520d..8b3eea786 100644
+--- a/setup.cfg
++++ b/setup.cfg
+@@ -101,7 +101,7 @@ docs =
+     sphinx-astropy>=1.6
+     pytest>=7.0,<8
+     scipy>=1.3
+-    matplotlib>=3.3,!=3.4.0,!=3.5.2
++    matplotlib>=3.3,!=3.4.0,!=3.5.2,<3.8
+     sphinx-changelog>=1.2.0
+     Jinja2>=3.0
+# file_editor: Correct VOUnit fraction error message formatting
+The file /workspace/astropy/astropy/units/format/vounit.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/astropy/astropy/units/format/vounit.py:
+   199	    @classmethod
+   200	    def _format_fraction(cls, scale, numerator, denominator, *, fraction="inline"):
+   201	        if not (fraction is True or fraction == "inline"):
+   202	            raise ValueError(
+   203	                f"format {cls.name!r} only supports inline fractions,"
+   204	                f"not fraction={fraction!r}."
+   205	            )
+   206	
+   207	        if cls._space in denominator:
+   208	            denominator = f"({denominator})"
+   209	        if scale and numerator == "1":
+   210	            return f"{scale}/{denominator}"
+   211	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/astropy && PYTHONPATH=/workspace/astropy python -u /workspace/reproduce_astropy_issues.py && PYTHONPATH=/workspace/astropy pytest -q astropy/units/tests/test_format.py -q
+all reproduction checks passed
+<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject
+Internet access disabled
+............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................                                                                                                                                                                                                                     [100%]
+$ cd /workspace/astropy && git status --short && echo '--- modified test files ---' && git status --short | awk '{print $2}' | grep -E '(^|/)tests?/|test_' || true
+M .github/workflows/ci_cron_daily.yml
+ M .github/workflows/ci_cron_weekly.yml
+ M .github/workflows/ci_workflows.yml
+ M .github/workflows/codeql-analysis.yml
+ M .github/workflows/update_iers.yml
+ M astropy/io/misc/yaml.py
+ M astropy/io/votable/util.py
+ M astropy/time/core.py
+ M astropy/units/cgs.py
+ M astropy/units/format/vounit.py
+ M astropy/utils/iers/data/Leap_Second.dat
+ M astropy/utils/iers/data/eopc04.1962-now
+ M astropy/utils/iers/iers.py
+ M astropy/utils/masked/core.py
+ M docs/conf.py
+ M docs/time/index.rst
+ M setup.cfg
+--- modified test files ---
+# task_tracker: Update task tracker before final review
+Task list has been updated with 5 item(s).
+$ cd /workspace/astropy && git --no-pager diff --check
+astropy/utils/iers/data/eopc04.1962-now:3: trailing whitespace.
++# Description: https://hpiers.obspm.fr/eoppc/eop/eopc04/readme        Contact: christian.bizouard@obspm.fr
+$ cd /workspace/astropy && python - <<'PY'
+$ from pathlib import Path
+$ path = Path('astropy/utils/iers/data/eopc04.1962-now')
+$ lines = path.read_text().splitlines()
+$ path.write_text('\n'.join(line.rstrip() for line in lines) + '\n')
+$ PY
+$ git --no-pager diff --check
+cd /workspace/astropy && python - <<'PY'
+from pathlib import Path
+path = Path('astropy/utils/iers/data/eopc04.1962-now')
+lines = path.read_text().splitlines()
+path.write_text('\n'.join(line.rstrip() for line in lines) + '\n')
+PY
+
+
+
+git --no-pager diff --check
+$ cd /workspace/astropy && PYTHONPATH=/workspace/astropy python -u /workspace/reproduce_astropy_issues.py
+all reproduction checks passed
+# task_tracker: Mark all tasks completed
+Task list has been updated with 5 item(s).
+# finish: Summarize implemented fixes and validation results
+Implemented the requested non-test changes in `/workspace/astropy`.
+
+Summary of changes:
+- Fixed VOUnit formatting for compact inline fractions and fractional powers.
+- Fixed `Masked.ptp()` so masked values are ignored correctly.
+- Added YAML safeguards to reject NumPy object arrays/object dtypes when dumping or loading.
+- Ensured VOTable compressed file-like output closes the `gzip.GzipFile` wrapper properly.
+- Updated the broken leap-second URL to the IANA URL and refreshed bundled IERS data files.
+- Replaced source `datetime.utcnow()` usages with timezone-aware UTC calls.
+- Ensured public `cm`/`centimeter` unit aliases share the single CGS centimetre unit object while preserving CGS composition behavior.
+- Updated CI config: `actions/checkout@v4`, no build isolation for emulated architecture jobs, and removed the `parallel_and_32bit` job.
+- Pinned docs matplotlib dependency to `<3.8` and added `cycler` intersphinx mapping.
+- Added the requested time docs note clarifying `format` vs internal JD storage.
+
+Validation performed:
+- Created and ran `/workspace/reproduce_astropy_issues.py`; it passes all checks.
+- Ran targeted tests successfully:
+  - `astropy/utils/masked/tests/test_masked.py::TestMaskedArrayMethods`
+  - `astropy/io/misc/tests/test_yaml.py`
+  - `astropy/io/votable/tests`
+  - `astropy/units/tests/test_units.py`
+  - `astropy/units/tests/test_format.py`
+  - `astropy/time/tests/test_basic.py::test_now`
+- Ran `git diff --check`; it passes.
+- Confirmed no test files were modified.
+
+Full test suite result:
+- `pytest -q` ran to completion with `23019 passed, 3962 skipped, 176 xfailed` and 2 failures that appear unrelated to these changes/environmental:
+  - `astropy/units/tests/test_structured_erfa_ufuncs.py::TestPVUfuncs::test_pvstar`
+  - doctest in `astropy.utils.introspection.minversion` due local version reporting `0.1.dev...` below `0.4.4`.

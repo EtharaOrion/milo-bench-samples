@@ -1,0 +1,200 @@
+   723		var result4 Language
+   724		if err := DB.Table("langs").First(&result4, "code = ?", lang.Code).Error; err != nil || result4.Name != lang.Name {
+   725			t.Errorf("failed to find created record, got error: %v, result: %+v", err, result4)
+   726		}
+   727	}
+   728	
+   729	// only sqlite, postgres support returning
+   730	func TestUpdateReturning(t *testing.T) {
+   731		if DB.Dialector.Name() != "sqlite" && DB.Dialector.Name() != "postgres" {
+   732			return
+   733		}
+   734	
+   735		users := []*User{
+$ cd /workspace/gorm && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('finisher_api.go')
+$ s=p.read_text()
+$ old='''\t\tif tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {\n\t\t\treturn tx.Session(&Session{NewDB: true, SkipHooks: true}).Clauses(clause.OnConflict{UpdateAll: true}).Create(value)\n\t\t}\n'''
+$ new='''\t\tif tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {\n\t\t\tcreateTx := tx.Session(&Session{SkipHooks: true})\n\t\t\tcreateTx.Statement.SQL = strings.Builder{}\n\t\t\tcreateTx.Statement.Vars = nil\n\t\t\tcreateTx.Statement.Clauses = map[string]clause.Clause{}\n\t\t\treturn createTx.Clauses(clause.OnConflict{UpdateAll: true}).Create(value)\n\t\t}\n'''
+$ if old not in s:
+$     raise SystemExit('old fallback not found')
+$ s=s.replace(old,new)
+$ p.write_text(s)
+$ PY
+$ gofmt -w finisher_api.go
+$ python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('finisher_api.go')
+$ s=p.read_text().replace('''// Pluck used to query single column from a model as a map\n//\n//\tvar ages []int64\n//\tdb.Model(&users).Pluck("age", &ages)\n''','''// Pluck used to query single column from a model as a map\n//     var ages []int64\n//     db.Model(&users).Pluck("age", &ages)\n''')
+$ p.write_text(s)
+$ PY
+cd /workspace/gorm && python3 - <<'PY'
+from pathlib import Path
+p=Path('finisher_api.go')
+s=p.read_text()
+old='''\t\tif tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {\n\t\t\treturn tx.Session(&Session{NewDB: true, SkipHooks: true}).Clauses(clause.OnConflict{UpdateAll: true}).Create(value)\n\t\t}\n'''
+new='''\t\tif tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {\n\t\t\tcreateTx := tx.Session(&Session{SkipHooks: true})\n\t\t\tcreateTx.Statement.SQL = strings.Builder{}\n\t\t\tcreateTx.Statement.Vars = nil\n\t\t\tcreateTx.Statement.Clauses = map[string]clause.Clause{}\n\t\t\treturn createTx.Clauses(clause.OnConflict{UpdateAll: true}).Create(value)\n\t\t}\n'''
+if old not in s:
+    raise SystemExit('old fallback not found')
+s=s.replace(old,new)
+p.write_text(s)
+PY
+
+
+
+gofmt -w finisher_api.go
+
+
+python3 - <<'PY'
+from pathlib import Path
+p=Path('finisher_api.go')
+s=p.read_text().replace('''// Pluck used to query single column from a model as a map\n//\n//\tvar ages []int64\n//\tdb.Model(&users).Pluck("age", &ages)\n''','''// Pluck used to query single column from a model as a map\n//     var ages []int64\n//     db.Model(&users).Pluck("age", &ages)\n''')
+p.write_text(s)
+PY
+$ cd /workspace/gorm/tests && GORM_DIALECT=sqlite go test -mod=mod -run TestSaveWithPrimaryValue -count=1; cd /workspace/gorm && rm -f tests/go.sum
+2026/06/24 05:17:42 testing sqlite3...
+PASS
+ok      gorm.io/gorm/tests      0.131s
+$ cat > /tmp/gorm_save_repro.go <<'EOF'
+$ package main
+$ 
+$ import (
+$     "fmt"
+$     "gorm.io/driver/sqlite"
+$     "gorm.io/gorm"
+$ )
+$ 
+$ type SaveUser struct {
+$     ID int `gorm:"primaryKey"`
+$     Name string
+$     DeletedAt gorm.DeletedAt
+$ }
+$ 
+$ func main() {
+$     db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+$     if err != nil { panic(err) }
+$     if err := db.AutoMigrate(&SaveUser{}); err != nil { panic(err) }
+$     u := SaveUser{ID: 1, Name: "old"}
+$     if err := db.Create(&u).Error; err != nil { panic(err) }
+$     if err := db.Delete(&u).Error; err != nil { panic(err) }
+$     u.Name = "updated"
+$     if err := db.Save(&u).Error; err != nil { panic(fmt.Sprintf("save deleted failed: %v", err)) }
+$     var got SaveUser
+$     if err := db.Unscoped().First(&got, 1).Error; err != nil { panic(err) }
+$     if got.Name != "updated" { panic(fmt.Sprintf("soft-deleted save did not update: %#v", got)) }
+$     u2 := SaveUser{ID: 2, Name: "new"}
+$     if err := db.Save(&u2).Error; err != nil { panic(fmt.Sprintf("save new failed: %v", err)) }
+$     if err := db.First(&got, 2).Error; err != nil { panic(fmt.Sprintf("new row not created: %v", err)) }
+$     fmt.Println("save reproducer completed")
+$ }
+$ EOF
+$ cd /workspace/gorm/tests && go run -mod=mod /tmp/gorm_save_repro.go; cd /workspace/gorm && rm -f tests/go.sum /tmp/gorm_save_repro.go
+cat > /tmp/gorm_save_repro.go <<'EOF'
+package main
+import (
+    "fmt"
+    "gorm.io/driver/sqlite"
+    "gorm.io/gorm"
+)
+type SaveUser struct {
+    ID int `gorm:"primaryKey"`
+    Name string
+    DeletedAt gorm.DeletedAt
+}
+func main() {
+    db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+    if err != nil { panic(err) }
+    if err := db.AutoMigrate(&SaveUser{}); err != nil { panic(err) }
+    u := SaveUser{ID: 1, Name: "old"}
+    if err := db.Create(&u).Error; err != nil { panic(err) }
+    if err := db.Delete(&u).Error; err != nil { panic(err) }
+    u.Name = "updated"
+    if err := db.Save(&u).Error; err != nil { panic(fmt.Sprintf("save deleted failed: %v", err)) }
+    var got SaveUser
+    if err := db.Unscoped().First(&got, 1).Error; err != nil { panic(err) }
+    if got.Name != "updated" { panic(fmt.Sprintf("soft-deleted save did not update: %#v", got)) }
+    u2 := SaveUser{ID: 2, Name: "new"}
+    if err := db.Save(&u2).Error; err != nil { panic(fmt.Sprintf("save new failed: %v", err)) }
+    if err := db.First(&got, 2).Error; err != nil { panic(fmt.Sprintf("new row not created: %v", err)) }
+    fmt.Println("save reproducer completed")
+}
+EOF
+
+
+
+cd /workspace/gorm/tests && go run -mod=mod /tmp/gorm_save_repro.go; cd /workspace/gorm && rm -f tests/go.sum /tmp/gorm_save_repro.go
+$ cd /workspace/gorm && go test ./...; status1=$?; cd /workspace/gorm/tests && GORM_DIALECT=sqlite go test -mod=mod ./...; status2=$?; cd /workspace/gorm && rm -f tests/go.sum; if [ $status1 -ne 0 ]; then exit $status1; fi; exit $status2
+$ C-c
+$ 
+$ pwd
+Terminal session has been reset. All previous environment variables and session state have been cleared.
+
+/workspace
+$ cd /workspace/gorm && rm -f tests/go.sum && git status --short
+M .github/workflows/reviewdog.yml
+ M clause/expression.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M statement.go
+?? .golangci.yml
+$ cd /workspace/gorm && go test ./...
+ok      gorm.io/gorm    (cached)
+?       gorm.io/gorm/callbacks  [no test files]
+ok      gorm.io/gorm/clause     (cached)
+ok      gorm.io/gorm/logger     (cached)
+?       gorm.io/gorm/migrator   [no test files]
+ok      gorm.io/gorm/schema     (cached)
+ok      gorm.io/gorm/utils      (cached)
+?       gorm.io/gorm/utils/tests        [no test files]
+$ cd /workspace/gorm/tests && GORM_DIALECT=sqlite go test -mod=mod ./...
+ok      gorm.io/gorm/tests      (cached)
+$ cd /workspace/gorm && rm -f tests/go.sum && git status --short
+M .github/workflows/reviewdog.yml
+ M clause/expression.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M statement.go
+?? .golangci.yml
+# task_tracker: Mark all implementation tasks completed
+Task list has been updated with 5 item(s).
+$ cd /workspace/gorm && git diff --stat && git status --short
+.github/workflows/reviewdog.yml |  2 --
+ clause/expression.go            | 12 ++++++++++--
+ clause/where.go                 | 34 ++++++++++++++++++----------------
+ finisher_api.go                 | 32 ++++++++++++++++++++++++++++----
+ migrator/migrator.go            | 10 +++++++++-
+ schema/field.go                 |  6 +++---
+ statement.go                    |  5 ++++-
+ 7 files changed, 72 insertions(+), 29 deletions(-)
+ M .github/workflows/reviewdog.yml
+ M clause/expression.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M statement.go
+?? .golangci.yml
+# finish: Summarize completed GORM fixes and validation
+Implemented the requested non-test changes in `/workspace/gorm`.
+
+Summary of changes:
+- Fixed schema parsing for anonymous native type aliases so embedded alias fields like `ID int64`, `TIME time.Time`, and `BYTES []byte` don’t trigger invalid embedded-struct errors.
+- Added time alias recognition and byte-slice alias handling for bind variables so `[]byte` aliases are bound as a single value, not expanded.
+- Fixed WHERE clause parenthesizing for `NamedExpr` expressions containing `OR`/`AND`, preventing soft-delete predicates from changing logical precedence.
+- Made `Save` fallback use an upsert path that avoids soft-delete filtering and preserves custom table context.
+- Made existing-table `AutoMigrate` column migration deterministic by sorting DB column names before iterating.
+- Added `DB.Connection(func(*gorm.DB) error)` to execute multiple commands on one dedicated `*sql.Conn`.
+- Moved golangci/reviewdog linter flags into a new `.golangci.yml` and enabled `gofumpt` there.
+
+Validation performed:
+- Ran temporary Go reproducers for alias parsing, named OR grouping, byte alias binding, and Save/soft-delete edge cases.
+- Ran targeted `TestSaveWithPrimaryValue` successfully.
+- Ran `go test ./...` in the root module successfully.
+- Ran `GORM_DIALECT=sqlite go test -mod=mod ./...` in `tests/` successfully.
+
+No test files were modified.

@@ -1,0 +1,200 @@
+                }
+                return gqlerr
+        }
+@@ -27,7 +45,7 @@ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+
+        return &gqlerror.Error{
+                Message:    err.Error(),
+-               Path:       GetFieldContext(ctx).Path(),
++               Path:       path,
+                Extensions: extensions,
+        }
+ }
+
+--- status ---
+ M README.md
+ M codegen/field.gotpl
+ M docs/content/getting-started.md
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+ M graphql/error.go
+ D plugin/resolvergen/testdata/singlefile/out/resolver.go
+
+--- remaining typo grep ---
+docs/content/getting-started.md:106:First we need somewhere to track our state, lets put it in `graph/resolver.go`:
+docs/content/getting-started.md:183:Now if we look in `graph/schema.resolvers.go` we can see a new resolver, lets implement it and fix `CreateTodo`.
+$ cd /workspace/gqlgen && git checkout -- plugin/resolvergen/testdata/singlefile/out/resolver.go && git status --short
+M README.md
+ M codegen/field.gotpl
+ M docs/content/getting-started.md
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+ M graphql/error.go
+$ cd /workspace/gqlgen && sed -n '96,112p' docs/content/getting-started.md && sed -n '176,188p' docs/content/getting-started.md && grep -n "Keep\|graphql\|;" README.md | head -n 20
+panic(fmt.Errorf("not implemented"))
+}
+
+func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
+        panic(fmt.Errorf("not implemented"))
+}
+```
+
+We just need to implement these two methods to get our server working:
+
+First we need somewhere to track our state, lets put it in `graph/resolver.go`:
+```go
+type Resolver struct{
+        todos []*model.Todo
+}
+```
+This is where we declare any dependencies for our app like our database, it gets initialized once in `server.go` when
+
+> Note
+>
+> By default gqlgen will use any models in the model directory that match on name, this can be configured in `gqlgen.yml`.
+
+And run `go run github.com/99designs/gqlgen generate`.
+
+Now if we look in `graph/schema.resolvers.go` we can see a new resolver, lets implement it and fix `CreateTodo`.
+```go
+func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
+        todo := &model.Todo{
+                Text:   input.Text,
+                ID:     fmt.Sprintf("T%d", rand.Int()),
+9:- **gqlgen is based on a schema-first approach** — You get to define your API using the GraphQL [Schema Definition Language](http://graphql.org/learn/schema/).
+13:Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go graphql [implementations](https://gqlgen.com/feature-comparison/)
+36:```graphql
+44:You need to tell gqlgen that it should only fetch friends if the user requested it. There are two ways to do this;
+68:If you want to Keep using the generated model, mark the field as requiring a resolver explicitly in `gqlgen.yml` like this:
+96:      - github.com/99designs/gqlgen/graphql.IntID # An go integer
+97:      - github.com/99designs/gqlgen/graphql.ID # or a go string
+111:- [Introducing gqlgen: a GraphQL Server Generator for Go](https://99designs.com.au/blog/engineering/gqlgen-a-graphql-server-generator-for-go/)
+112:- [Dive into GraphQL by Iván Corrales Solera](https://medium.com/@ivan.corrales.solera/dive-into-graphql-9bfedf22e1a)
+# file_editor: Fix getting-started lets typo
+The file /workspace/gqlgen/docs/content/getting-started.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/docs/content/getting-started.md:
+   103	
+   104	We just need to implement these two methods to get our server working:
+   105	
+   106	First we need somewhere to track our state, let's put it in `graph/resolver.go`:
+   107	```go
+   108	type Resolver struct{
+   109		todos []*model.Todo
+   110	}
+   111	```
+   112	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix second getting-started lets typo
+The file /workspace/gqlgen/docs/content/getting-started.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/docs/content/getting-started.md:
+   180	
+   181	And run `go run github.com/99designs/gqlgen generate`.
+   182	
+   183	Now if we look in `graph/schema.resolvers.go` we can see a new resolver, let's implement it and fix `CreateTodo`.
+   184	```go
+   185	func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
+   186		todo := &model.Todo{
+   187			Text:   input.Text,
+   188			ID:     fmt.Sprintf("T%d", rand.Int()),
+   189	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix README GraphQL capitalization
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    10	- **gqlgen prioritizes type safety** — You should never see `map[string]interface{}` here.
+    11	- **gqlgen enables codegen** — We generate the boring bits, so you can focus on building your app quickly.
+    12	
+    13	Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go GraphQL [implementations](https://gqlgen.com/feature-comparison/)
+    14	
+    15	## Getting Started
+    16	- To install gqlgen, run the command `go get github.com/99designs/gqlgen` in your project directory.<br/>
+    17	- You can initialize a new project using the recommended folder structure by running this command: `go run github.com/99designs/gqlgen init`.
+    18	
+    19	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix README keep capitalization
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    65	
+    66	- #### Using Explicit Resolvers
+    67	
+    68	If you want to keep using the generated model, mark the field as requiring a resolver explicitly in `gqlgen.yml` like this:
+    69	
+    70	```yaml
+    71	# gqlgen.yml
+    72	models:
+    73	  User:
+    74	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix README article and Go capitalization
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    93	models:
+    94	  ID: # The GraphQL type ID is backed by
+    95	    model:
+    96	      - github.com/99designs/gqlgen/graphql.IntID # A Go integer
+    97	      - github.com/99designs/gqlgen/graphql.ID # or a go string
+    98	```
+    99	
+   100	This means gqlgen will be able to automatically bind to strings or ints for models you have written yourself, but the
+   101	first model in this list is used as the default type and it will always be used when:
+   102	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix README Go capitalization
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    94	  ID: # The GraphQL type ID is backed by
+    95	    model:
+    96	      - github.com/99designs/gqlgen/graphql.IntID # A Go integer
+    97	      - github.com/99designs/gqlgen/graphql.ID # or a Go string
+    98	```
+    99	
+   100	This means gqlgen will be able to automatically bind to strings or ints for models you have written yourself, but the
+   101	first model in this list is used as the default type and it will always be used when:
+   102	
+   103	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/gqlgen && go test ./graphql ./codegen ./codegen/templates ./codegen/testserver
+ok      github.com/99designs/gqlgen/graphql     (cached)
+ok      github.com/99designs/gqlgen/codegen     (cached)
+ok      github.com/99designs/gqlgen/codegen/templates   (cached)
+ok      github.com/99designs/gqlgen/codegen/testserver  (cached)
+# think: Assess correctness and remaining edge cases
+Your thought has been logged.
+$ cd /workspace/gqlgen && git status --short && git --no-pager diff --stat && git --no-pager diff --check
+M README.md
+ M codegen/field.gotpl
+ M docs/content/getting-started.md
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+ M graphql/error.go
+ README.md                       | 22 +++++++++++-----------
+ codegen/field.gotpl             |  1 +
+ docs/content/getting-started.md | 10 +++++-----
+ graphql/context_field.go        |  2 ++
+ graphql/context_field_input.go  | 29 +++++++++++++++++++++++++++--
+ graphql/context_response.go     | 17 +++++++++++++++++
+ graphql/error.go                | 22 ++++++++++++++++++++--
+ 7 files changed, 83 insertions(+), 20 deletions(-)
+# task_tracker: Mark all tracked tasks done
+Task list has been updated with 5 item(s).
+# finish: Summarize completed gqlgen fixes and tests
+Implemented the requested non-test changes in `/workspace/gqlgen`.
+
+Summary:
+- Fixed INPUT_FIELD_DEFINITION directive error preservation:
+  - Custom directive errors now reach custom error presenters as their original error type.
+  - Input paths are still preserved for `DefaultErrorPresenter`.
+  - Nested input directive paths keep the deepest existing path.
+  - Plain errors still render with the correct GraphQL path.
+- Added `FieldContext.IsResolver` and updated `codegen/field.gotpl` to emit it for generated fields.
+- Fixed documentation typos in `README.md` and `docs/content/getting-started.md`.
+
+Verification:
+- Created and ran a temporary `go run` reproducer. Before the fix, custom directive error metadata was lost; after the fix, it passed these edge cases:
+  - top-level input field directive custom error
+  - nested input field directive custom error
+  - plain directive error path preservation
+- Removed the temporary reproducer afterward.
+- Ran focused relevant tests successfully:
+  - `go test ./graphql ./codegen ./codegen/templates ./codegen/testserver`
+
+Full suite note:
+- I also ran `go test ./...`. It fails in unrelated `go/packages`/tooling-based packages with internal type-loading errors under the current Go environment, e.g. `codegen/config`, `internal/code`, `internal/rewrite`, and plugin packages. The targeted packages related to the modified files pass.

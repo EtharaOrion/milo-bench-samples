@@ -1,0 +1,200 @@
+# file_editor: Guard crank dev logger against panics
+The file /workspace/crossplane/cmd/crank/main.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/crossplane/cmd/crank/main.go:
+    47		return nil
+    48	}
+    49	
+    50	func (v verboseFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+    51		// We use DPanicOnBugs(false) to ensure that a logging bug (e.g. an odd
+    52		// number of key-value pairs) does not cause us to panic when running in
+    53		// development mode, where zap normally panics on such bugs.
+    54		zl := zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false))
+    55		logger := logging.NewLogrLogger(zl)
+    56		ctx.BindTo(logger, (*logging.Logger)(nil))
+    57		return nil
+    58	}
+    59	
+    60	var cli struct {
+    61		Version versionFlag `short:"v" name:"version" help:"Print version and quit."`
+    62		Verbose verboseFlag `name:"verbose" help:"Print verbose logging statements."`
+    63	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/crossplane && go build ./... 2>&1 | tail -20
+$ cd /workspace/crossplane && go mod tidy 2>&1 | tail; grep -n "zapr" go.mod
+gotest.tools/v3/internal/difflib loaded from gotest.tools/v3@v3.1.0,
+        but go 1.16 would fail to locate it:
+        mkdir /go/pkg/mod/cache/download/gotest.tools/@v: permission denied
+
+To proceed despite packages unresolved in go 1.16:
+        go mod tidy -e
+If reproducibility with go 1.16 is not needed:
+        go mod tidy -compat=1.17
+For other options, see:
+        https://golang.org/doc/modules/pruning
+31:require github.com/go-logr/zapr v1.2.0
+$ cd /workspace/crossplane && git --no-pager diff go.mod go.sum | head -40
+diff --git a/go.mod b/go.mod
+index b356dd9c..8e24095d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -28,6 +28,8 @@ require (
+        sigs.k8s.io/yaml v1.3.0
+ )
+
++require github.com/go-logr/zapr v1.2.0
++
+ require (
+        cloud.google.com/go/compute v1.1.0 // indirect
+        github.com/Azure/azure-sdk-for-go v61.4.0+incompatible // indirect
+@@ -73,7 +75,6 @@ require (
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+        github.com/go-logr/logr v1.2.2 // indirect
+-       github.com/go-logr/zapr v1.2.0 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+# file_editor: Update repro to compare guarded vs unguarded
+The file /workspace/crossplane/repro/main.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/crossplane/repro/main.go:
+     3	import (
+     4		"fmt"
+     5	
+     6		"github.com/go-logr/zapr"
+     7		"sigs.k8s.io/controller-runtime/pkg/log/zap"
+     8	
+     9		"github.com/crossplane/crossplane-runtime/pkg/errors"
+    10		"github.com/crossplane/crossplane-runtime/pkg/logging"
+    11	)
+    12	
+    13	func tryLog(name string, log logging.Logger) {
+    14		defer func() {
+    15			if r := recover(); r != nil {
+    16				fmt.Printf("%s: PANIC: %v\n", name, r)
+    17				return
+    18			}
+    19			fmt.Printf("%s: no panic\n", name)
+    20		}()
+    21		// Simulate the buggy call: odd number of key/value pairs.
+    22		log.Debug("no valid version", errors.New("boom"))
+    23	}
+    24	
+    25	func main() {
+    26		// Old, unguarded dev-mode logger panics on logger bugs.
+    27		unguarded := logging.NewLogrLogger(zap.New(zap.UseDevMode(true)).WithName("crossplane"))
+    28		tryLog("unguarded", unguarded)
+    29	
+    30		// Guarded dev-mode logger does not panic on logger bugs.
+    31		guarded := logging.NewLogrLogger(zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)).WithName("crossplane"))
+    32		tryLog("guarded", guarded)
+    33	}
+    34	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/crossplane && go run ./repro/ 2>&1 | grep -E "unguarded:|guarded:"
+unguarded: PANIC: odd number of arguments passed as key-value pairs for logging
+guarded: no panic
+$ cd /workspace/crossplane && rm -rf repro && go vet ./cmd/... ./internal/controller/pkg/resolver/... 2>&1 | tail -20
+$ cd /workspace/crossplane && go test ./internal/controller/pkg/resolver/... ./cmd/... ./internal/dag/... 2>&1 | tail -20
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       0.013s
+ok      github.com/crossplane/crossplane/cmd/crank      0.016s
+?       github.com/crossplane/crossplane/cmd/crossplane [no test files]
+?       github.com/crossplane/crossplane/cmd/crossplane/core    [no test files]
+?       github.com/crossplane/crossplane/cmd/crossplane/rbac    [no test files]
+ok      github.com/crossplane/crossplane/internal/dag   0.003s
+?       github.com/crossplane/crossplane/internal/dag/fake      [no test files]
+$ cd /workspace/crossplane && go build ./... && go test ./internal/controller/pkg/... 2>&1 | tail -20
+?       github.com/crossplane/crossplane/internal/controller/pkg        [no test files]
+?       github.com/crossplane/crossplane/internal/controller/pkg/controller     [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/manager        0.014s
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/revision       0.020s
+$ cd /workspace/crossplane && git --no-pager diff -- internal/controller/pkg/resolver/reconciler.go cmd/crossplane/main.go cmd/crank/main.go
+diff --git a/cmd/crank/main.go b/cmd/crank/main.go
+index d2a0bec3..20ff680e 100644
+--- a/cmd/crank/main.go
++++ b/cmd/crank/main.go
+@@ -20,6 +20,7 @@ import (
+        "fmt"
+
+        "github.com/alecthomas/kong"
++       "github.com/go-logr/zapr"
+        "github.com/spf13/afero"
+        "sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+@@ -47,7 +48,11 @@ func (v versionFlag) BeforeApply(app *kong.Kong) error { // nolint:unparam
+ }
+
+ func (v verboseFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       logger := logging.NewLogrLogger(zap.New(zap.UseDevMode(true)))
++       // We use DPanicOnBugs(false) to ensure that a logging bug (e.g. an odd
++       // number of key-value pairs) does not cause us to panic when running in
++       // development mode, where zap normally panics on such bugs.
++       zl := zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false))
++       logger := logging.NewLogrLogger(zl)
+        ctx.BindTo(logger, (*logging.Logger)(nil))
+        return nil
+ }
+diff --git a/cmd/crossplane/main.go b/cmd/crossplane/main.go
+index c6965a25..807a544f 100644
+--- a/cmd/crossplane/main.go
++++ b/cmd/crossplane/main.go
+@@ -18,6 +18,7 @@ package main
+
+ import (
+        "github.com/alecthomas/kong"
++       "github.com/go-logr/zapr"
+        admv1 "k8s.io/api/admissionregistration/v1"
+        appsv1 "k8s.io/api/apps/v1"
+        coordinationv1 "k8s.io/api/coordination/v1"
+@@ -50,7 +51,10 @@ var cli struct {
+ // an error value in return from Hook methods but in our case
+ // there are no error introducing steps.
+ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       zl := zap.New(zap.UseDevMode(true)).WithName("crossplane")
++       // We use DPanicOnBugs(false) to ensure that a logging bug (e.g. an odd
++       // number of key-value pairs) does not cause Crossplane to panic when
++       // running in development mode, where zap normally panics on such bugs.
++       zl := zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false)).WithName("crossplane")
+        // BindTo uses reflect.TypeOf to get reflection type of used interface
+        // A *logging.Logger value here is used to find the reflection type here.
+        // Please refer: https://golang.org/pkg/reflect/#TypeOf
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..c1be8ece 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -215,7 +215,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // check for missing nodes again.
+        dep, ok := implied[0].(*v1beta1.Dependency)
+        if !ok {
+-               log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, dep.Identifier()))
++               log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, implied[0].Identifier()))
+                return reconcile.Result{Requeue: false}, nil
+        }
+        c, err := semver.NewConstraint(dep.Constraints)
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+# finish: Summarize logger panic fix and guard
+I implemented the code changes corresponding to the "Fix logger panic in dependency resolution and guard against future logger panic bugs" backport (#3105 / PR #3103). The other issue in the description (#3108) is purely a release-checklist tracking issue with no code changes.
+
+## Root cause
+Crossplane's `--debug`/`--verbose` mode builds a zap logger in development mode. In that mode, the underlying `zapr` logger calls zap's `DPanic` (which actually panics) whenever a log call is "buggy" — e.g. it receives an odd number of key/value pairs. The dependency resolver contained such bugs, so a normal reconcile (no valid version found) crashed the process.
+
+## Changes
+
+1. `internal/controller/pkg/resolver/reconciler.go` — fixed the two logger misuse bugs:
+   - In the `addVer == ""` branch the error was passed as a bare value (odd number of key/value pairs). Added the `"error"` key:
+     `log.Debug(errNoValidVersion, "error", errors.Errorf(...))`
+   - In the invalid-dependency branch, `dep.Identifier()` was called on a `dep` that is nil whenever the type assertion fails (`!ok`), causing a nil-pointer dereference. Replaced it with `implied[0].Identifier()`.
+
+2. `cmd/crossplane/main.go` and `cmd/crank/main.go` — guarded against future logger panic bugs by constructing the dev-mode logger with `zapr.NewLoggerWithOptions(zap.NewRaw(zap.UseDevMode(true)), zapr.DPanicOnBugs(false))`. With `DPanicOnBugs(false)`, a future logging mistake degrades gracefully (the bad fields are skipped) instead of crashing Crossplane.
+
+3. `go.mod` — promoted `github.com/go-logr/zapr` from an indirect to a direct dependency (already present in `go.sum`).
+
+## Verification
+- Reproduced the panic with a small script using the old dev logger (panicked: "odd number of arguments passed as key-value pairs for logging") and confirmed the new guarded logger does not panic. The script was then removed.
+- `go build ./...` succeeds.
+- Relevant tests pass: `internal/controller/pkg/...` (incl. `resolver`), `cmd/...`, `internal/dag/...`.

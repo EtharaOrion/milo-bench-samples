@@ -1,0 +1,44 @@
+diff --git a/tests/test_console.py b/tests/test_console.py
+index 968a7f5604..061cbd7faf 100644
+--- a/tests/test_console.py
++++ b/tests/test_console.py
+@@ -395,9 +395,9 @@ def test_export_text():
+ 
+ def test_export_html():
+     console = Console(record=True, width=100)
+-    console.print("[b]foo [link=https://example.org]Click[/link]")
++    console.print("[b]foo <script> 'test' [link=https://example.org]Click[/link]")
+     html = console.export_html()
+-    expected = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n<style>\n.r1 {font-weight: bold}\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span class="r1">foo </span><a class="r1" href="https://example.org">Click</a>\n</pre>\n    </code>\n</body>\n</html>\n'
++    expected = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n<style>\n.r1 {font-weight: bold}\n.r2 {color: #ff00ff; text-decoration-color: #ff00ff; font-weight: bold}\n.r3 {color: #008000; text-decoration-color: #008000; font-weight: bold}\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span class="r1">foo &lt;</span><span class="r2">script</span><span class="r1">&gt; </span><span class="r3">&#x27;test&#x27;</span><span class="r1"> </span><a class="r1" href="https://example.org">Click</a>\n</pre>\n    </code>\n</body>\n</html>\n'
+     assert html == expected
+ 
+ 
+@@ -405,7 +405,6 @@ def test_export_html_inline():
+     console = Console(record=True, width=100)
+     console.print("[b]foo [link=https://example.org]Click[/link]")
+     html = console.export_html(inline_styles=True)
+-    print(repr(html))
+     expected = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n<style>\n\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span style="font-weight: bold">foo </span><span style="font-weight: bold"><a href="https://example.org">Click</a></span>\n</pre>\n    </code>\n</body>\n</html>\n'
+     assert html == expected
+ 
+diff --git a/tests/test_pretty.py b/tests/test_pretty.py
+index cf838db206..938f216bb0 100644
+--- a/tests/test_pretty.py
++++ b/tests/test_pretty.py
+@@ -250,3 +250,15 @@ def __repr__(self):
+     result = pretty_repr(d2, expand_all=True)
+     print(repr(result))
+     assert result == "FOO"
++
++
++def test_lying_attribute():
++    """Test getattr doesn't break rich repr protocol"""
++
++    class Foo:
++        def __getattr__(self, attr):
++            return "foo"
++
++    foo = Foo()
++    result = pretty_repr(foo)
++    assert "Foo" in result

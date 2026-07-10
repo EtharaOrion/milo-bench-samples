@@ -1,0 +1,200 @@
+   955	  assertions?: $ReadOnlyArray<ImportAttribute>,
+   956	};
+   957	
+   958	// JSX (TODO: Not in spec)
+   959	
+   960	export type JSXIdentifier = Node;
+   961	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/babel && grep -n "export type ImportAttribute" packages/babel-parser/src/types.js
+394:export type ImportAttribute = NodeBase & {
+$ cd /workspace/babel && BABEL_ENV=test node_modules/.bin/jest packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/util.test.js 2>&1 | grep -E "Tests:|✕"
+Tests:       17 passed, 17 total
+$ cd /workspace/babel && node_modules/.bin/eslint packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts packages/babel-parser/src/types.js 2>&1 | head -30
+Oops! Something went wrong! :(
+
+ESLint: 8.0.0
+
+ESLint couldn't find the plugin "@babel/eslint-plugin-development".
+
+(The package "@babel/eslint-plugin-development" was not found when loaded as a Node module from the directory "/workspace/babel".)
+
+It's likely that the plugin isn't installed correctly. Try reinstalling by running the following:
+
+    npm install @babel/eslint-plugin-development@latest --save-dev
+
+The plugin "@babel/eslint-plugin-development" was referenced from the config file in ".eslintrc.cjs".
+
+If you still can't figure out the problem, please stop by https://eslint.org/chat/help to chat with the team.
+$ cd /workspace/babel && BABEL_ENV=test node_modules/.bin/jest packages/babel-parser/test 2>&1 | grep -iE "assert|Tests:|Suites:" | head
+Test Suites: 8 failed, 2 passed, 10 total
+Tests:       10 passed, 10 total
+$ cd /workspace/babel && BABEL_ENV=test node_modules/.bin/jest packages/babel-parser/test 2>&1 | grep -iE "FAIL|Cannot find" | head
+FAIL packages/babel-parser/test/attachComment-false.js
+  ● Test suite failed to run
+    Cannot find module '@babel/helper-fixtures' from 'packages/babel-parser/test/helpers/runFixtureTests.js'
+FAIL packages/babel-parser/test/plugin-options.js
+  ● Test suite failed to run
+    Cannot find module '../lib' from 'packages/babel-parser/test/plugin-options.js'
+FAIL packages/babel-parser/test/error-codes.js
+  ● Test suite failed to run
+    Cannot find module '../lib' from 'packages/babel-parser/test/error-codes.js'
+FAIL packages/babel-parser/test/options.js
+$ cd /workspace/babel && git diff
+diff --git a/packages/babel-parser/src/types.js b/packages/babel-parser/src/types.js
+index 5362caf18d..0d81d7cd83 100644
+--- a/packages/babel-parser/src/types.js
++++ b/packages/babel-parser/src/types.js
+@@ -896,8 +896,8 @@ export type ImportDeclaration = NodeBase & {
+     ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier,
+   >,
+   source: Literal,
+-
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ export type ImportSpecifier = ModuleSpecifier & {
+@@ -952,6 +952,7 @@ export type ExportAllDeclaration = NodeBase & {
+   type: "ExportAllDeclaration",
+   source: Literal,
+   exportKind?: "type" | "value", // TODO: Not in spec
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ // JSX (TODO: Not in spec)
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd8..a2fb86685d 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -15,27 +15,32 @@ export function shouldTransform(
+   if (!functionId) return false;
+
+   const name = functionId.name;
+-  // On collision, `getOwnBinding` returns the param binding
+-  // with the id binding be registered as constant violation
+-  const paramNameBinding = path.scope.getOwnBinding(name);
+-  const constantViolations = paramNameBinding.constantViolations;
+-  if (constantViolations.length === 0) {
+-    // the function scope has no such collided bindings
+-    return false;
+-  }
+-  const firstViolation = constantViolations[0];
+
+-  if (firstViolation.node !== node) {
+-    // the violation does not happen in id
+-    // e.g. (function a() { var a; })
+-    return false;
+-  }
++  // The function expression id is registered as a binding in the function
++  // scope. It may be missing when another plugin removes the id from the
++  // scope (e.g. `@babel/helper-function-name` marks generated ids with the
++  // `NOT_LOCAL_BINDING` symbol so they are never registered). In that case
++  // there is nothing to transform.
++  const binding = path.scope.getOwnBinding(name);
++  if (binding === undefined) return false;
+
+-  if (paramNameBinding.identifier === paramNameBinding.path.node) {
+-    // the param binding is a simple parameter
+-    // e.g. (function a(a) {})
+-    return false;
++  // The Safari bug is only triggered when the function id collides with a
++  // destructuring parameter of the same function. On such a collision the
++  // colliding param and the function id share the same name in the function
++  // scope: one of them is registered as the binding and the other as a
++  // constant violation (the registration order depends on the
++  // `@babel/traverse` version), so we inspect both.
++  for (const violation of [binding.path, ...binding.constantViolations]) {
++    const { parentPath } = violation;
++    if (
++      violation.listKey === "params" &&
++      parentPath?.node === node &&
++      // a simple parameter (e.g. `(function a(a) {})`) is not affected
++      !violation.isIdentifier()
++    ) {
++      return name;
++    }
+   }
+
+-  return name;
++  return false;
+ }
+$ cd /workspace/babel && git status --short && ls /tmp/*.test.js 2>/dev/null; rm -f /tmp/onecase.test.js /tmp/trace.js
+M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+/tmp/onecase.test.js
+$ cd /workspace/babel && cat packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts && echo "=== TEST RUN ===" && BABEL_ENV=test node_modules/.bin/jest packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/util.test.js 2>&1 | grep -E "Tests:|Suites:"
+import type { FunctionExpression } from "@babel/types";
+import type { NodePath } from "@babel/traverse";
+
+/**
+ * Check whether a function expression can be affected by
+ * https://bugs.webkit.org/show_bug.cgi?id=220517
+ * @param path The function expression NodePath
+ * @returns the name of function id if it should be transformed, otherwise returns false
+ */
+export function shouldTransform(
+  path: NodePath<FunctionExpression>,
+): string | false {
+  const { node } = path;
+  const functionId = node.id;
+  if (!functionId) return false;
+
+  const name = functionId.name;
+
+  // The function expression id is registered as a binding in the function
+  // scope. It may be missing when another plugin removes the id from the
+  // scope (e.g. `@babel/helper-function-name` marks generated ids with the
+  // `NOT_LOCAL_BINDING` symbol so they are never registered). In that case
+  // there is nothing to transform.
+  const binding = path.scope.getOwnBinding(name);
+  if (binding === undefined) return false;
+
+  // The Safari bug is only triggered when the function id collides with a
+  // destructuring parameter of the same function. On such a collision the
+  // colliding param and the function id share the same name in the function
+  // scope: one of them is registered as the binding and the other as a
+  // constant violation (the registration order depends on the
+  // `@babel/traverse` version), so we inspect both.
+  for (const violation of [binding.path, ...binding.constantViolations]) {
+    const { parentPath } = violation;
+    if (
+      violation.listKey === "params" &&
+      parentPath?.node === node &&
+      // a simple parameter (e.g. `(function a(a) {})`) is not affected
+      !violation.isIdentifier()
+    ) {
+      return name;
+    }
+  }
+
+  return false;
+}
+=== TEST RUN ===
+Test Suites: 1 passed, 1 total
+Tests:       17 passed, 17 total
+# finish: Finalize with summary of changes
+I implemented the necessary changes to address the issue description.
+
+## Changes Made
+
+### 1. Issue #13907 — `TypeError: Cannot read properties of undefined (reading 'constantViolations')`
+**File:** `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts`
+
+Root cause: `shouldTransform` called `path.scope.getOwnBinding(name).constantViolations` without checking whether `getOwnBinding` returned a binding. When another plugin (e.g. `@babel/helper-function-name`, which tags generated ids with the `NOT_LOCAL_BINDING` symbol so they're never registered) removes the function-expression id from the scope, `getOwnBinding` returns `undefined` → crash.
+
+Fix:
+- Added a guard returning `false` when the binding is `undefined` (the core crash fix).
+- Reworked the collision detection so it inspects both the binding's own path and its constant violations, identifying a *destructuring* parameter of the same function (`listKey === "params"`, parent is the function node, and not a plain `Identifier`). This makes the detection correct regardless of which entity (param vs. id) `@babel/traverse` registers as the binding vs. the constant violation, so it works across traverse versions.
+
+Result: all 17 cases in `test/util.test.js` pass (they previously crashed/failed).
+
+### 2. Issue #13905 — babel-parser: add missing `assertions` type
+**File:** `packages/babel-parser/src/types.js`
+
+The parser assigns `node.assertions` to `ImportDeclaration` and `ExportAllDeclaration` (import/export assertions like `import x from "y" assert { type: "json" }` and `export * from "y" assert {...}`), but their Flow types lacked the field (only `ExportNamedDeclaration` had it). I added `assertions?: $ReadOnlyArray<ImportAttribute>` to both. This also addresses the underlying type error behind the Babel 8 self-compilation referenced by Issue #13909.
+
+## Verification
+- `test/util.test.js`: 17/17 passing.
+- I manually verified the transform output (named-function-expression rename) and confirmed `shouldTransform` returns correct results under both binding-registration orderings.
+- Some plugin fixture runners and parser fixture tests fail in this sandbox due to pre-existing, unrelated environment issues (missing `../lib` build output and unresolved `@babel/helper-plugin-test-runner` / `@babel/helper-fixtures`), which affect all packages equally and are not caused by my changes (my type change is Flow-only with no runtime impact).

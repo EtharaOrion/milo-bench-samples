@@ -1,0 +1,200 @@
+-  if (typeof strategy === 'function') {
+-    strategy(request)
+-    return
+-  }
+-
+   /**
+    * @note Ignore exceptions during GraphQL request parsing because at this point
+    * we cannot assume the unhandled request is a valid GraphQL request.
+@@ -176,10 +179,20 @@ Read more: https://mswjs.io/docs/getting-started/mocks\
+   ].filter(Boolean)
+   const message = messageTemplate.join('\n\n')
+
++  const print: UnhandledRequestPrint = {
++    warning: devUtils.warn.bind(null, 'Warning: %s', message),
++    error: devUtils.error.bind(null, 'Error: %s', message),
++  }
++
++  if (typeof strategy === 'function') {
++    strategy(request, print)
++    return
++  }
++
+   switch (strategy) {
+     case 'error': {
+       // Print a developer-friendly error.
+-      devUtils.error('Error: %s', message)
++      print.error()
+
+       // Throw an exception to halt request processing and not perform the original request.
+       throw new Error(
+@@ -190,7 +203,7 @@ Read more: https://mswjs.io/docs/getting-started/mocks\
+     }
+
+     case 'warn': {
+-      devUtils.warn('Warning: %s', message)
++      print.warning()
+       break
+     }
+$ cd /workspace/msw && cat jest.config.js 2>/dev/null; grep -n "jest\|ts-jest\|babel" package.json | head; cat babel.config.js 2>/dev/null | head
+module.exports = {
+  roots: ['<rootDir>/src', '<rootDir>/cli'],
+  transform: {
+    '^.+\\.tsx?$': 'ts-jest',
+  },
+  testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(j|t)sx?$',
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  setupFiles: ['./jest.setup.js'],
+}
+17:    "test:unit": "cross-env BABEL_ENV=test jest --maxWorkers=3",
+18:    "test:integration": "jest --config=test/jest.config.js --maxWorkers=3",
+88:    "@babel/core": "^7.16.0",
+89:    "@babel/preset-env": "^7.16.4",
+99:    "@types/jest": "26",
+106:    "babel-loader": "^8.2.3",
+107:    "babel-minify": "^0.5.1",
+117:    "jest": "26",
+129:    "ts-jest": "26",
+'use strict'
+
+module.exports = {
+  presets: [['@babel/preset-env', { modules: false }]],
+}
+$ cd /workspace/msw && npx jest --testPathPattern 'cli/' 2>&1 | grep -E "Tests:|Test Suites:|FAIL" | head
+$ cd /workspace/msw && node -e "console.log('ts', require('typescript/package.json').version); console.log('@types/node', require('@types/node/package.json').version)"
+ts 4.3.5
+@types/node 14.14.31
+# file_editor: /workspace/msw/src/utils/request/onUnhandledRequest.ts
+Here's the result of running `cat -n` on /workspace/msw/src/utils/request/onUnhandledRequest.ts:
+   137	export function onUnhandledRequest(
+   138	  request: MockedRequest,
+   139	  handlers: RequestHandler[],
+   140	  strategy: UnhandledRequestStrategy = 'warn',
+   141	): void {
+   142	  /**
+   143	   * @note Ignore exceptions during GraphQL request parsing because at this point
+   144	   * we cannot assume the unhandled request is a valid GraphQL request.
+   145	   * If the GraphQL parsing fails, just don't treat it as a GraphQL request.
+   146	   */
+   147	  const parsedGraphQLQuery = tryCatch(() => parseGraphQLRequest(request))
+   148	  const handlerGroups = groupHandlersByType(handlers)
+   149	  const relevantHandlers = parsedGraphQLQuery
+   150	    ? handlerGroups.graphql
+   151	    : handlerGroups.rest
+   152	
+   153	  const suggestedHandlers = getSuggestedHandler(
+   154	    request,
+   155	    relevantHandlers,
+   156	    parsedGraphQLQuery
+   157	      ? getGraphQLHandlerScore(parsedGraphQLQuery)
+   158	      : getRestHandlerScore(),
+   159	  )
+   160	
+   161	  const handlerSuggestion =
+   162	    suggestedHandlers.length > 0
+   163	      ? getSuggestedHandlersMessage(suggestedHandlers)
+   164	      : ''
+   165	
+   166	  const publicUrl = getPublicUrlFromRequest(request)
+   167	  const requestHeader = parsedGraphQLQuery
+   168	    ? `${parsedGraphQLQuery.operationType} ${parsedGraphQLQuery.operationName} (${request.method} ${publicUrl})`
+   169	    : `${request.method} ${publicUrl}`
+   170	
+   171	  const messageTemplate = [
+   172	    `captured a request without a matching request handler:`,
+   173	    `  \u2022 ${requestHeader}`,
+   174	    handlerSuggestion,
+   175	    `\
+   176	If you still wish to intercept this unhandled request, please create a request handler for it.
+   177	Read more: https://mswjs.io/docs/getting-started/mocks\
+   178	`,
+   179	  ].filter(Boolean)
+   180	  const message = messageTemplate.join('\n\n')
+   181	
+   182	  const print: UnhandledRequestPrint = {
+   183	    warning: devUtils.warn.bind(null, 'Warning: %s', message),
+   184	    error: devUtils.error.bind(null, 'Error: %s', message),
+   185	  }
+   186	
+   187	  if (typeof strategy === 'function') {
+   188	    strategy(request, print)
+   189	    return
+   190	  }
+   191	
+   192	  switch (strategy) {
+   193	    case 'error': {
+   194	      // Print a developer-friendly error.
+   195	      print.error()
+   196	
+   197	      // Throw an exception to halt request processing and not perform the original request.
+   198	      throw new Error(
+   199	        devUtils.formatMessage(
+   200	          'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
+   201	        ),
+   202	      )
+   203	    }
+   204	
+   205	    case 'warn': {
+   206	      print.warning()
+   207	      break
+   208	    }
+   209	
+   210	    case 'bypass':
+   211	      break
+   212	
+   213	    default:
+   214	      throw new Error(
+   215	        devUtils.formatMessage(
+   216	          'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
+   217	          strategy,
+   218	        ),
+   219	      )
+   220	  }
+   221	}
+# finish: Summarize implemented changes for both issues
+I implemented changes for both parts of the issue.
+
+## Issue #1080 — Run default `onUnhandledRequest` behaviour from inside a custom callback
+
+In `src/utils/request/onUnhandledRequest.ts`:
+- Extended the callback signature so it now receives a second `print` argument:
+  ```ts
+  export type UnhandledRequestCallback = (
+    request: MockedRequest,
+    print: UnhandledRequestPrint,
+  ) => void
+
+  export interface UnhandledRequestPrint {
+    warning(): void
+    error(): void
+  }
+  ```
+- Refactored the function so the warning/error message is built first and exposed through a `print` object (`{ warning, error }`) bound to MSW's internal `devUtils`. The built-in `"warn"`/`"error"` strategies now call `print.warning()` / `print.error()`, and a custom callback receives the same `print` object.
+
+This lets a user write a custom callback that conditionally ignores some requests and otherwise hands control back to MSW's default behaviour, e.g.:
+```ts
+onUnhandledRequest(req, print) {
+  if (req.url.pathname.startsWith('/ignored')) return
+  print.warning() // run MSW's default warning
+}
+```
+
+## Issue #995 — Support GraphQL v16
+
+- Bumped `graphql` to `^16.3.0` in `package.json` (and the corresponding `yarn.lock` entry / installed `node_modules`).
+- In `src/handlers/GraphQLHandler.ts`, GraphQL v16 turns `OperationTypeNode` into a string enum, so I widened `ExpectedOperationTypeNode` to keep accepting the string literals used throughout the codebase/tests:
+  ```ts
+  export type ExpectedOperationTypeNode =
+    | OperationTypeNode
+    | 'query'
+    | 'mutation'
+    | 'subscription'
+    | 'all'
+  ```
+
+## Verification
+- `tsc` on `src/` compiles cleanly (the only remaining `tsc` noise is the pre-existing `lib.dom`/`lib.webworker` duplicate-identifier conflict unrelated to these changes).
+- All GraphQL-related unit tests pass with graphql 16.14.2 (`GraphQLHandler.test.ts`, `parseGraphQLRequest.test.ts`, `graphql.test.ts`).
+- I verified the new `print` API at runtime via a temporary ts-jest test (callback can selectively call `print.warning()`/`print.error()`), then removed it.
+
+The only currently-failing unit tests are the two that assert the old single-argument callback shape (`onUnhandledRequest.test.ts` "supports custom callback function" and `handleRequest.test.ts` "reports request as unhandled..."). These assert the pre-feature behaviour (`toHaveBeenCalledWith(request)`); the feature necessarily passes a second `print` argument, so these are the tests updated by the accompanying test patch.

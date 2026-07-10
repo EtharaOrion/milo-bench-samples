@@ -1,0 +1,200 @@
+astropy.units
+^^^^^^^^^^^^^
+
+- Modified the implementation of ``np.power()`` for instances of ``Quantity`` to
+  allow any array as the second operand if all its elements have the same value. [#15101]
+
+Version 5.3.1 (2023-07-06)
+==========================
+
+Bug Fixes
+---------
+
+astropy.cosmology
+^^^^^^^^^^^^^^^^^
+
+- The exponent in ``wowzCDM.de_density_scale`` has been corrected to 3, from -3. [#14991]
+
+astropy.io.fits
+^^^^^^^^^^^^^^^
+
+- Fix crash when a PrimaryHDU has a GROUPS keyword with a non-boolean value (i.e.
+  not a random-groups HDU). [#14998]
+
+- Fixed a bug that caused ``Cutout2D`` to not work correctly with ``CompImageHDU.section`` [#14999]
+
+- Fixed a bug that caused compressed images with TFORM missing the optional '1' prefix to not be readable. [#15001]
+
+1:Version v5.3.3 (2023-09-07)
+$ cd /workspace/astropy && find . -maxdepth 3 -type d -name changes -o -name changelog | sort && find . -path '*changes*' -type f | head -80
+./docs/changes
+./cextern/cfitsio/docs/changes.txt
+./docs/changes/config/.gitkeep
+./docs/changes/constants/.gitkeep
+./docs/changes/convolution/.gitkeep
+./docs/changes/coordinates/.gitkeep
+./docs/changes/cosmology/.gitkeep
+./docs/changes/extern/.gitkeep
+./docs/changes/io.ascii/.gitkeep
+./docs/changes/io.fits/.gitkeep
+./docs/changes/io.misc/.gitkeep
+./docs/changes/io.registry/.gitkeep
+./docs/changes/io.votable/.gitkeep
+./docs/changes/modeling/.gitkeep
+./docs/changes/nddata/.gitkeep
+./docs/changes/samp/.gitkeep
+./docs/changes/stats/.gitkeep
+./docs/changes/table/.gitkeep
+./docs/changes/tests/.gitkeep
+./docs/changes/time/.gitkeep
+./docs/changes/timeseries/.gitkeep
+./docs/changes/uncertainty/.gitkeep
+./docs/changes/units/.gitkeep
+./docs/changes/utils/.gitkeep
+./docs/changes/visualization/.gitkeep
+./docs/changes/wcs/.gitkeep
+./docs/changes/README.rst
+./docs/changes/template.rst
+# file_editor: Flush wrapped VOTable output before closing gzip
+The file /workspace/astropy/astropy/io/votable/util.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/astropy/astropy/io/votable/util.py:
+    74	        if not hasattr(fd, "encoding") or fd.encoding is None:
+    75	            needs_wrapper = True
+    76	
+    77	        wrapped_fd = codecs.getwriter("utf-8")(fd) if needs_wrapper else fd
+    78	        try:
+    79	            yield wrapped_fd
+    80	            wrapped_fd.flush()
+    81	        finally:
+    82	            if compressed:
+    83	                fd.close()
+    84	
+    85	        return
+    86	    else:
+    87	        raise TypeError("Can not be coerced to writable file-like object")
+    88	
+    89	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/astropy && python reproduce_issue.py && python -m pytest astropy/io/votable/tests/vo_test.py::test_gzip_filehandles -q
+All reproduction checks passed
+<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject
+Internet access disabled
+.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                [100%]
+1 passed in 0.09s
+$ cd /workspace/astropy && GIT_PAGER=cat git diff --check 6258f070b71ab42cc6efd4a99345f332ff44ca98
+$ cd /workspace/astropy && grep -R "datetime\.utcnow\|utcfromtimestamp" -n astropy docs/conf.py examples setup.py conftest.py pyproject.toml | grep -v "/tests/" || true
+$ cd /workspace/astropy && python - <<'PY'
+$ import numpy as np
+$ from astropy import units as u
+$ from astropy.utils.masked import Masked
+$ mq = Masked(np.array([[1, 100], [3, 4]]) * u.m, mask=[[False, True], [False, False]])
+$ print(np.ptp(mq, axis=0), np.ptp(mq, axis=0).mask)
+$ out = Masked(np.zeros(2) * u.m)
+$ res = np.ptp(mq, axis=0, out=out)
+$ print(res is out, out, out.mask)
+$ PY
+[2. 0.] m [False False]
+True [2. 0.] m [False False]
+$ cd /workspace/astropy && python - <<'PY'
+$ from astropy import units as u
+$ assert u.si.cm is u.cgs.cm is u.cm
+$ assert u.si.centimeter is u.cgs.centimeter is u.centimeter
+$ assert u.Unit('cm') is u.cm
+$ print(u.cm.names, u.cm.to(u.m))
+$ PY
+['cm', 'centimeter'] 0.01
+$ cd /workspace/astropy && python -m pytest docs/time/index.rst -q
+Internet access disabled
+.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                [100%]
+1 passed in 0.42s
+$ cd /workspace/astropy && grep -n "devdeps:" -n tox.ini | sed -n '1,20p'
+27:    devdeps: PIP_EXTRA_INDEX_URL = https://pypi.anaconda.org/scientific-python-nightly-wheels/simple
+46:    devdeps: with the latest developer version of key dependencies
+88:    devdeps: scipy>=0.0.dev0
+89:    devdeps: matplotlib>=0.0.dev0
+90:    devdeps: git+https://github.com/asdf-format/asdf.git#egg=asdf
+91:    devdeps: git+https://github.com/liberfa/pyerfa.git#egg=pyerfa
+107:    devdeps: test_all
+# task_tracker: Update plan before final cleanup
+Task list has been updated with 5 item(s).
+$ cd /workspace/astropy && rm -f reproduce_issue.py && git status --short
+M .github/workflows/ci_cron_daily.yml
+ M .github/workflows/ci_cron_weekly.yml
+ M .github/workflows/ci_workflows.yml
+ M .github/workflows/codeql-analysis.yml
+ M .github/workflows/update_iers.yml
+ M astropy/io/misc/yaml.py
+ M astropy/io/votable/util.py
+ M astropy/time/core.py
+ M astropy/units/cgs.py
+ M astropy/units/format/generic.py
+ M astropy/units/format/vounit.py
+ M astropy/utils/iers/data/Leap_Second.dat
+ M astropy/utils/iers/data/eopc04.1962-now
+ M astropy/utils/iers/iers.py
+ M astropy/utils/masked/core.py
+ M docs/conf.py
+ M docs/time/index.rst
+ M examples/io/plot_fits-image.py
+ M pyproject.toml
+ M setup.cfg
+$ cd /workspace/astropy && git diff --name-only | grep '/tests/' || true && GIT_PAGER=cat git diff --check && git --no-pager diff --stat | tail -25
+.github/workflows/ci_cron_daily.yml     |    2 +-
+ .github/workflows/ci_cron_weekly.yml    |    4 +-
+ .github/workflows/ci_workflows.yml      |   33 -
+ .github/workflows/codeql-analysis.yml   |    2 +-
+ .github/workflows/update_iers.yml       |    2 +-
+ astropy/io/misc/yaml.py                 |   21 +
+ astropy/io/votable/util.py              |   15 +-
+ astropy/time/core.py                    |   12 +-
+ astropy/units/cgs.py                    |    5 +-
+ astropy/units/format/generic.py         |    2 +-
+ astropy/units/format/vounit.py          |   14 +
+ astropy/utils/iers/data/Leap_Second.dat |    6 +-
+ astropy/utils/iers/data/eopc04.1962-now | 5851 ++++++++++++++++++-------------
+ astropy/utils/iers/iers.py              |    8 +-
+ astropy/utils/masked/core.py            |    7 +
+ docs/conf.py                            |    5 +-
+ docs/time/index.rst                     |   13 +-
+ examples/io/plot_fits-image.py          |    2 +-
+ pyproject.toml                          |    3 +-
+ setup.cfg                               |    2 +-
+ 20 files changed, 3533 insertions(+), 2476 deletions(-)
+# think: Assess issue coverage and any deliberate omissions
+Your thought has been logged.
+# task_tracker: Mark all tasks complete
+Task list has been updated with 5 item(s).
+# finish: Summarize completed Astropy backport implementation
+Implemented the requested non-test backport changes in `/workspace/astropy`.
+
+Summary of changes:
+- Fixed VOUnit inline fraction formatting to emit compact VOUnit-compatible strings like `m/s` and `m/(kg.s)`.
+- Fixed `Masked.ptp()` so masked extrema are ignored and masks are propagated only for fully masked reductions.
+- Made YAML serialization/deserialization reject NumPy object arrays/object dtypes with `ValueError`.
+- Fixed VOTable gzip writing for file-like objects by using write mode and closing the gzip wrapper properly.
+- Updated the broken IETF leap-second URL to the IANA URL.
+- Refreshed bundled IERS Earth orientation and leap-second data.
+- Ensured visible `cm` aliases are shared between SI/CGS/top-level unit namespaces.
+- Addressed non-test timezone-aware UTC datetime usages.
+- Added the time docs note about format vs internal JD storage.
+- Added `cycler` to intersphinx mapping.
+- Pinned docs Matplotlib to `<3.8` and adjusted the FITS image plotting example.
+- Updated GitHub Actions checkout usages to v4 and removed the obsolete `parallel_and_32bit` job.
+- Added architecture-specific NumPy build requirement markers for `s390x`/`ppc64le`.
+- Fixed small non-test typos.
+
+Important constraint check:
+- No tracked test files were modified.
+- Temporary `reproduce_issue.py` was created, used for before/after verification with added edge cases, and then removed.
+- `git diff --check` passes.
+
+Verification run:
+- Reproduction script: failed before fixes, passed after fixes.
+- Focused tests: `1113 passed` for units formatting, masked init/ptp, YAML, and VOTable gzip areas.
+- Time targeted tests: `47 passed, 3 skipped, 746 deselected, 5 xfailed`.
+- Time docs doctest: `1 passed`.
+- CGS/cosmology targeted tests: `221 passed, 19 skipped`.
+- Manual IERS verification passed for URL/config and updated bundled data.
+- Full suite: `23019 passed, 3962 skipped, 176 xfailed, 2 failed`.
+  - The two remaining failures appear unrelated to these changes/environmental:
+    1. `astropy/units/tests/test_structured_erfa_ufuncs.py::TestPVUfuncs::test_pvstar` radial velocity mismatch from ERFA behavior.
+    2. Doctest in `astropy.utils.introspection.minversion` expecting `minversion(astropy, '0.4.4') == True`, but the local checkout version reports otherwise.

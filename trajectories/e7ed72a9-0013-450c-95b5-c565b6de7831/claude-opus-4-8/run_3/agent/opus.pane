@@ -1,0 +1,200 @@
+$ 
+$ from langchain.storage.exceptions import InvalidKeyException
+$ from langchain.storage.file_system import LocalFileStore
+$ 
+$ 
+$ @pytest.fixture
+$ def file_store() -> Generator[LocalFileStore, None, None]:
+$     with tempfile.TemporaryDirectory() as temp_dir:
+$         yield LocalFileStore(temp_dir)
+$ 
+$ 
+$ def test_mset_and_mget(file_store: LocalFileStore) -> None:
+$     key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
+$     file_store.mset(key_value_pairs)
+$     values = file_store.mget(["key1", "key2"])
+$     assert values == [b"value1", b"value2"]
+$ 
+$ 
+$ def test_mdelete(file_store: LocalFileStore) -> None:
+$     key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
+$     file_store.mset(key_value_pairs)
+$     file_store.mdelete(["key1"])
+$     values = file_store.mget(["key1"])
+$     assert values == [None]
+$ 
+$ 
+$ def test_set_invalid_key(file_store: LocalFileStore) -> None:
+$     key = "crab{}"
+$     value = b"value1"
+$     with pytest.raises(InvalidKeyException):
+$         file_store.mset([(key, value)])
+$ 
+$ 
+$ def test_yield_keys(file_store: LocalFileStore) -> None:
+$     key_value_pairs = [("key1", b"value1"), ("subdir/key2", b"value2")]
+$     file_store.mset(key_value_pairs)
+$     keys = list(file_store.yield_keys())
+$     assert set(keys) == {"key1", "subdir/key2"}
+$     keys_with_prefix = list(file_store.yield_keys(prefix="subdir"))
+$     assert set(keys_with_prefix) == {"subdir/key2"}
+$ EOF
+$ cat > /tmp/st/test_encoder_backed.py <<'EOF'
+$ from typing import Any, List
+$ 
+$ from langchain.storage.encoder_backed import EncoderBackedStore
+$ from langchain.storage.in_memory import InMemoryStore
+$ 
+$ 
+$ def test_encoder_backed_store() -> None:
+$     store = InMemoryStore()
+$     encoded = EncoderBackedStore(
+$         store=store,
+$         key_encoder=lambda k: f"prefix_{k}",
+$         value_serializer=lambda v: v.encode("utf-8"),
+$         value_deserializer=lambda v: v.decode("utf-8"),
+$     )
+$     encoded.mset([("a", "1"), ("b", "2")])
+$     assert store.mget(["prefix_a", "prefix_b"]) == [b"1", b"2"]
+$     assert encoded.mget(["a", "b", "c"]) == ["1", "2", None]
+$     encoded.mdelete(["a"])
+$     assert encoded.mget(["a"]) == [None]
+$     assert set(encoded.yield_keys()) == {"prefix_b"}
+$ EOF
+$ PYTHONPATH=. poetry run python -m pytest /tmp/st -q -p no:cacheprovider 2>&1 | tail -15; rm -rf /tmp/st
+cd /workspace/langchain/libs/langchain && mkdir -p /tmp/st && cat > /tmp/st/test_in_memory.py <<'EOF'
+from langchain.storage.in_memory import InMemoryStore
+def test_mget() -> None:
+    store = InMemoryStore()
+    store.mset([("key1", "value1"), ("key2", "value2")])
+    values = store.mget(["key1", "key2"])
+    assert values == ["value1", "value2"]
+    values = store.mget(["key1", "key3"])
+    assert values == ["value1", None]
+def test_mset() -> None:
+    store = InMemoryStore()
+    store.mset([("key1", "value1"), ("key2", "value2")])
+    values = store.mget(["key1", "key2"])
+    assert values == ["value1", "value2"]
+def test_mdelete() -> None:
+    store = InMemoryStore()
+    store.mset([("key1", "value1"), ("key2", "value2")])
+    store.mdelete(["key1"])
+    values = store.mget(["key1", "key2"])
+    assert values == [None, "value2"]
+    store.mdelete(["key1"])
+def test_yield_keys() -> None:
+    store = InMemoryStore()
+    store.mset([("key1", "value1"), ("key2", "value2")])
+    keys = list(store.yield_keys())
+    assert set(keys) == {"key1", "key2"}
+    keys_with_prefix = list(store.yield_keys(prefix="key"))
+    assert set(keys_with_prefix) == {"key1", "key2"}
+    keys_with_invalid_prefix = list(store.yield_keys(prefix="x"))
+    assert keys_with_invalid_prefix == []
+EOF
+
+
+
+cat > /tmp/st/test_filesystem.py <<'EOF'
+import tempfile
+from typing import Generator
+import pytest
+from langchain.storage.exceptions import InvalidKeyException
+from langchain.storage.file_system import LocalFileStore
+@pytest.fixture
+def file_store() -> Generator[LocalFileStore, None, None]:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield LocalFileStore(temp_dir)
+def test_mset_and_mget(file_store: LocalFileStore) -> None:
+    key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
+    file_store.mset(key_value_pairs)
+    values = file_store.mget(["key1", "key2"])
+    assert values == [b"value1", b"value2"]
+def test_mdelete(file_store: LocalFileStore) -> None:
+    key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
+    file_store.mset(key_value_pairs)
+    file_store.mdelete(["key1"])
+    values = file_store.mget(["key1"])
+    assert values == [None]
+def test_set_invalid_key(file_store: LocalFileStore) -> None:
+    key = "crab{}"
+    value = b"value1"
+    with pytest.raises(InvalidKeyException):
+        file_store.mset([(key, value)])
+def test_yield_keys(file_store: LocalFileStore) -> None:
+    key_value_pairs = [("key1", b"value1"), ("subdir/key2", b"value2")]
+    file_store.mset(key_value_pairs)
+    keys = list(file_store.yield_keys())
+    assert set(keys) == {"key1", "subdir/key2"}
+    keys_with_prefix = list(file_store.yield_keys(prefix="subdir"))
+    assert set(keys_with_prefix) == {"subdir/key2"}
+EOF
+
+
+cat > /tmp/st/test_encoder_backed.py <<'EOF'
+from typing import Any, List
+from langchain.storage.encoder_backed import EncoderBackedStore
+from langchain.storage.in_memory import InMemoryStore
+def test_encoder_backed_store() -> None:
+    store = InMemoryStore()
+    encoded = EncoderBackedStore(
+        store=store,
+        key_encoder=lambda k: f"prefix_{k}",
+        value_serializer=lambda v: v.encode("utf-8"),
+        value_deserializer=lambda v: v.decode("utf-8"),
+    )
+    encoded.mset([("a", "1"), ("b", "2")])
+    assert store.mget(["prefix_a", "prefix_b"]) == [b"1", b"2"]
+    assert encoded.mget(["a", "b", "c"]) == ["1", "2", None]
+    encoded.mdelete(["a"])
+    assert encoded.mget(["a"]) == [None]
+    assert set(encoded.yield_keys()) == {"prefix_b"}
+EOF
+
+
+PYTHONPATH=. poetry run python -m pytest /tmp/st -q -p no:cacheprovider 2>&1 | tail -15; rm -rf /tmp/st
+# file_editor: Create consolidated storage test
+Ran into [Errno 2] No such file or directory: '/tmp/st/test_all_storage.py' while trying to write to /tmp/st/test_all_storage.py
+$ mkdir -p /tmp/st
+# file_editor: Create consolidated storage test file
+File created successfully at: /tmp/st/test_all_storage.py
+$ cd /workspace/langchain/libs/langchain && PYTHONPATH=. poetry run python -m pytest /tmp/st/test_all_storage.py -q -p no:cacheprovider 2>&1 | tail -8; rm -rf /tmp/st
+...                                                                      [100%]
+--------------------------- snapshot report summary ----------------------------
+
+3 passed in 0.97s
+$ cd /workspace/langchain/libs/langchain && poetry run python -m pytest tests/unit_tests -q -p no:cacheprovider 2>&1 | grep -E "passed|failed"
+18 snapshots passed. 4 snapshots unused.
+1 failed, 927 passed, 212 skipped, 15 warnings in 3.54s
+# finish: Completed multi-issue implementation
+I implemented all the code-relevant changes from the multi-PR issue description in `/workspace/langchain/libs/langchain`. Several listed issues were documentation/notebook-only and required no code; the substantive code changes are:
+
+**Issue 4 (#8895) – Base storage interface + 2 implementations + encoder utility**
+- `langchain/schema/storage.py`: new abstract `BaseStore` generic key-value interface (`mget`, `mset`, `mdelete`, `yield_keys`); exported from `langchain.schema`.
+- New `langchain/storage/` package: `in_memory.py` (`InMemoryStore`), `file_system.py` (`LocalFileStore` with `InvalidKeyException` validation), `encoder_backed.py` (`EncoderBackedStore`), `exceptions.py` (`InvalidKeyException`), and `__init__.py` exporting the three stores.
+
+**Issue 8 (#8941) – Parent document retriever**
+- `langchain/retrievers/multi_vector.py` (`MultiVectorRetriever`) and `langchain/retrievers/parent_document_retriever.py` (`ParentDocumentRetriever`), registered in `retrievers/__init__.py`.
+
+**Issue 10 (#8944) – Add id in tracer errors**
+- `langchain/callbacks/tracers/base.py`: TracerException messages now include the `run_id`.
+
+**Issue 2 (#8586) – Airbyte based loaders**
+- `langchain/document_loaders/airbyte.py` with `AirbyteCDKLoader` + `AirbyteGongLoader`, `AirbyteHubspotLoader`, `AirbyteSalesforceLoader`, `AirbyteShopifyLoader`, `AirbyteStripeLoader`, `AirbyteTypeformLoader`, `AirbyteZendeskSupportLoader`; registered in `document_loaders/__init__.py`.
+
+**Issue 7 (#8940) – Rockset chat history**
+- `langchain/memory/chat_message_histories/rocksetdb.py` (`RocksetChatMessageHistory`), registered in the histories `__init__.py`.
+
+**Issue 3 (#8879) – Scheduled tests**
+- Registered the `scheduled` pytest marker in `pyproject.toml` (needed since `--strict-markers` is enabled).
+
+**Issue 11 (#8951) – bump 259**
+- Bumped version `0.0.258` → `0.0.259` in `pyproject.toml`.
+
+Issues 1, 5, 6, 9 are docs/notebook-only (Issue 9's LCEL fallbacks already existed in `schema/runnable.py`).
+
+**Verification**
+- All new symbols import correctly and are exported via the package `__all__` lists.
+- Reconstructed upstream-style unit tests for the storage stores (InMemory, LocalFileStore incl. invalid-key handling, EncoderBackedStore) all pass, and a functional test of the ParentDocumentRetriever flow passes.
+- Full unit suite: 927 passed, 212 skipped. The single failure `tests/unit_tests/test_pytest_config.py::test_socket_disabled` is pre-existing — it fails identically on the base commit `ab193338` and is an environment/network sandbox artifact unrelated to these changes.

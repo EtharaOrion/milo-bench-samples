@@ -1,0 +1,200 @@
+   199	
+   200		switch len(in.Values) {
+   201		case 0:
+   202			builder.WriteString(" IN (NULL)")
+   203		case 1:
+   204			if _, ok := in.Values[0].([]interface{}); !ok {
+   205				builder.WriteString(" = ")
+   206				builder.AddVar(builder, in.Values[0])
+   207				break
+   208			}
+   209	
+   210			fallthrough
+$ cd /workspace/gorm && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('soft_delete.go')
+$ s=p.read_text().replace('stmt.Statement.Unscoped', 'stmt.Unscoped')
+$ p.write_text(s)
+$ PY
+$ 
+$ gofmt -w soft_delete.go && go test -count=1 ./...
+cd /workspace/gorm && python3 - <<'PY'
+from pathlib import Path
+p=Path('soft_delete.go')
+s=p.read_text().replace('stmt.Statement.Unscoped', 'stmt.Unscoped')
+p.write_text(s)
+PY
+
+
+
+
+
+gofmt -w soft_delete.go && go test -count=1 ./...
+$ cd /workspace/gorm && grep -R "PrioritizedPrimaryField\|primary.*ID\|field Id\| Id " -n schema tests --include='*_test.go' | head -120
+schema/schema_helper_test.go:26:                                if field != s.PrioritizedPrimaryField.Name {
+schema/schema_helper_test.go:27:                                        t.Errorf("schema %v prioritized primary field should be %v, but got %v", s, field, s.PrioritizedPrimaryField.Name)
+tests/create_test.go:25:                t.Errorf("user's primary key should has value after create, got : %v", user.ID)
+tests/create_test.go:484:               t.Errorf("invalid primary key after creating, got %v", company.ID)
+tests/create_test.go:494:               t.Errorf("invalid primary key after creating, got %v, %v", companies[0].ID, companies[1].ID)
+tests/delete_test.go:21:                        t.Fatalf("user's primary key should has value after create, got : %v", user.ID)
+tests/update_test.go:51:                t.Fatalf("user's primary value should not zero, %v", user.ID)
+# file_editor: View schema helper test primary expectations
+Here's the result of running `cat -n` on /workspace/gorm/schema/schema_helper_test.go:
+     1	package schema_test
+     2	
+     3	import (
+     4		"fmt"
+     5		"reflect"
+     6		"strings"
+     7		"testing"
+     8	
+     9		"gorm.io/gorm/schema"
+    10		"gorm.io/gorm/utils/tests"
+    11	)
+    12	
+    13	func checkSchema(t *testing.T, s *schema.Schema, v schema.Schema, primaryFields []string) {
+    14		t.Run("CheckSchema/"+s.Name, func(t *testing.T) {
+    15			tests.AssertObjEqual(t, s, v, "Name", "Table")
+    16	
+    17			for idx, field := range primaryFields {
+    18				var found bool
+    19				for _, f := range s.PrimaryFields {
+    20					if f.Name == field {
+    21						found = true
+    22					}
+    23				}
+    24	
+    25				if idx == 0 {
+    26					if field != s.PrioritizedPrimaryField.Name {
+    27						t.Errorf("schema %v prioritized primary field should be %v, but got %v", s, field, s.PrioritizedPrimaryField.Name)
+    28					}
+    29				}
+    30	
+    31				if !found {
+    32					t.Errorf("schema %v failed to found primary key: %v", s, field)
+    33				}
+    34			}
+    35		})
+    36	}
+    37	
+    38	func checkSchemaField(t *testing.T, s *schema.Schema, f *schema.Field, fc func(*schema.Field)) {
+    39		t.Run("CheckField/"+f.Name, func(t *testing.T) {
+    40			if fc != nil {
+    41				fc(f)
+    42			}
+    43	
+    44			if f.TagSettings == nil {
+    45				if f.Tag != "" {
+    46					f.TagSettings = schema.ParseTagSetting(f.Tag.Get("gorm"), ";")
+    47				} else {
+    48					f.TagSettings = map[string]string{}
+    49				}
+    50			}
+    51	
+    52			parsedField, ok := s.FieldsByDBName[f.DBName]
+    53			if !ok {
+    54				parsedField, ok = s.FieldsByName[f.Name]
+    55			}
+    56	
+    57			if !ok {
+    58				t.Errorf("schema %v failed to look up field with name %v", s, f.Name)
+    59			} else {
+    60				tests.AssertObjEqual(t, parsedField, f, "Name", "DBName", "BindNames", "DataType", "PrimaryKey", "AutoIncrement", "Creatable", "Updatable", "Readable", "HasDefaultValue", "DefaultValue", "NotNull", "Unique", "Comment", "Size", "Precision", "TagSettings")
+    61	
+    62				if f.DBName != "" {
+    63					if field, ok := s.FieldsByDBName[f.DBName]; !ok || parsedField != field {
+    64						t.Errorf("schema %v failed to look up field with dbname %v", s, f.DBName)
+    65					}
+    66				}
+    67	
+    68				for _, name := range []string{f.DBName, f.Name} {
+    69					if name != "" {
+    70						if field := s.LookUpField(name); field == nil || (field.Name != name && field.DBName != name) {
+    71							t.Errorf("schema %v failed to look up field with dbname %v", s, f.DBName)
+    72						}
+    73					}
+    74				}
+    75	
+    76				if f.PrimaryKey {
+    77					var found bool
+    78					for _, primaryField := range s.PrimaryFields {
+    79						if primaryField == parsedField {
+    80							found = true
+$ cd /workspace/gorm && grep -R "\bId\b" -n schema/*_test.go utils/tests tests/*_test.go | head -120
+tests/embedded_struct_test.go:19:               Id    int64
+tests/embedded_struct_test.go:88:               Id    int64
+tests/named_polymorphic_test.go:10:     Id           int
+tests/named_polymorphic_test.go:24:     DB.Preload("PreferredToy").Preload("OtherToy").Find(&hamster2, hamster.Id)
+tests/update_test.go:551:               Id           int64
+tests/update_test.go:562:               Where("id = ?", elem.Id).
+tests/update_test.go:566:       if err := DB.First(&result, elem.Id).Error; err != nil {
+$ cd /workspace/gorm && python3 - <<'PY'
+$ from pathlib import Path
+$ p=Path('schema/schema.go')
+$ s=p.read_text()
+$ old='''\tprioritizedPrimaryField := schema.LookUpField("id")\n\tif prioritizedPrimaryField == nil {\n\t\tprioritizedPrimaryField = schema.LookUpField("ID")\n\t}\n'''
+$ new='''\tprioritizedPrimaryField := schema.FieldsByName["ID"]\n\tif prioritizedPrimaryField == nil {\n\t\tprioritizedPrimaryField = schema.LookUpField("id")\n\t}\n'''
+$ if old not in s:
+$     raise SystemExit('primary priority block not found')
+$ s=s.replace(old,new,1)
+$ p.write_text(s)
+$ PY
+$ 
+$ gofmt -w schema/schema.go && go test -count=1 ./...
+cd /workspace/gorm && python3 - <<'PY'
+from pathlib import Path
+p=Path('schema/schema.go')
+s=p.read_text()
+old='''\tprioritizedPrimaryField := schema.LookUpField("id")\n\tif prioritizedPrimaryField == nil {\n\t\tprioritizedPrimaryField = schema.LookUpField("ID")\n\t}\n'''
+new='''\tprioritizedPrimaryField := schema.FieldsByName["ID"]\n\tif prioritizedPrimaryField == nil {\n\t\tprioritizedPrimaryField = schema.LookUpField("id")\n\t}\n'''
+if old not in s:
+    raise SystemExit('primary priority block not found')
+s=s.replace(old,new,1)
+p.write_text(s)
+PY
+
+
+
+
+
+gofmt -w schema/schema.go && go test -count=1 ./...
+$ cd /workspace/gorm && git status --short && git --no-pager diff --stat && git --no-pager diff --name-only | grep '_test\.go' || true
+M .github/workflows/reviewdog.yml
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M schema/schema.go
+ M soft_delete.go
+ M statement.go
+?? .golangci.yml
+ .github/workflows/reviewdog.yml |  2 --
+ clause/where.go                 | 23 ++++++++++++++++-------
+ finisher_api.go                 | 40 ++++++++++++++++++++++++++++++++++------
+ migrator/migrator.go            | 22 +++++++++++++---------
+ schema/field.go                 |  3 ++-
+ schema/schema.go                |  4 ++--
+ soft_delete.go                  | 10 +++++-----
+ statement.go                    | 10 +++++++---
+ 8 files changed, 79 insertions(+), 35 deletions(-)
+# finish: Finish task with implementation and verification summary
+Implemented the remaining fixes and verified the repository state.
+
+What changed:
+- Fixed anonymous scalar type aliases so aliases like `type ID int64` are treated as normal fields instead of invalid embedded structs.
+- Kept explicit `gorm:"embedded"` behavior strict for non-struct aliases.
+- Added alias support for time/byte-like fields via existing datatype detection and fixed `[]byte` aliases to bind as a single SQL variable.
+- Fixed named-argument `WHERE` clauses containing `OR` so they are parenthesized before soft-delete predicates.
+- Fixed single leading `Or(...)` conditions with soft delete so SQL combines as intended with `AND`.
+- Ensured soft-delete clauses respect `Unscoped` through direct statement checks.
+- Updated `Save` fallback to use `ON CONFLICT UPDATE ALL`, avoiding duplicate/incorrect behavior when soft-delete filters cause zero updated rows.
+- Added `DB.Connection(func(tx *gorm.DB) error)` for running multiple commands on one database connection, with prepared-statement handling.
+- Made `AutoMigrate` deterministic by sorting DB column names before migrating existing tables.
+- Prioritized an explicit `ID` field over DB-name `id` matches, while still supporting `Id` when it is the only primary-key-like field.
+- Added `.golangci.yml` with the previous linters plus `gofumpt`, and simplified reviewdog to use the config file.
+
+Validation:
+- Created and ran a temporary repro covering alias parsing, alias primary keys, time/bytes aliases, named OR + soft delete, single OR + soft delete, unscoped soft delete behavior, byte-alias binding, and Connection API availability.
+- Removed the temporary repro afterward.
+- Ran root module tests successfully with `go test -count=1 ./...`.
+- Confirmed no `*_test.go` files were modified.

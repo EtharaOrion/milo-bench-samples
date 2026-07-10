@@ -1,0 +1,176 @@
+diff --git a/tests/apply.test.js b/tests/apply.test.js
+index 6040aad22c38..b1a2ac461d2f 100644
+--- a/tests/apply.test.js
++++ b/tests/apply.test.js
+@@ -1548,3 +1548,39 @@ it('apply + user CSS + selector variants (like group) + important selector (2)',
+     }
+   `)
+ })
++
++it('can apply user utilities that start with a dash', async () => {
++  let config = {
++    content: [{ raw: html`<div class="foo-1 -foo-1 new-class"></div>` }],
++    plugins: [],
++  }
++
++  let input = css`
++    @tailwind utilities;
++    @layer utilities {
++      .foo-1 {
++        margin: 10px;
++      }
++      .-foo-1 {
++        margin: -15px;
++      }
++      .new-class {
++        @apply -foo-1;
++      }
++    }
++  `
++
++  let result = await run(input, config)
++
++  expect(result.css).toMatchFormattedCss(css`
++    .foo-1 {
++      margin: 10px;
++    }
++    .-foo-1 {
++      margin: -15px;
++    }
++    .new-class {
++      margin: -15px;
++    }
++  `)
++})
+diff --git a/tests/arbitrary-variants.test.js b/tests/arbitrary-variants.test.js
+index be9704e87b71..a145ee5b4731 100644
+--- a/tests/arbitrary-variants.test.js
++++ b/tests/arbitrary-variants.test.js
+@@ -566,3 +566,52 @@ test('classes in arbitrary variants should not be prefixed', () => {
+     `)
+   })
+ })
++
++test('classes in the same arbitrary variant should not be prefixed', () => {
++  let config = {
++    prefix: 'tw-',
++    content: [
++      {
++        raw: `
++          <div class="[.foo_&]:tw-text-red-400 [.foo_&]:tw-bg-white">should not be red</div>
++          <div class="foo">
++            <div class="[.foo_&]:tw-text-red-400 [.foo_&]:tw-bg-white">should be red</div>
++          </div>
++          <div class="[&_.foo]:tw-text-red-400 [&_.foo]:tw-bg-white">
++            <div>should not be red</div>
++            <div class="foo">should be red</div>
++          </div>
++        `,
++      },
++    ],
++    corePlugins: { preflight: false },
++  }
++
++  let input = `
++    @tailwind utilities;
++  `
++
++  return run(input, config).then((result) => {
++    expect(result.css).toMatchFormattedCss(css`
++      .foo .\[\.foo_\&\]\:tw-bg-white {
++        --tw-bg-opacity: 1;
++        background-color: rgb(255 255 255 / var(--tw-bg-opacity));
++      }
++
++      .foo .\[\.foo_\&\]\:tw-text-red-400 {
++        --tw-text-opacity: 1;
++        color: rgb(248 113 113 / var(--tw-text-opacity));
++      }
++
++      .\[\&_\.foo\]\:tw-bg-white .foo {
++        --tw-bg-opacity: 1;
++        background-color: rgb(255 255 255 / var(--tw-bg-opacity));
++      }
++
++      .\[\&_\.foo\]\:tw-text-red-400 .foo {
++        --tw-text-opacity: 1;
++        color: rgb(248 113 113 / var(--tw-text-opacity));
++      }
++    `)
++  })
++})
+diff --git a/tests/opacity.test.js b/tests/opacity.test.js
+index 7215d14db332..c0cd3066e5ac 100644
+--- a/tests/opacity.test.js
++++ b/tests/opacity.test.js
+@@ -761,3 +761,70 @@ it('Theme functions can reference values with slashes in brackets', () => {
+     `)
+   })
+ })
++
++it('works with opacity values defined as a placeholder or a function in when colors is a function', () => {
++  let config = {
++    content: [
++      {
++        raw: html`
++          <div
++            class="bg-foo10 bg-foo20 bg-foo30 bg-foo40 bg-foo11 bg-foo21 bg-foo31 bg-foo41"
++          ></div>
++        `,
++      },
++    ],
++    theme: {
++      colors: () => ({
++        foobar1: ({ opacityValue }) => `rgb(255 100 0 / ${opacityValue ?? '100%'})`,
++        foobar2: `rgb(255 100 0 / <alpha-value>)`,
++        foobar3: {
++          100: ({ opacityValue }) => `rgb(255 100 0 / ${opacityValue ?? '100%'})`,
++          200: `rgb(255 100 0 / <alpha-value>)`,
++        },
++      }),
++      extend: {
++        backgroundColor: ({ theme }) => ({
++          foo10: theme('colors.foobar1'),
++          foo20: theme('colors.foobar2'),
++          foo30: theme('colors.foobar3.100'),
++          foo40: theme('colors.foobar3.200'),
++          foo11: theme('colors.foobar1 / 50%'),
++          foo21: theme('colors.foobar2 / 50%'),
++          foo31: theme('colors.foobar3.100 / 50%'),
++          foo41: theme('colors.foobar3.200 / 50%'),
++        }),
++      },
++    },
++  }
++
++  return run('@tailwind utilities', config).then((result) => {
++    expect(result.css).toMatchCss(css`
++      .bg-foo10 {
++        background-color: rgb(255 100 0 / 100%);
++      }
++      .bg-foo20 {
++        --tw-bg-opacity: 1;
++        background-color: rgb(255 100 0 / var(--tw-bg-opacity));
++      }
++      .bg-foo30 {
++        background-color: rgb(255 100 0 / 100%);
++      }
++      .bg-foo40 {
++        --tw-bg-opacity: 1;
++        background-color: rgb(255 100 0 / var(--tw-bg-opacity));
++      }
++      .bg-foo11 {
++        background-color: rgb(255 100 0 / 50%);
++      }
++      .bg-foo21 {
++        background-color: rgb(255 100 0 / 50%);
++      }
++      .bg-foo31 {
++        background-color: rgb(255 100 0 / 50%);
++      }
++      .bg-foo41 {
++        background-color: rgb(255 100 0 / 50%);
++      }
++    `)
++  })
++})

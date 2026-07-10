@@ -1,0 +1,200 @@
+     ) -> Trace:
+-        """Extrace traceback information.
++        """Extract traceback information.
+$ cd /workspace/rich && git --no-pager diff -- rich/traceback.py rich/syntax.py rich/errors.py rich/tabulate.py | sed -n '120,320p'
+) -> "Traceback":
+         rich_traceback = cls.extract(exc_type, exc_value, traceback)
+         return Traceback(
+@@ -161,6 +166,7 @@ class Traceback:
+             extra_lines=extra_lines,
+             theme=theme,
+             word_wrap=word_wrap,
++            line_numbers=line_numbers,
+         )
+
+     @classmethod
+@@ -170,7 +176,7 @@ class Traceback:
+         exc_value: BaseException,
+         traceback: TracebackType,
+     ) -> Trace:
+-        """Extrace traceback information.
++        """Extract traceback information.
+
+         Args:
+             exc_type (Type[BaseException]): Exception type.
+@@ -182,7 +188,11 @@ class Traceback:
+         """
+         stacks: List[Stack] = []
+         while True:
+-            stack = Stack(exc_type=str(exc_type.__name__), exc_value=str(exc_value))
++            stack = Stack(
++                exc_type=str(exc_type.__name__),
++                exc_value=str(exc_value),
++                is_cause=exc_value.__cause__ is not None,
++            )
+
+             if isinstance(exc_value, SyntaxError):
+                 stack.syntax_error = _SyntaxError(
+@@ -204,8 +214,19 @@ class Traceback:
+                 )
+                 append(frame)
+
++            cause = exc_value.__cause__
++            if cause is not None and cause.__traceback__ is not None:
++                exc_type = cause.__class__
++                exc_value = cause
++                traceback = cause.__traceback__
++                continue
++
+             cause = exc_value.__context__
+-            if cause and cause.__traceback__:
++            if (
++                cause is not None
++                and cause.__traceback__ is not None
++                and not exc_value.__suppress_context__
++            ):
+                 exc_type = cause.__class__
+                 exc_value = cause
+                 traceback = cause.__traceback__
+@@ -220,7 +241,8 @@ class Traceback:
+         self, console: Console, options: ConsoleOptions
+     ) -> RenderResult:
+         highlighter = ReprHighlighter()
+-        for last, stack in loop_last(reversed(self.trace.stacks)):
++        stacks = list(reversed(self.trace.stacks))
++        for index, stack in enumerate(stacks):
+             if stack.frames:
+                 yield Text.from_markup("[b]Traceback[/b] [dim](most recent call last):")
+                 stack_renderable: ConsoleRenderable = Panel(
+@@ -246,10 +268,15 @@ class Traceback:
+                     (f"{stack.exc_type}: ", "traceback.exc_type"), end=""
+                 )
+                 yield highlighter(stack.exc_value)
+-            if not last:
+-                yield Text.from_markup(
+-                    "\n[i]During handling of the above exception, another exception occurred:\n\n",
+-                )
++            if index != len(stacks) - 1:
++                if stacks[index + 1].is_cause:
++                    yield Text.from_markup(
++                        "\n[i]The above exception was the direct cause of the following exception:\n\n",
++                    )
++                else:
++                    yield Text.from_markup(
++                        "\n[i]During handling of the above exception, another exception occurred:\n\n",
++                    )
+
+     @render_group()
+     def _render_syntax_error(self, syntax_error: _SyntaxError) -> RenderResult:
+@@ -287,7 +314,7 @@ class Traceback:
+                 syntax = Syntax.from_path(
+                     frame.filename,
+                     theme=theme,
+-                    line_numbers=True,
++                    line_numbers=self.line_numbers,
+                     line_range=(
+                         frame.lineno - self.extra_lines,
+                         frame.lineno + self.extra_lines,
+# file_editor: View Constrain width handling
+Here's the result of running `cat -n` on /workspace/rich/rich/constrain.py:
+     1	from typing import Optional, TYPE_CHECKING
+     2	
+     3	from .jupyter import JupyterMixin
+     4	from .measure import Measurement
+     5	
+     6	if TYPE_CHECKING:
+     7	    from .console import Console, ConsoleOptions, RenderableType, RenderResult
+     8	
+     9	
+    10	class Constrain(JupyterMixin):
+    11	    """Constrain the width of a renderable to a given number of characters.
+    12	
+    13	    Args:
+    14	        renderable (RenderableType): A renderable object.
+    15	        width (int, optional): The maximum width (in characters) to render. Defaults to 80.
+    16	    """
+    17	
+    18	    def __init__(self, renderable: "RenderableType", width: Optional[int] = 80) -> None:
+    19	        self.renderable = renderable
+    20	        self.width = width
+    21	
+    22	    def __rich_console__(
+    23	        self, console: "Console", options: "ConsoleOptions"
+    24	    ) -> "RenderResult":
+    25	        if self.width is None:
+    26	            yield self.renderable
+    27	        else:
+    28	            child_options = options.update(width=min(self.width, options.max_width))
+    29	            yield from console.render(self.renderable, child_options)
+    30	
+    31	    def __rich_measure__(self, console: "Console", max_width: int) -> "Measurement":
+    32	        if self.width is None:
+    33	            return Measurement.get(console, self.renderable, max_width)
+    34	        else:
+    35	            width = min(self.width, max_width)
+    36	            return Measurement(width, width)
+    37	
+$ cd /workspace/rich && rm reproduce_issues.py && find . -type d -name __pycache__ -prune -exec rm -rf {} + && git status --short
+M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+$ cd /workspace/rich && python - <<'PY'
+$ from pathlib import Path
+$ for path in [
+$     'rich/console.py', 'rich/errors.py', 'rich/table.py', 'rich/tabulate.py',
+$     'rich/logging.py', 'rich/traceback.py', 'rich/syntax.py'
+$ ]:
+$     compile(Path(path).read_text(), path, 'exec')
+$ print('modified source files compile')
+$ PY
+$ PYTHONDONTWRITEBYTECODE=1 pytest -q tests/test_traceback.py tests/test_console.py::test_export_text tests/test_console.py::test_save_text tests/test_console.py::test_no_wrap tests/test_console.py::test_soft_wrap
+cd /workspace/rich && python - <<'PY'
+from pathlib import Path
+for path in [
+    'rich/console.py', 'rich/errors.py', 'rich/table.py', 'rich/tabulate.py',
+    'rich/logging.py', 'rich/traceback.py', 'rich/syntax.py'
+]:
+    compile(Path(path).read_text(), path, 'exec')
+print('modified source files compile')
+PY
+
+modified source files compile
+
+
+PYTHONDONTWRITEBYTECODE=1 pytest -q tests/test_traceback.py tests/test_console.py::test_export_text tests/test_console.py::test_save_text tests/test_console.py::test_no_wrap tests/test_console.py::test_soft_wrap
+............                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     [100%]
+12 passed in 0.20s
+$ cd /workspace/rich && git status --short && git --no-pager diff --check
+M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+# task_tracker: Mark all tasks complete
+Task list has been updated with 6 item(s).
+# finish: Finish implementation summary and validation results
+Implemented the requested non-test source changes in `/workspace/rich`.
+
+Summary of changes:
+- Added UTF-8 charset declaration to exported HTML.
+- Added `Console.capture()`, `begin_capture()`, `end_capture()`, and `CaptureError` for simplified output capture.
+- Added `title_justify` and `caption_justify` options to `Table`, and fixed `caption_style` being incorrectly assigned from `title_style`.
+- Extended `RichHandler` to render rich tracebacks for exception logs, with both `handle_tracebacks` and `rich_tracebacks` support plus traceback formatting options/aliases.
+- Improved traceback chaining to distinguish direct causes from exception contexts and respect suppressed contexts.
+- Wired `line_numbers` through traceback rendering and fixed `Syntax` line ranges when line numbers are disabled.
+- Updated `rich/tabulate.py` example to demonstrate `title_justify`.
+
+Validation performed:
+- Created and ran a reproduction script before/after; it passed after the fixes, including edge cases for capture errors, logging traceback aliases/formatters, traceback causes/suppression, and line-number handling. The temporary script was removed afterward.
+- In-memory compilation of modified source files passed.
+- Focused unaffected tests passed: `12 passed` for `tests/test_traceback.py` and selected console tests.
+- Ran the full suite: `285 passed, 10 failed`. The remaining failures are snapshot/expected-output mismatches from the existing test files/environment, including old HTML expectations that do not yet include the new charset meta tag, plus unrelated rendering snapshot differences and a pytest logging setup issue. Per your instruction, I did not modify tests.
+- `git diff --check` passes.
+
+Note: I attempted to run Black, but neither `python -m black` nor a `black` executable is available in this environment, so I manually kept formatting consistent.

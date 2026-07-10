@@ -1,0 +1,200 @@
+                return nil, errors.New("server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.")
+        }
+$ cd /workspace/headscale && grep -R "MagicDNS.*nameserver\|nameserver.*MagicDNS\|use_username_in_magic_dns" -n config-example.yaml docs hscontrol/types/testdata | head -50
+hscontrol/types/testdata/base-domain-in-server-url.yaml:16:  use_username_in_magic_dns: false
+hscontrol/types/testdata/base-domain-not-in-server-url.yaml:16:  use_username_in_magic_dns: false
+hscontrol/types/testdata/dns_full.yaml:37:  use_username_in_magic_dns: true
+hscontrol/types/testdata/dns_full_no_magic.yaml:37:  use_username_in_magic_dns: true
+$ cd /workspace/headscale && sed -n '580,700p' hscontrol/policy/acls.go && sed -n '790,835p' hscontrol/policy/acls.go
+return pol.expandIPsFromSingleIP(ip, nodes)
+        }
+
+        // if alias is an IP Prefix (CIDR)
+        if prefix, err := netip.ParsePrefix(alias); err == nil {
+                return pol.expandIPsFromIPPrefix(prefix, nodes)
+        }
+
+        log.Warn().Msgf("No IPs found with the alias %v", alias)
+
+        return build.IPSet()
+}
+
+// excludeCorrectlyTaggedNodes will remove from the list of input nodes the ones
+// that are correctly tagged since they should not be listed as being in the user
+// we assume in this function that we only have nodes from 1 user.
+func excludeCorrectlyTaggedNodes(
+        aclPolicy *ACLPolicy,
+        nodes types.Nodes,
+        user string,
+) types.Nodes {
+        var out types.Nodes
+        var tags []string
+        for tag := range aclPolicy.TagOwners {
+                owners, _ := expandOwnersFromTag(aclPolicy, user)
+                ns := append(owners, user)
+                if util.StringOrPrefixListContains(ns, user) {
+                        tags = append(tags, tag)
+                }
+        }
+        // for each node if tag is in tags list, don't append it.
+        for _, node := range nodes {
+                found := false
+
+                if node.Hostinfo == nil {
+                        continue
+                }
+
+                for _, t := range node.Hostinfo.RequestTags {
+                        if util.StringOrPrefixListContains(tags, t) {
+                                found = true
+
+                                break
+                        }
+                }
+                if len(node.ForcedTags) > 0 {
+                        found = true
+                }
+                if !found {
+                        out = append(out, node)
+                }
+        }
+
+        return out
+}
+
+func expandPorts(portsStr string, isWild bool) (*[]tailcfg.PortRange, error) {
+        if isWildcard(portsStr) {
+                return &[]tailcfg.PortRange{
+                        {First: portRangeBegin, Last: portRangeEnd},
+                }, nil
+        }
+
+        if isWild {
+                return nil, ErrWildcardIsNeeded
+        }
+
+        var ports []tailcfg.PortRange
+        for _, portStr := range strings.Split(portsStr, ",") {
+                log.Trace().Msgf("parsing portstring: %s", portStr)
+                rang := strings.Split(portStr, "-")
+                switch len(rang) {
+                case 1:
+                        port, err := strconv.ParseUint(rang[0], util.Base10, util.BitSize16)
+                        if err != nil {
+                                return nil, err
+                        }
+                        ports = append(ports, tailcfg.PortRange{
+                                First: uint16(port),
+                                Last:  uint16(port),
+                        })
+
+                case expectedTokenItems:
+                        start, err := strconv.ParseUint(rang[0], util.Base10, util.BitSize16)
+                        if err != nil {
+                                return nil, err
+                        }
+                        last, err := strconv.ParseUint(rang[1], util.Base10, util.BitSize16)
+                        if err != nil {
+                                return nil, err
+                        }
+                        ports = append(ports, tailcfg.PortRange{
+                                First: uint16(start),
+                                Last:  uint16(last),
+                        })
+
+                default:
+                        return nil, ErrInvalidPortFormat
+                }
+        }
+
+        return &ports, nil
+}
+
+// expandOwnersFromTag will return a list of user. An owner can be either a user or a group
+// a group cannot be composed of groups.
+func expandOwnersFromTag(
+        pol *ACLPolicy,
+        tag string,
+) ([]string, error) {
+        noTagErr := fmt.Errorf(
+                "%w. %v isn't owned by a TagOwner. Please add one first. https://tailscale.com/kb/1018/acls/#tag-owners",
+                ErrInvalidTag,
+                tag,
+        )
+        if pol == nil {
+                return []string{}, noTagErr
+        }
+        var owners []string
+        ows, ok := pol.TagOwners[tag]
+        if !ok {
+                if errors.Is(err, ErrInvalidTag) {
+                        ipSet, _ := build.IPSet()
+                        if len(ipSet.Prefixes()) == 0 {
+                                return ipSet, fmt.Errorf(
+                                        "%w. %v isn't owned by a TagOwner and no forced tags are defined",
+                                        ErrInvalidTag,
+                                        alias,
+                                )
+                        }
+
+                        return build.IPSet()
+                } else {
+                        return nil, err
+                }
+        }
+
+        // filter out nodes per tag owner
+        for _, user := range owners {
+                nodes := filterNodesByUser(nodes, user)
+                for _, node := range nodes {
+                        if node.Hostinfo == nil {
+                                continue
+                        }
+
+                        if util.StringOrPrefixListContains(node.Hostinfo.RequestTags, alias) {
+                                node.AppendToIPSet(&build)
+                        }
+                }
+        }
+
+        return build.IPSet()
+}
+
+func (pol *ACLPolicy) expandIPsFromUser(
+        user string,
+        nodes types.Nodes,
+) (*netipx.IPSet, error) {
+        var build netipx.IPSetBuilder
+
+        filteredNodes := filterNodesByUser(nodes, user)
+        filteredNodes = excludeCorrectlyTaggedNodes(pol, filteredNodes, user)
+
+        // shortcurcuit if we have no nodes to get ips from.
+        if len(filteredNodes) == 0 {
+                return nil, nil // nolint
+        }
+# task_tracker: Mark implementation and verification tasks complete
+Task list has been updated with 4 item(s).
+# finish: Summarize completed code changes and verification
+Implemented the requested non-test changes in `/workspace/headscale`.
+
+Summary of changes:
+- Allowed remote CLI use with `HEADSCALE_CLI_ADDRESS` and `HEADSCALE_CLI_API_KEY` even when no config file exists.
+- Relaxed `server_url`/`dns.base_domain` validation to reject only exact DNS-domain conflicts or subdomain conflicts, not arbitrary substring matches.
+- Added SQLite `wal_autocheckpoint` configuration support with default `1000`, and wired it into SQLite startup pragmas.
+- Added optional programmatic initial `DERPMap` support and made DERP map merging nil-safe.
+- Set accepted SSH actions to `AllowAgentForwarding: true`.
+- Fixed REST/gateway/OpenAPI mapping for `MoveNode` so request body fields like `user` are decoded.
+- Persisted client hostname changes received through map Hostinfo updates.
+- Allowed deletion of orphan routes with no associated node.
+- Updated Debian postinstall shell to `/usr/sbin/nologin`.
+- Fixed debug image release tags to publish `stable-debug`.
+- Removed deprecated `dns.use_username_in_magic_dns` from `config-example.yaml`.
+
+Verification:
+- Created and ran `/tmp/headscale_repro.go` with `go run`; it passes and covers the main edge cases above.
+- Passed focused tests:
+  - `go test ./hscontrol/types ./hscontrol/derp ./hscontrol/db ./hscontrol ./cmd/headscale ./gen/go/headscale/v1`
+- Ran `go test ./...`; remaining failures are expected from the unmodified base tests/environment:
+  - `hscontrol/policy` still expects `AllowAgentForwarding=false`, which conflicts with the requested new behavior.
+  - `integration` fails because Docker network setup is unavailable in this environment.

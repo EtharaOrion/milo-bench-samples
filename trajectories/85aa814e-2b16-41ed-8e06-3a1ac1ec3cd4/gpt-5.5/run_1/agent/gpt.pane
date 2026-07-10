@@ -1,0 +1,200 @@
+Testing examples/derive_ref/interop_tests.md:66 ... ignored
+Testing examples/derive_ref/interop_tests.md:74 ... ignored
+Testing examples/derive_ref/interop_tests.md:88 ... ignored
+Testing examples/derive_ref/interop_tests.md:102 ... ignored
+Testing examples/derive_ref/interop_tests.md:114 ... ignored
+Testing examples/derive_ref/interop_tests.md:127 ... ignored
+Testing examples/derive_ref/interop_tests.md:144 ... ignored
+Testing examples/derive_ref/interop_tests.md:158 ... ignored
+Testing examples/derive_ref/interop_tests.md:172 ... ignored
+Testing examples/derive_ref/interop_tests.md:190 ... ignored
+Testing examples/derive_ref/interop_tests.md:204 ... ignored
+Testing examples/derive_ref/interop_tests.md:217 ... ignored
+Testing examples/derive_ref/interop_tests.md:230 ... ignored
+Testing examples/derive_ref/interop_tests.md:245 ... ignored
+Testing examples/multicall-hostname.md:6 ... ok
+Testing examples/tutorial_builder/02_apps.md:2 ... ok
+Testing examples/tutorial_builder/02_apps.md:16 ... ok
+Testing examples/tutorial_builder/04_02_validate.md:2 ... ignored
+Testing examples/tutorial_builder/04_02_validate.md:16 ... ignored
+Testing examples/tutorial_builder/04_02_validate.md:19 ... ignored
+Testing examples/tutorial_builder/04_02_validate.md:25 ... ignored
+Testing examples/multicall-busybox.md:6 ... ok
+Testing examples/multicall-busybox.md:9 ... ok
+Testing examples/multicall-busybox.md:18 ... ok
+Testing examples/multicall-busybox.md:26 ... ok
+Testing examples/pacman.md:5 ... ok
+Testing examples/pacman.md:12 ... ok
+Testing examples/pacman.md:19 ... ok
+Testing examples/pacman.md:26 ... ok
+Testing examples/pacman.md:29 ... ok
+Testing examples/pacman.md:37 ... ok
+Testing examples/pacman.md:54 ... ok
+Testing examples/pacman.md:73 ... ok
+Testing examples/git.md:5 ... ok
+Testing examples/git.md:23 ... ok
+Testing examples/git.md:40 ... ok
+Testing examples/git.md:57 ... ok
+Testing examples/git.md:71 ... ok
+Testing examples/git.md:78 ... ok
+Testing examples/git.md:95 ... ok
+Testing examples/git.md:105 ... ok
+Testing examples/git.md:117 ... ok
+Testing examples/git.md:120 ... ok
+Testing examples/git.md:123 ... ok
+Testing examples/git.md:126 ... ok
+Testing examples/git.md:133 ... ok
+test example_tests ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/macros.rs (target/debug/deps/macros-4c6a1071c2e896cc)
+
+running 25 tests
+test arg::name_explicit ... ok
+test arg::name_from_long ... ok
+test arg::name_from_value ... ok
+test arg::positional ... ok
+test arg::name_none_fails - should panic ... ok
+test arg::short ... ok
+test arg::short_and_long ... ok
+test arg::short_only_fails - should panic ... ok
+test arg_impl::arg_name_dashed ... ok
+test arg_impl::arg_value_dashed_with_long_arg ... ok
+test arg_impl::char_ident ... ok
+test arg_impl::arg_value_dashed_with_short_arg ... ok
+test arg_impl::char_literal ... ok
+test arg_impl::string_ident ... ok
+test arg_impl::string_literal ... ok
+test basic ... ok
+test group_macro ... ok
+test group_macro_set_not_multiple ... ok
+test group_macro_set_multiple ... ok
+test group_macro_set_not_required ... ok
+test group_macro_set_required ... ok
+test multiarg ... ok
+test quoted_arg_long_name ... ok
+test quoted_app_name ... ok
+test quoted_arg_name ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ui.rs (target/debug/deps/ui-b1a3629fadfb4e67)
+
+running 1 test
+Testing tests/ui/version_flag_stdout.toml ... ok
+Testing tests/ui/V_flag_stdout.toml ... ok
+Testing tests/ui/error_stderr.toml ... ok
+Testing tests/ui/help_cmd_stdout.toml ... ok
+Testing tests/ui/help_flag_stdout.toml ... ok
+Testing tests/ui/arg_required_else_help_stderr.toml ... ok
+Testing tests/ui/h_flag_stdout.toml ... ok
+test ui_tests ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/yaml.rs (target/debug/deps/yaml-1b9a85774c29ad7c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+$ cd /workspace/clap && rm src/bin/repro_3959.rs && git status --short && git --no-pager diff -- src/parser/parser.rs
+M src/parser/parser.rs
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index 2352eff6..5c8d806b 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -128,7 +128,18 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                     low_index_mults
+                 );
+
+-                if low_index_mults || missing_pos {
++                let correct_pos_counter = if low_index_mults || missing_pos {
++                    !matches!(parse_state, ParseState::Opt(_))
++                        && self
++                            .cmd
++                            .get_positionals()
++                            .find(|a| a.index == Some(pos_counter))
++                            .map_or(true, |arg| !self.is_new_arg(&arg_os, arg))
++                } else {
++                    false
++                };
++
++                if correct_pos_counter {
+                     let skip_current = if let Some(n) = raw_args.peek(&args_cursor) {
+                         if let Some(arg) = self
+                             .cmd
+# task_tracker: Mark all tasks complete
+Task list has been updated with 6 item(s).
+$ cd /workspace/clap && git --no-pager diff --check && git status --short && git --no-pager diff --stat
+M src/parser/parser.rs
+ src/parser/parser.rs | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+# file_editor: Review final parser change snippet
+Here's the result of running `cat -n` on /workspace/clap/src/parser/parser.rs:
+   118	                let missing_pos = self.cmd.is_allow_missing_positional_set()
+   119	                    && is_second_to_last
+   120	                    && !trailing_values;
+   121	
+   122	                debug!(
+   123	                    "Parser::get_matches_with: Positional counter...{}",
+   124	                    pos_counter
+   125	                );
+   126	                debug!(
+   127	                    "Parser::get_matches_with: Low index multiples...{:?}",
+   128	                    low_index_mults
+   129	                );
+   130	
+   131	                let correct_pos_counter = if low_index_mults || missing_pos {
+   132	                    !matches!(parse_state, ParseState::Opt(_))
+   133	                        && self
+   134	                            .cmd
+   135	                            .get_positionals()
+   136	                            .find(|a| a.index == Some(pos_counter))
+   137	                            .map_or(true, |arg| !self.is_new_arg(&arg_os, arg))
+   138	                } else {
+   139	                    false
+   140	                };
+   141	
+   142	                if correct_pos_counter {
+   143	                    let skip_current = if let Some(n) = raw_args.peek(&args_cursor) {
+   144	                        if let Some(arg) = self
+   145	                            .cmd
+   146	                            .get_positionals()
+   147	                            .find(|a| a.index == Some(pos_counter))
+   148	                        {
+   149	                            // If next value looks like a new_arg or it's a
+   150	                            // subcommand, skip positional argument under current
+# finish: Finish parser fix summary and verification
+Implemented the fix in `src/parser/parser.rs`.
+
+What changed:
+- The positional counter correction for low-index multi-value positionals now only runs when the current token is actually eligible to be parsed as a positional.
+- It no longer advances the positional counter while:
+  - consuming a pending option value like `--one 1`, or
+  - parsing an option/flag token like `--yes` / `--two`.
+
+This resolves the reported case where `--one 1 --two 2 3 4 5 6 7 8` incorrectly assigned `3` to `output` and then errored on `4`.
+
+Verification performed:
+- Created a temporary `src/bin/repro_3959.rs` reproduction binary.
+- Confirmed the original reported command failed before the fix.
+- Confirmed it passed after the fix with:
+  - `input = ["3", "4", "5", "6", "7"]`
+  - `output = "8"`
+  - `one = Some("1")`
+  - `two = Some("2")`
+  - `yes = Some(false)`
+- Added temporary edge assertions in the repro binary for flags/options before positionals and attached option values; all passed.
+- Removed the temporary reproduction binary before finalizing.
+
+Tests run:
+- `cargo test --test builder multiple_values -- --nocapture` ✅
+- `cargo test --test builder allow_missing_positional -- --nocapture` ✅
+- `cargo test -p clap --lib` ✅
+- `cargo test -p clap --tests` ✅
+- `git diff --check` ✅
+
+Notes:
+- `cargo test --workspace` could not complete because Cargo attempted to access a root-owned registry cache and hit `Permission denied` for `proc-macro-error-attr-1.0.4.crate`.
+- `cargo test -p clap` including doctests hit an unrelated doctest failure in `src/builder/value_parser.rs` due to a `Debug` output mismatch (`PhantomData<u16>` vs `PhantomData`). The non-doctest clap test suite passed.

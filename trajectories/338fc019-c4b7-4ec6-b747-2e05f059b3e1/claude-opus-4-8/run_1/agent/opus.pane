@@ -1,0 +1,200 @@
+   339	
+   340	static inline void r_write_me64(void *dest, ut64 val) {
+   341		r_write_me32 (dest, (ut32)val);
+   342		r_write_at_me32 (dest, val >> 32, sizeof (ut32));
+   343	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/radare2 && head -20 libr/include/r_endian.h
+#ifndef R_ENDIAN_H
+#define R_ENDIAN_H
+
+#include <r_types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Endian agnostic functions working on single byte. */
+
+static inline ut8 r_read_ble8(const void *src) {
+        if (!src) {
+                return UT8_MAX;
+        }
+        return *(const ut8 *)src;
+}
+
+static inline ut8 r_read_at_ble8(const void *src, size_t offset) {
+        return r_read_ble8 (((const ut8*)src) + offset);
+$ cd /workspace/radare2 && cat > /tmp/test_endian.c <<'EOF'
+$ #include <r_endian.h>
+$ #include <stdio.h>
+$ #include <assert.h>
+$ 
+$ int main(void) {
+$ 	ut8 buf[8] = {0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88};
+$ 	// normal reads
+$ 	assert(r_read_be16(buf) == 0x1122);
+$ 	assert(r_read_be32(buf) == 0x11223344);
+$ 	assert(r_read_be64(buf) == 0x1122334455667788ULL);
+$ 	assert(r_read_at_be16(buf, 1) == 0x2233);
+$ 	assert(r_read_at_be32(buf, 1) == 0x22334455);
+$ 	assert(r_read_at_be64(buf, 0) == 0x1122334455667788ULL);
+$ 	// NULL safety
+$ 	assert(r_read_be16(NULL) == UT16_MAX);
+$ 	assert(r_read_be32(NULL) == UT32_MAX);
+$ 	assert(r_read_be64(NULL) == UT64_MAX);
+$ 	assert(r_read_at_be16(NULL, 5) == UT16_MAX);
+$ 	assert(r_read_at_be32(NULL, 5) == UT32_MAX);
+$ 	assert(r_read_at_be64(NULL, 5) == UT64_MAX);
+$ 	assert(r_read_at_me64(NULL, 5) == UT64_MAX);
+$ 	// ble wrappers with big_endian = true and NULL
+$ 	assert(r_read_ble16(NULL, true) == UT16_MAX);
+$ 	assert(r_read_ble32(NULL, true) == UT32_MAX);
+$ 	assert(r_read_ble64(NULL, true) == UT64_MAX);
+$ 	printf("ALL PASS\n");
+$ 	return 0;
+$ }
+$ EOF
+$ gcc /tmp/test_endian.c -I libr/include -o /tmp/test_endian && /tmp/test_endian
+cd /workspace/radare2 && cat > /tmp/test_endian.c <<'EOF'
+#include <r_endian.h>
+#include <stdio.h>
+#include <assert.h>
+int main(void) {
+ut8 buf[8] = {0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88};
+// normal reads
+assert(r_read_be16(buf) == 0x1122);
+assert(r_read_be32(buf) == 0x11223344);
+assert(r_read_be64(buf) == 0x1122334455667788ULL);
+assert(r_read_at_be16(buf, 1) == 0x2233);
+assert(r_read_at_be32(buf, 1) == 0x22334455);
+assert(r_read_at_be64(buf, 0) == 0x1122334455667788ULL);
+// NULL safety
+assert(r_read_be16(NULL) == UT16_MAX);
+assert(r_read_be32(NULL) == UT32_MAX);
+assert(r_read_be64(NULL) == UT64_MAX);
+assert(r_read_at_be16(NULL, 5) == UT16_MAX);
+
+assert(r_read_at_be32(NULL, 5) == UT32_MAX);
+assert(r_read_at_be64(NULL, 5) == UT64_MAX);
+assert(r_read_at_me64(NULL, 5) == UT64_MAX);
+// ble wrappers with big_endian = true and NULL
+assert(r_read_ble16(NULL, true) == UT16_MAX);
+assert(r_read_ble32(NULL, true) == UT32_MAX);
+assert(r_read_ble64(NULL, true) == UT64_MAX);
+printf("ALL PASS\n");
+return 0;
+}
+EOF
+
+
+gcc /tmp/test_endian.c -I libr/include -o /tmp/test_endian && /tmp/test_endian
+In file included from libr/include/r_endian.h:4,
+                 from /tmp/test_endian.c:1:
+libr/include/r_types.h:10:10: fatal error: r_userconf.h: No such file or directory
+   10 | #include "r_userconf.h"
+      |          ^~~~~~~~~~~~~~
+compilation terminated.
+$ cd /workspace/radare2 && find . -name r_userconf.h 2>/dev/null
+$ cd /workspace/radare2 && ls libr/include/r_userconf.h.acr* 2>/dev/null; find . -name "r_userconf.h.*" 2>/dev/null | head
+libr/include/r_userconf.h.acr
+./libr/include/r_userconf.h.acr
+$ cd /workspace/radare2 && mkdir -p /tmp/inc && printf '#ifndef R2_USERCONF_H\n#define R2_USERCONF_H\n#define R2_GITTAP ""\n#define HAVE_FORK 1\n#endif\n' > /tmp/inc/r_userconf.h && gcc /tmp/test_endian.c -I /tmp/inc -I libr/include -o /tmp/test_endian 2>&1 | head -20
+$ cd /workspace/radare2 && /tmp/test_endian
+ALL PASS
+$ rm -f /tmp/test_endian /tmp/test_endian.c; rm -rf /tmp/inc; cd /workspace/radare2 && git --no-pager diff --stat
+libr/include/r_endian.h | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+$ cd /workspace/radare2 && git --no-pager diff
+diff --git a/libr/include/r_endian.h b/libr/include/r_endian.h
+index 3884ba7de1..8660233584 100644
+--- a/libr/include/r_endian.h
++++ b/libr/include/r_endian.h
+@@ -48,11 +48,17 @@ static inline void r_write_at_be8(void *dest, ut8 val, size_t offset) {
+ }
+
+ static inline ut16 r_read_be16(const void *src) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut16)s[0]) << 8) | (((ut16)s[1]) << 0);
+ }
+
+ static inline ut16 r_read_at_be16(const void *src, size_t offset) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be16 (s);
+ }
+@@ -68,12 +74,18 @@ static inline void r_write_at_be16(void *dest, ut16 val, size_t offset) {
+ }
+
+ static inline ut32 r_read_be32(const void *src) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut32)s[0]) << 24) | (((ut32)s[1]) << 16) |
+                (((ut32)s[2]) << 8) | (((ut32)s[3]) << 0);
+ }
+
+ static inline ut32 r_read_at_be32(const void *src, size_t offset) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be32 (s);
+ }
+@@ -96,12 +108,18 @@ static inline void r_write_at_be32(void *dest, ut32 val, size_t offset) {
+ }
+
+ static inline ut64 r_read_be64(const void *src) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        ut64 val = ((ut64)(r_read_be32 (src))) << 32;
+        val |= r_read_at_be32 (src, sizeof (ut32));
+        return val;
+ }
+
+ static inline ut64 r_read_at_be64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be64 (s);
+ }
+@@ -312,6 +330,9 @@ static inline ut64 r_read_me64(const void *src) {
+ }
+
+ static inline ut64 r_read_at_me64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = ((const ut8*)src) + offset;
+        return r_read_me64 (s);
+ }
+# finish: Completed NULL-check fix for BE read functions
+I resolved Issue 7 (#25208): "Missing NULL checks in Big Endian read functions (inconsistent with Little Endian counterparts)".
+
+## Problem
+The `r_read_be*` family of functions in `libr/include/r_endian.h` lacked NULL pointer checks, while their Little Endian counterparts (`r_read_le*`) properly handled NULL inputs. This inconsistency could lead to crashes (NULL pointer dereference) when NULL pointers were passed — most notably through the unified `r_read_ble*` wrapper functions, where `big_endian=false` was safe but `big_endian=true` would crash. Since `RAnalOp.bytes` is explicitly documented as nullable and several arch plugins pass it directly into these read functions, this was a real DoS-via-crash risk for big-endian targets.
+
+## Fix
+In `libr/include/r_endian.h`, I added NULL checks (returning the appropriate sentinel value) to all the Big Endian read functions listed in the issue:
+- `r_read_be16()` / `r_read_at_be16()` → return `UT16_MAX`
+- `r_read_be32()` / `r_read_at_be32()` → return `UT32_MAX`
+- `r_read_be64()` / `r_read_at_be64()` → return `UT64_MAX`
+- `r_read_at_me64()` → return `UT64_MAX`
+
+(`r_read_be24` already had a check.) This exactly mirrors the existing LE implementations and matches the suggested fix in the issue.
+
+## Verification
+I wrote a standalone C test that compiles `r_endian.h` and confirmed:
+1. Normal reads still return correct values (e.g. `r_read_be32(buf) == 0x11223344`, `r_read_be64(buf) == 0x1122334455667788`).
+2. Every BE function now returns the correct sentinel when passed NULL instead of dereferencing it.
+3. The unified `r_read_ble16/32/64(NULL, true)` wrappers now safely return sentinel values rather than crashing — making BE and LE behaviour consistent.
+
+All assertions passed. The change is minimal (header-only, 21 lines added) and does not alter any existing non-NULL behaviour.

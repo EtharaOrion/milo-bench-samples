@@ -1,0 +1,200 @@
+        }
+ }
+
++func hasAndOrConditions(expr Expression) bool {
++       switch v := expr.(type) {
++       case Expr:
++               sql := strings.ToLower(v.SQL)
++               return strings.Contains(sql, "and") || strings.Contains(sql, "or")
++       case NamedExpr:
++               sql := strings.ToLower(v.SQL)
++               return strings.Contains(sql, "and") || strings.Contains(sql, "or")
++       }
++       return false
++}
++
+ // MergeClause merge where clauses
+ func (where Where) MergeClause(clause *Clause) {
+        if w, ok := clause.Expression.(Where); ok {
+diff --git a/finisher_api.go b/finisher_api.go
+index b3bdedc..bc59002 100644
+--- a/finisher_api.go
++++ b/finisher_api.go
+@@ -100,10 +100,7 @@ func (db *DB) Save(value interface{}) (tx *DB) {
+                tx = tx.callbacks.Update().Execute(tx)
+
+                if tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {
+-                       result := reflect.New(tx.Statement.Schema.ModelType).Interface()
+-                       if err := tx.Session(&Session{}).Take(result).Error; errors.Is(err, ErrRecordNotFound) {
+-                               return tx.Create(value)
+-                       }
++                       return tx.Session(&Session{SkipHooks: true}).Clauses(clause.OnConflict{UpdateAll: true}).Create(value)
+                }
+        }
+
+@@ -473,8 +470,9 @@ func (db *DB) Scan(dest interface{}) (tx *DB) {
+ }
+
+ // Pluck used to query single column from a model as a map
+-//     var ages []int64
+-//     db.Model(&users).Pluck("age", &ages)
++//
++//     var ages []int64
++//     db.Model(&users).Pluck("age", &ages)
+ func (db *DB) Pluck(column string, dest interface{}) (tx *DB) {
+        tx = db.getInstance()
+        if tx.Statement.Model != nil {
+@@ -515,6 +513,28 @@ func (db *DB) ScanRows(rows *sql.Rows, dest interface{}) error {
+        return tx.Error
+ }
+
++// Connection uses a db connection to execute an arbitrary number of commands in fc.
++func (db *DB) Connection(fc func(tx *DB) error) (err error) {
++       if db.Error != nil {
++               return db.Error
++       }
++
++       tx := db.getInstance()
++       sqlDB, err := tx.DB()
++       if err != nil {
++               return err
++       }
++
++       conn, err := sqlDB.Conn(tx.Statement.Context)
++       if err != nil {
++               return err
++       }
++       defer conn.Close()
++
++       tx.Statement.ConnPool = conn
++       return fc(tx)
++}
++
+ // Transaction start a transaction as a block, return error will rollback, otherwise to commit.
+ func (db *DB) Transaction(fc func(tx *DB) error, opts ...*sql.TxOptions) (err error) {
+        panicked := true
+diff --git a/migrator/migrator.go b/migrator/migrator.go
+index 91bf60a..8f289b9 100644
+--- a/migrator/migrator.go
++++ b/migrator/migrator.go
+@@ -6,6 +6,7 @@ import (
+        "fmt"
+        "reflect"
+        "regexp"
++       "sort"
+        "strings"
+
+        "gorm.io/gorm"
+@@ -97,7 +98,14 @@ func (m Migrator) AutoMigrate(values ...interface{}) error {
+                        if err := m.RunWithValue(value, func(stmt *gorm.Statement) (errr error) {
+                                columnTypes, _ := m.DB.Migrator().ColumnTypes(value)
+
+-                               for _, field := range stmt.Schema.FieldsByDBName {
++                               dbNames := append([]string(nil), stmt.Schema.DBNames...)
++                               sort.Strings(dbNames)
++                               for _, dbName := range dbNames {
++                                       field := stmt.Schema.FieldsByDBName[dbName]
++                                       if field.IgnoreMigration {
++                                               continue
++                                       }
++
+                                        var foundColumn gorm.ColumnType
+
+                                        for _, columnType := range columnTypes {
+diff --git a/schema/field.go b/schema/field.go
+index f3189c7..2330510 100644
+--- a/schema/field.go
++++ b/schema/field.go
+@@ -232,11 +232,12 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
+                        field.DefaultValueInterface = field.DefaultValue
+                }
+        case reflect.Struct:
+-               if _, ok := fieldValue.Interface().(*time.Time); ok {
+-                       field.DataType = Time
+-               } else if fieldValue.Type().ConvertibleTo(TimeReflectType) {
+-                       field.DataType = Time
+-               } else if fieldValue.Type().ConvertibleTo(reflect.TypeOf(&time.Time{})) {
++               fieldValueType := fieldValue.Type()
++               if fieldValueType.Kind() == reflect.Ptr {
++                       fieldValueType = fieldValueType.Elem()
++               }
++
++               if fieldValueType.ConvertibleTo(TimeReflectType) {
+                        field.DataType = Time
+                }
+        case reflect.Array, reflect.Slice:
+@@ -346,7 +347,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
+                }
+        }
+
+-       if _, ok := field.TagSettings["EMBEDDED"]; ok || (fieldStruct.Anonymous && !isValuer && (field.Creatable || field.Updatable || field.Readable)) {
++       if _, ok := field.TagSettings["EMBEDDED"]; ok || (fieldStruct.Anonymous && !isValuer && field.DataType == "" && (field.Creatable || field.Updatable || field.Readable)) {
+                if reflect.Indirect(fieldValue).Kind() == reflect.Struct {
+                        var err error
+                        field.Creatable = false
+diff --git a/soft_delete.go b/soft_delete.go
+index 11c4faf..0a7f822 100644
+--- a/soft_delete.go
++++ b/soft_delete.go
+@@ -65,10 +65,14 @@ func (sd SoftDeleteQueryClause) MergeClause(*clause.Clause) {
+ func (sd SoftDeleteQueryClause) ModifyStatement(stmt *Statement) {
+        if _, ok := stmt.Clauses["soft_delete_enabled"]; !ok {
+                if c, ok := stmt.Clauses["WHERE"]; ok {
+-                       if where, ok := c.Expression.(clause.Where); ok && len(where.Exprs) > 1 {
+-                               for _, expr := range where.Exprs {
++                       if where, ok := c.Expression.(clause.Where); ok {
++                               for idx, expr := range where.Exprs {
+                                        if orCond, ok := expr.(clause.OrConditions); ok && len(orCond.Exprs) == 1 {
+-                                               where.Exprs = []clause.Expression{clause.And(where.Exprs...)}
++                                               if len(where.Exprs) == 1 {
++                                                       where.Exprs[idx] = clause.AndConditions(orCond)
++                                               } else {
++                                                       where.Exprs = []clause.Expression{clause.And(where.Exprs...)}
++                                               }
+                                                c.Expression = where
+                                                stmt.Clauses["WHERE"] = c
+                                                break
+diff --git a/statement.go b/statement.go
+index 5a948d3..7198bb5 100644
+--- a/statement.go
++++ b/statement.go
+@@ -230,7 +230,10 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                default:
+                        switch rv := reflect.ValueOf(v); rv.Kind() {
+                        case reflect.Slice, reflect.Array:
+-                               if rv.Len() == 0 {
++                               if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
++                                       stmt.Vars = append(stmt.Vars, v)
++                                       stmt.DB.Dialector.BindVarTo(writer, stmt, v)
++                               } else if rv.Len() == 0 {
+                                        writer.WriteString("(NULL)")
+                                } else {
+                                        writer.WriteByte('(')
+@@ -535,8 +538,9 @@ func (stmt *Statement) clone() *Statement {
+ }
+
+ // SetColumn set column's value
+-//   stmt.SetColumn("Name", "jinzhu") // Hooks Method
+-//   stmt.SetColumn("Name", "jinzhu", true) // Callbacks Method
++//
+# finish: Finish with implementation and validation summary
+Implemented the requested non-test changes in `/workspace/gorm` without modifying test logic.
+
+Summary of changes:
+- Fixed anonymous native type aliases during schema parsing/AutoMigrate:
+  - `type ID int64` no longer gets treated as an embedded struct.
+  - `time.Time` aliases are detected as time fields.
+  - `[]byte` aliases are detected/bound as single byte values instead of expanded slices.
+- Fixed WHERE clause precedence for named arguments containing `OR` by including `clause.NamedExpr` in parentheses detection.
+- Fixed single leading `Or(...)` + soft-delete behavior so soft-delete predicates are combined with `AND` correctly.
+- Updated `Save` fallback to use `ON CONFLICT UpdateAll`, avoiding soft-delete-filtered existence checks that can cause bad duplicate/create behavior.
+- Made existing-table `AutoMigrate` column migration deterministic by iterating sorted DB column names, and skipping `IgnoreMigration` fields.
+- Added `DB.Connection(func(tx *gorm.DB) error)` to run multiple commands on a single underlying `*sql.Conn`.
+- Moved reviewdog golangci inline linter flags into a new `.golangci.yml` and added `gofumpt`.
+
+Validation run:
+- Reproduced the original alias failure with `go run /tmp/repro_gorm_issues.go` before the fix.
+- Confirmed it now prints `no error` after the fix.
+- Ran an additional edge-case reproducer with `go run /tmp/repro_gorm_edgecases.go`; it passed alias parsing, byte binding, named/single OR soft-delete SQL, and `Connection` checks.
+- Ran root tests: `go test ./...` — passed.
+- Attempted the tests module with `cd tests && go test ./...`, but it is blocked by the existing missing `tests/go.sum` entry for `github.com/google/uuid@v1.3.0`. I did not modify dependency/test files to resolve that, per your instruction not to touch tests.

@@ -1,0 +1,441 @@
+error: tests/test_console.py: does not match index
+error: tests/test_segment.py: does not match index
+error: tests/test_style.py: does not match index
+Falling back to direct application...
+Checking patch tests/test_console.py...
+Checking patch tests/test_segment.py...
+Checking patch tests/test_style.py...
+Checking patch tests/test_tree.py...
+Applied patch tests/test_console.py cleanly.
+Applied patch tests/test_segment.py cleanly.
+Applied patch tests/test_style.py cleanly.
+Applied patch tests/test_tree.py cleanly.
+Checking patch docs/requirements.txt...
+Checking patch docs/source/progress.rst...
+Checking patch docs/source/reference.rst...
+Checking patch docs/source/reference/tree.rst...
+Checking patch poetry.lock...
+Checking patch rich/console.py...
+Checking patch rich/default_styles.py...
+Checking patch rich/style.py...
+Checking patch rich/tree.py...
+Applied patch docs/requirements.txt cleanly.
+Applied patch docs/source/progress.rst cleanly.
+Applied patch docs/source/reference.rst cleanly.
+Applied patch docs/source/reference/tree.rst cleanly.
+Applied patch poetry.lock cleanly.
+Applied patch rich/console.py cleanly.
+Applied patch rich/default_styles.py cleanly.
+Applied patch rich/style.py cleanly.
+Applied patch rich/tree.py cleanly.
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python
+rootdir: /home/rich/tests
+configfile: pytest.ini
+plugins: anyio-4.6.2.post1, asyncio-1.4.0, mock-3.15.1, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+timeout: 30.0s
+timeout method: signal
+timeout func_only: False
+collecting ... collected 91 items
+
+tests/test_console.py::test_dumb_terminal PASSED                         [  1%]
+tests/test_console.py::test_soft_wrap PASSED                             [  2%]
+tests/test_console.py::test_16color_terminal PASSED                      [  3%]
+tests/test_console.py::test_truecolor_terminal PASSED                    [  4%]
+tests/test_console.py::test_console_options_update PASSED                [  5%]
+tests/test_console.py::test_init PASSED                                  [  6%]
+tests/test_console.py::test_size PASSED                                  [  7%]
+tests/test_console.py::test_repr PASSED                                  [  8%]
+tests/test_console.py::test_print PASSED                                 [  9%]
+tests/test_console.py::test_log PASSED                                   [ 10%]
+tests/test_console.py::test_print_empty PASSED                           [ 12%]
+tests/test_console.py::test_markup_highlight PASSED                      [ 13%]
+tests/test_console.py::test_print_style PASSED                           [ 14%]
+tests/test_console.py::test_show_cursor PASSED                           [ 15%]
+tests/test_console.py::test_clear PASSED                                 [ 16%]
+tests/test_console.py::test_clear_no_terminal PASSED                     [ 17%]
+tests/test_console.py::test_get_style PASSED                             [ 18%]
+tests/test_console.py::test_get_style_default PASSED                     [ 19%]
+tests/test_console.py::test_get_style_error PASSED                       [ 20%]
+tests/test_console.py::test_render_error PASSED                          [ 21%]
+tests/test_console.py::test_control PASSED                               [ 23%]
+tests/test_console.py::test_capture PASSED                               [ 24%]
+tests/test_console.py::test_input PASSED                                 [ 25%]
+tests/test_console.py::test_input_legacy_windows PASSED                  [ 26%]
+tests/test_console.py::test_input_password PASSED                        [ 27%]
+tests/test_console.py::test_status PASSED                                [ 28%]
+tests/test_console.py::test_justify_none PASSED                          [ 29%]
+tests/test_console.py::test_justify_left PASSED                          [ 30%]
+tests/test_console.py::test_justify_center PASSED                        [ 31%]
+tests/test_console.py::test_justify_right PASSED                         [ 32%]
+tests/test_console.py::test_justify_renderable_none PASSED               [ 34%]
+tests/test_console.py::test_justify_renderable_left PASSED               [ 35%]
+tests/test_console.py::test_justify_renderable_center PASSED             [ 36%]
+tests/test_console.py::test_justify_renderable_right PASSED              [ 37%]
+tests/test_console.py::test_render_broken_renderable PASSED              [ 38%]
+tests/test_console.py::test_export_text PASSED                           [ 39%]
+tests/test_console.py::test_export_html PASSED                           [ 40%]
+tests/test_console.py::test_export_html_inline PASSED                    [ 41%]
+tests/test_console.py::test_save_text PASSED                             [ 42%]
+tests/test_console.py::test_save_html PASSED                             [ 43%]
+tests/test_console.py::test_no_wrap PASSED                               [ 45%]
+tests/test_console.py::test_unicode_error PASSED                         [ 46%]
+tests/test_console.py::test_bell PASSED                                  [ 47%]
+tests/test_console.py::test_pager PASSED                                 [ 48%]
+tests/test_console.py::test_out PASSED                                   [ 49%]
+tests/test_console.py::test_render_group PASSED                          [ 50%]
+tests/test_console.py::test_render_group_fit PASSED                      [ 51%]
+tests/test_console.py::test_get_time PASSED                              [ 52%]
+tests/test_console.py::test_console_style PASSED                         [ 53%]
+tests/test_console.py::test_no_color FAILED                              [ 54%]
+tests/test_segment.py::test_repr PASSED                                  [ 56%]
+tests/test_segment.py::test_line PASSED                                  [ 57%]
+tests/test_segment.py::test_apply_style PASSED                           [ 58%]
+tests/test_segment.py::test_split_lines PASSED                           [ 59%]
+tests/test_segment.py::test_split_and_crop_lines PASSED                  [ 60%]
+tests/test_segment.py::test_adjust_line_length PASSED                    [ 61%]
+tests/test_segment.py::test_get_line_length PASSED                       [ 62%]
+tests/test_segment.py::test_get_shape PASSED                             [ 63%]
+tests/test_segment.py::test_set_shape PASSED                             [ 64%]
+tests/test_segment.py::test_simplify PASSED                              [ 65%]
+tests/test_segment.py::test_filter_control PASSED                        [ 67%]
+tests/test_segment.py::test_strip_styles PASSED                          [ 68%]
+tests/test_segment.py::test_strip_links PASSED                           [ 69%]
+tests/test_segment.py::test_remove_color FAILED                          [ 70%]
+tests/test_style.py::test_str PASSED                                     [ 71%]
+tests/test_style.py::test_ansi_codes PASSED                              [ 72%]
+tests/test_style.py::test_repr PASSED                                    [ 73%]
+tests/test_style.py::test_eq PASSED                                      [ 74%]
+tests/test_style.py::test_hash PASSED                                    [ 75%]
+tests/test_style.py::test_empty PASSED                                   [ 76%]
+tests/test_style.py::test_bool PASSED                                    [ 78%]
+tests/test_style.py::test_color_property PASSED                          [ 79%]
+tests/test_style.py::test_bgcolor_property PASSED                        [ 80%]
+tests/test_style.py::test_parse PASSED                                   [ 81%]
+tests/test_style.py::test_link_id PASSED                                 [ 82%]
+tests/test_style.py::test_get_html_style PASSED                          [ 83%]
+tests/test_style.py::test_chain PASSED                                   [ 84%]
+tests/test_style.py::test_copy PASSED                                    [ 85%]
+tests/test_style.py::test_render PASSED                                  [ 86%]
+tests/test_style.py::test_test PASSED                                    [ 87%]
+tests/test_style.py::test_add PASSED                                     [ 89%]
+tests/test_style.py::test_iadd PASSED                                    [ 90%]
+tests/test_style.py::test_style_stack PASSED                             [ 91%]
+tests/test_style.py::test_pick_first PASSED                              [ 92%]
+tests/test_style.py::test_background_style PASSED                        [ 93%]
+tests/test_style.py::test_without_color FAILED                           [ 94%]
+tests/test_tree.py::test_render_single_node FAILED                       [ 95%]
+tests/test_tree.py::test_render_single_branch FAILED                     [ 96%]
+tests/test_tree.py::test_render_double_branch FAILED                     [ 97%]
+tests/test_tree.py::test_render_ascii FAILED                             [ 98%]
+tests/test_tree.py::test_render FAILED                                   [100%]
+
+=================================== FAILURES ===================================
+________________________________ test_no_color _________________________________
+
+    def test_no_color():
+>       console = Console(
+            file=io.StringIO(), color_system="truecolor", force_terminal=True, no_color=True
+        )
+E       TypeError: Console.__init__() got an unexpected keyword argument 'no_color'
+
+tests/test_console.py:473: TypeError
+______________________________ test_remove_color _______________________________
+
+    def test_remove_color():
+        segments = [
+            Segment("foo", Style(bold=True, color="red")),
+            Segment("bar", None),
+        ]
+>       assert list(Segment.remove_color(segments)) == [
+                    ^^^^^^^^^^^^^^^^^^^^
+            Segment("foo", Style(bold=True)),
+            Segment("bar", None),
+        ]
+E       AttributeError: type object 'Segment' has no attribute 'remove_color'
+
+tests/test_segment.py:106: AttributeError
+______________________________ test_without_color ______________________________
+
+    def test_without_color():
+        style = Style(bold=True, color="red", bgcolor="blue")
+>       colorless_style = style.without_color
+                          ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Style' object has no attribute 'without_color'
+
+tests/test_style.py:203: AttributeError
+___________________________ test_render_single_node ____________________________
+
+    def test_render_single_node():
+        tree = Tree("foo")
+        console = Console(color_system=None, width=20)
+        console.begin_capture()
+        console.print(tree)
+>       assert console.end_capture() == "foo                 \n"
+E       AssertionError: assert 'foo\n' == 'foo                 \n'
+E         
+E         - foo                 
+E         + foo
+
+tests/test_tree.py:10: AssertionError
+__________________________ test_render_single_branch ___________________________
+
+    def test_render_single_branch():
+        tree = Tree("foo")
+        tree.add("bar")
+        console = Console(color_system=None, width=20)
+        console.begin_capture()
+        console.print(tree)
+        result = console.end_capture()
+        print(repr(result))
+        expected = "foo                 \n└── bar             \n"
+>       assert result == expected
+E       AssertionError: assert 'foo\n└── bar\n' == 'foo         ...           \n'
+E         
+E         - foo                 
+E         - └── bar             
+E         + foo
+E         + └── bar
+
+tests/test_tree.py:22: AssertionError
+----------------------------- Captured stdout call -----------------------------
+'foo\n└── bar\n'
+__________________________ test_render_double_branch ___________________________
+
+    def test_render_double_branch():
+        tree = Tree("foo")
+        tree.add("bar")
+        tree.add("baz")
+        console = Console(color_system=None, width=20)
+        console.begin_capture()
+        console.print(tree)
+        result = console.end_capture()
+        print(repr(result))
+        expected = "foo                 \n├── bar             \n└── baz             \n"
+>       assert result == expected
+E       AssertionError: assert 'foo\n├── bar\n└── baz\n' == 'foo         ...           \n'
+E         
+E         - foo                 
+E         - ├── bar             
+E         - └── baz             
+E         + foo
+E         + ├── bar
+E         + └── baz
+
+tests/test_tree.py:35: AssertionError
+----------------------------- Captured stdout call -----------------------------
+'foo\n├── bar\n└── baz\n'
+______________________________ test_render_ascii _______________________________
+
+    def test_render_ascii():
+        tree = Tree("foo")
+        tree.add("bar")
+        tree.add("baz")
+    
+        class AsciiConsole(Console):
+            @property
+            def encoding(self):
+                return "ascii"
+    
+        console = AsciiConsole(color_system=None, width=20)
+        console.begin_capture()
+        console.print(tree)
+        result = console.end_capture()
+        expected = "foo                 \n+-- bar             \n`-- baz             \n"
+>       assert result == expected
+E       AssertionError: assert 'foo\n+-- bar\n`-- baz\n' == 'foo         ...           \n'
+E         
+E         - foo                 
+E         - +-- bar             
+E         - `-- baz             
+E         + foo
+E         + +-- bar
+E         + `-- baz
+
+tests/test_tree.py:53: AssertionError
+_________________________________ test_render __________________________________
+
+    def test_render():
+        tree = Tree("foo")
+        tree.add("bar", style="italic")
+        baz_tree = tree.add("baz", guide_style="bold red", style="on blue")
+        baz_tree.add("1")
+        baz_tree.add("2")
+        tree.add("egg")
+    
+        console = Console(width=20, force_terminal=True, color_system="standard")
+        console.begin_capture()
+        console.print(tree)
+        result = console.end_capture()
+        print(repr(result))
+        expected = "foo                 \n├── \x1b[3mbar\x1b[0m\x1b[3m             \x1b[0m\n\x1b[44m├── \x1b[0m\x1b[44mbaz\x1b[0m\x1b[44m             \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┣━━ \x1b[0m\x1b[44m1\x1b[0m\x1b[44m           \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┗━━ \x1b[0m\x1b[44m2\x1b[0m\x1b[44m           \x1b[0m\n└── egg             \n"
+>       assert result == expected
+E       AssertionError: assert 'foo\n\x1b[2m... \x1b[0megg\n' == 'foo         ...           \n'
+E         
+E         - foo                 
+E         - ├── [3mbar[0m[3m             [0m
+E         - [44m├── [0m[44mbaz[0m[44m             [0m
+E         - [44m│   [0m[1;31;44m┣━━ [0m[44m1[0m[44m           [0m
+E         - [44m│   [0m[1;31;44m┗━━ [0m[44m2[0m[44m           [0m
+E         - └── egg             
+E         + foo
+E         + [2m├── [0m[3mbar[0m
+E         + [1;31m├── [0m[44mbaz[0m
+E         + [1;31m│   [0m[1;31m├── [0m[44m1[0m
+E         + [1;31m│   [0m[1;31m└── [0m[44m2[0m
+E         + [2m└── [0megg
+
+tests/test_tree.py:70: AssertionError
+----------------------------- Captured stdout call -----------------------------
+'foo\n\x1b[2m├── \x1b[0m\x1b[3mbar\x1b[0m\n\x1b[1;31m├── \x1b[0m\x1b[44mbaz\x1b[0m\n\x1b[1;31m│   \x1b[0m\x1b[1;31m├── \x1b[0m\x1b[44m1\x1b[0m\n\x1b[1;31m│   \x1b[0m\x1b[1;31m└── \x1b[0m\x1b[44m2\x1b[0m\n\x1b[2m└── \x1b[0megg\n'
+==================================== PASSES ====================================
+___________________________________ test_log ___________________________________
+----------------------------- Captured stdout call -----------------------------
+'\x1b[2;36mTIME\x1b[0m\x1b[2;36m \x1b[0m\x1b[31mfoo\x1b[0m\x1b[31m                                                                        \x1b[0m\n'
+_______________________________ test_export_text _______________________________
+----------------------------- Captured stdout call -----------------------------
+foo
+_______________________________ test_export_html _______________________________
+----------------------------- Captured stdout call -----------------------------
+foo Click
+___________________________ test_export_html_inline ____________________________
+----------------------------- Captured stdout call -----------------------------
+foo Click
+________________________________ test_save_text ________________________________
+----------------------------- Captured stdout call -----------------------------
+foo
+________________________________ test_save_html ________________________________
+----------------------------- Captured stdout call -----------------------------
+foo
+__________________________________ test_test ___________________________________
+----------------------------- Captured stdout call -----------------------------
+[31mhello[0m
+=========================== short test summary info ============================
+PASSED tests/test_console.py::test_dumb_terminal
+PASSED tests/test_console.py::test_soft_wrap
+PASSED tests/test_console.py::test_16color_terminal
+PASSED tests/test_console.py::test_truecolor_terminal
+PASSED tests/test_console.py::test_console_options_update
+PASSED tests/test_console.py::test_init
+PASSED tests/test_console.py::test_size
+PASSED tests/test_console.py::test_repr
+PASSED tests/test_console.py::test_print
+PASSED tests/test_console.py::test_log
+PASSED tests/test_console.py::test_print_empty
+PASSED tests/test_console.py::test_markup_highlight
+PASSED tests/test_console.py::test_print_style
+PASSED tests/test_console.py::test_show_cursor
+PASSED tests/test_console.py::test_clear
+PASSED tests/test_console.py::test_clear_no_terminal
+PASSED tests/test_console.py::test_get_style
+PASSED tests/test_console.py::test_get_style_default
+PASSED tests/test_console.py::test_get_style_error
+PASSED tests/test_console.py::test_render_error
+PASSED tests/test_console.py::test_control
+PASSED tests/test_console.py::test_capture
+PASSED tests/test_console.py::test_input
+PASSED tests/test_console.py::test_input_legacy_windows
+PASSED tests/test_console.py::test_input_password
+PASSED tests/test_console.py::test_status
+PASSED tests/test_console.py::test_justify_none
+PASSED tests/test_console.py::test_justify_left
+PASSED tests/test_console.py::test_justify_center
+PASSED tests/test_console.py::test_justify_right
+PASSED tests/test_console.py::test_justify_renderable_none
+PASSED tests/test_console.py::test_justify_renderable_left
+PASSED tests/test_console.py::test_justify_renderable_center
+PASSED tests/test_console.py::test_justify_renderable_right
+PASSED tests/test_console.py::test_render_broken_renderable
+PASSED tests/test_console.py::test_export_text
+PASSED tests/test_console.py::test_export_html
+PASSED tests/test_console.py::test_export_html_inline
+PASSED tests/test_console.py::test_save_text
+PASSED tests/test_console.py::test_save_html
+PASSED tests/test_console.py::test_no_wrap
+PASSED tests/test_console.py::test_unicode_error
+PASSED tests/test_console.py::test_bell
+PASSED tests/test_console.py::test_pager
+PASSED tests/test_console.py::test_out
+PASSED tests/test_console.py::test_render_group
+PASSED tests/test_console.py::test_render_group_fit
+PASSED tests/test_console.py::test_get_time
+PASSED tests/test_console.py::test_console_style
+PASSED tests/test_segment.py::test_repr
+PASSED tests/test_segment.py::test_line
+PASSED tests/test_segment.py::test_apply_style
+PASSED tests/test_segment.py::test_split_lines
+PASSED tests/test_segment.py::test_split_and_crop_lines
+PASSED tests/test_segment.py::test_adjust_line_length
+PASSED tests/test_segment.py::test_get_line_length
+PASSED tests/test_segment.py::test_get_shape
+PASSED tests/test_segment.py::test_set_shape
+PASSED tests/test_segment.py::test_simplify
+PASSED tests/test_segment.py::test_filter_control
+PASSED tests/test_segment.py::test_strip_styles
+PASSED tests/test_segment.py::test_strip_links
+PASSED tests/test_style.py::test_str
+PASSED tests/test_style.py::test_ansi_codes
+PASSED tests/test_style.py::test_repr
+PASSED tests/test_style.py::test_eq
+PASSED tests/test_style.py::test_hash
+PASSED tests/test_style.py::test_empty
+PASSED tests/test_style.py::test_bool
+PASSED tests/test_style.py::test_color_property
+PASSED tests/test_style.py::test_bgcolor_property
+PASSED tests/test_style.py::test_parse
+PASSED tests/test_style.py::test_link_id
+PASSED tests/test_style.py::test_get_html_style
+PASSED tests/test_style.py::test_chain
+PASSED tests/test_style.py::test_copy
+PASSED tests/test_style.py::test_render
+PASSED tests/test_style.py::test_test
+PASSED tests/test_style.py::test_add
+PASSED tests/test_style.py::test_iadd
+PASSED tests/test_style.py::test_style_stack
+PASSED tests/test_style.py::test_pick_first
+PASSED tests/test_style.py::test_background_style
+FAILED tests/test_console.py::test_no_color - TypeError: Console.__init__() got an unexpected keyword argument 'no_color'
+FAILED tests/test_segment.py::test_remove_color - AttributeError: type object 'Segment' has no attribute 'remove_color'
+FAILED tests/test_style.py::test_without_color - AttributeError: 'Style' object has no attribute 'without_color'
+FAILED tests/test_tree.py::test_render_single_node - AssertionError: assert 'foo\n' == 'foo                 \n'
+  
+  - foo                 
+  + foo
+FAILED tests/test_tree.py::test_render_single_branch - AssertionError: assert 'foo\n└── bar\n' == 'foo         ...           \n'
+  
+  - foo                 
+  - └── bar             
+  + foo
+  + └── bar
+FAILED tests/test_tree.py::test_render_double_branch - AssertionError: assert 'foo\n├── bar\n└── baz\n' == 'foo         ...           \n'
+  
+  - foo                 
+  - ├── bar             
+  - └── baz             
+  + foo
+  + ├── bar
+  + └── baz
+FAILED tests/test_tree.py::test_render_ascii - AssertionError: assert 'foo\n+-- bar\n`-- baz\n' == 'foo         ...           \n'
+  
+  - foo                 
+  - +-- bar             
+  - `-- baz             
+  + foo
+  + +-- bar
+  + `-- baz
+FAILED tests/test_tree.py::test_render - AssertionError: assert 'foo\n\x1b[2m... \x1b[0megg\n' == 'foo         ...           \n'
+  
+  - foo                 
+  - ├── [3mbar[0m[3m             [0m
+  - [44m├── [0m[44mbaz[0m[44m             [0m
+  - [44m│   [0m[1;31;44m┣━━ [0m[44m1[0m[44m           [0m
+  - [44m│   [0m[1;31;44m┗━━ [0m[44m2[0m[44m           [0m
+  - └── egg             
+  + foo
+  + [2m├── [0m[3mbar[0m
+  + [1;31m├── [0m[44mbaz[0m
+  + [1;31m│   [0m[1;31m├── [0m[44m1[0m
+  + [1;31m│   [0m[1;31m└── [0m[44m2[0m
+  + [2m└── [0megg
+========================= 8 failed, 83 passed in 0.31s =========================

@@ -1,0 +1,200 @@
+@@ -329,7 +341,9 @@ class BaseTracer(BaseCallbackHandler, ABC):
+             raise TracerException("No run_id provided for on_tool_end callback.")
+         tool_run = self.run_map.get(str(run_id))
+         if tool_run is None or tool_run.run_type != "tool":
+-            raise TracerException("No tool Run found to be traced")
++            raise TracerException(
++                f"No tool Run found to be traced with run_id {run_id}"
++            )
+
+         tool_run.outputs = {"output": output}
+         tool_run.end_time = datetime.utcnow()
+@@ -349,7 +363,9 @@ class BaseTracer(BaseCallbackHandler, ABC):
+             raise TracerException("No run_id provided for on_tool_error callback.")
+         tool_run = self.run_map.get(str(run_id))
+         if tool_run is None or tool_run.run_type != "tool":
+-            raise TracerException("No tool Run found to be traced")
++            raise TracerException(
++                f"No tool Run found to be traced with run_id {run_id}"
++            )
+
+         tool_run.error = repr(error)
+         tool_run.end_time = datetime.utcnow()
+@@ -404,7 +420,9 @@ class BaseTracer(BaseCallbackHandler, ABC):
+             raise TracerException("No run_id provided for on_retriever_error callback.")
+         retrieval_run = self.run_map.get(str(run_id))
+         if retrieval_run is None or retrieval_run.run_type != "retriever":
+-            raise TracerException("No retriever Run found to be traced")
++            raise TracerException(
++                f"No retriever Run found to be traced with run_id {run_id}"
++            )
+
+         retrieval_run.error = repr(error)
+         retrieval_run.end_time = datetime.utcnow()
+@@ -420,7 +438,9 @@ class BaseTracer(BaseCallbackHandler, ABC):
+             raise TracerException("No run_id provided for on_retriever_end callback.")
+         retrieval_run = self.run_map.get(str(run_id))
+         if retrieval_run is None or retrieval_run.run_type != "retriever":
+-            raise TracerException("No retriever Run found to be traced")
++            raise TracerException(
++                f"No retriever Run found to be traced with run_id {run_id}"
++            )
+         retrieval_run.outputs = {"documents": documents}
+         retrieval_run.end_time = datetime.utcnow()
+         retrieval_run.events.append({"name": "end", "time": retrieval_run.end_time})
+diff --git a/libs/langchain/pyproject.toml b/libs/langchain/pyproject.toml
+index 8ef120f9..e56724dc 100644
+--- a/libs/langchain/pyproject.toml
++++ b/libs/langchain/pyproject.toml
+@@ -1,6 +1,6 @@
+ [tool.poetry]
+ name = "langchain"
+-version = "0.0.258"
++version = "0.0.259"
+ description = "Building applications with LLMs through composability"
+ authors = []
+ license = "MIT"
+@@ -413,7 +413,8 @@ addopts = "--strict-markers --strict-config --durations=5 --snapshot-warn-unused
+ # Registering custom markers.
+ # https://docs.pytest.org/en/7.1.x/example/markers.html#registering-markers
+ markers = [
+-  "requires: mark tests as requiring a specific library"
++  "requires: mark tests as requiring a specific library",
++  "scheduled: mark integration tests to run in scheduled CI",
+ ]
+
+ [tool.codespell]
+# file_editor: Import Optional for Rockset alias
+The file /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py:
+     2	from __future__ import annotations
+     3	
+     4	import json
+     5	from typing import Any, List, Optional
+     6	
+     7	from langchain.schema import BaseChatMessageHistory
+     8	from langchain.schema.messages import BaseMessage, messages_from_dict, messages_to_dict
+     9	
+    10	
+    11	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Add collection_name constructor alias
+The file /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py:
+    13	
+    14	    def __init__(
+    15	        self,
+    16	        session_id: str,
+    17	        client: Any,
+    18	        collection: Optional[str] = None,
+    19	        *,
+    20	        collection_name: Optional[str] = None,
+    21	        workspace: str = "commons",
+    22	        session_id_key: str = "session_id",
+    23	        message_key: str = "message",
+    24	    ) -> None:
+    25	        try:
+    26	            from rockset import RocksetClient
+    27	        except ImportError:
+    28	            raise ImportError(
+    29	                "Could not import rockset python package. "
+    30	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Validate Rockset collection alias
+The file /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py:
+    29	                "Could not import rockset python package. "
+    30	                "Please install it with `pip install rockset`."
+    31	            )
+    32	        if not isinstance(client, RocksetClient):
+    33	            raise ValueError(
+    34	                "client should be an instance of rockset.RocksetClient, "
+    35	                f"got {type(client)}"
+    36	            )
+    37	        collection = collection or collection_name
+    38	        if collection is None:
+    39	            raise ValueError("Either `collection` or `collection_name` must be provided")
+    40	        self.session_id = session_id
+    41	        self.client = client
+    42	        self.collection = collection
+    43	        self.workspace = workspace
+    44	        self.session_id_key = session_id_key
+    45	        self.message_key = message_key
+    46	
+    47	    @property
+    48	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain && libs/langchain/.venv/bin/python -m black libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py && libs/langchain/.venv/bin/python -m ruff libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+reformatted libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+
+All done! ✨ 🍰 ✨
+1 file reformatted.
+$ /workspace/langchain/libs/langchain/.venv/bin/python /workspace/reproduce_langchain_issues.py
+PASS: storage imports and behavior
+PASS: parent retriever behavior
+PASS: airbyte loader behavior
+PASS: rockset chat history import
+PASS: tracer missing run_id message
+PASS: version bump
+$ cd /workspace/langchain && libs/langchain/.venv/bin/python -m compileall -q libs/langchain/langchain/storage libs/langchain/langchain/document_loaders/airbyte.py libs/langchain/langchain/retrievers/multi_vector.py libs/langchain/langchain/retrievers/parent_document_retriever.py libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+$ cd /workspace/langchain && libs/langchain/.venv/bin/python - <<'PY'
+$ import sys
+$ sys.path.insert(0, '/workspace/langchain/libs/langchain')
+$ from langchain.document_loaders import AirbyteCDKLoader, AirbyteZendeskSupportLoader
+$ from langchain.retrievers import ParentDocumentRetriever
+$ from langchain.retrievers.multi_vector import MultiVectorRetriever, SearchType
+$ from langchain.storage import BaseStore, ByteStore, InMemoryByteStore, InMemoryStore, LocalFileStore, EncoderBackedStore
+$ from langchain.memory.chat_message_histories import RocksetChatMessageHistory
+$ print('imports ok')
+$ PY
+imports ok
+# task_tracker: Mark implementation and verification tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/langchain && git status --short
+M libs/langchain/langchain/callbacks/tracers/base.py
+ M libs/langchain/langchain/document_loaders/__init__.py
+ M libs/langchain/langchain/memory/chat_message_histories/__init__.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/pyproject.toml
+?? .github/workflows/langchain_scheduled_integration_tests.yml
+?? libs/langchain/langchain/document_loaders/airbyte.py
+?? libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+?? libs/langchain/langchain/retrievers/multi_vector.py
+?? libs/langchain/langchain/retrievers/parent_document_retriever.py
+?? libs/langchain/langchain/storage/
+# finish: Summarize completed repository changes and tests
+Implemented the requested non-test changes in `/workspace/langchain`.
+
+Summary of changes:
+- Added Airbyte CDK-based loaders and exports:
+  - `AirbyteCDKLoader`
+  - `AirbyteGongLoader`, `AirbyteHubspotLoader`, `AirbyteSalesforceLoader`, `AirbyteShopifyLoader`, `AirbyteStripeLoader`, `AirbyteTypeformLoader`, `AirbyteZendeskSupportLoader`
+- Added key-value storage interfaces/implementations:
+  - `BaseStore`, `ByteStore`
+  - `InMemoryStore`, `InMemoryByteStore`
+  - `LocalFileStore`
+  - `EncoderBackedStore`
+  - LangChain document byte-store helper `create_kv_docstore`
+- Added parent-document retrieval support:
+  - `MultiVectorRetriever`, `SearchType`
+  - `ParentDocumentRetriever`
+- Added `RocksetChatMessageHistory` and package export.
+- Added run IDs to tracer missing-run error messages and corrected LLM error hook dispatch.
+- Added scheduled integration-test workflow and registered the `scheduled` pytest marker.
+- Bumped `libs/langchain` version from `0.0.258` to `0.0.259`.
+
+Verification performed:
+- Created and ran `/workspace/reproduce_langchain_issues.py`.
+  - Confirms imports, storage behavior, Airbyte record/state behavior, parent retriever behavior, tracer error IDs, and version bump.
+  - Result: passed.
+- Ran formatting/lint checks on changed Python files:
+  - `black --check`: passed.
+  - `ruff`: passed.
+- Compiled changed source modules with `compileall`: passed.
+- Ran focused relevant unit tests:
+  - tracer, retriever base, document loader base, file chat history tests.
+  - Result: `34 passed`.
+- Ran full unit suite from `libs/langchain` excluding the socket-config sentinel:
+  - Result: `927 passed, 212 skipped, 1 deselected`.
+
+Notes:
+- Running the full unit suite without deselecting `test_socket_disabled` produces the existing pytest-socket configuration sentinel failure (`DID NOT RAISE SocketBlockedError`).
+- Running with `--disable-socket` causes unrelated async/request tests to fail because they require local socket creation.
+- Scheduled integration test collection locally was blocked by missing `vcr`; the new GitHub workflow installs the `test_integration` group to include that dependency.

@@ -1,0 +1,200 @@
+65:        (["10+3J/m/s/kpc2"], u.Unit(1e3 * u.W / (u.m * u.kpc**2))),
+69:        (["/s"], u.s**-1),
+70:        (["m2"], u.m**2),
+83:        (["Gibit"], 2**30 * u.bit),
+94:        (["[cm/s2]"], dex(u.cm / u.s**2)),
+118:        "km**2",
+155:            ["count /s", "count/s", "count s**(-1)", "count / s", "count /s "],
+160:            (u.pixel * u.s) ** -1,
+164:                "count /m**2 /s /eV",
+165:                "count m**(-2) * s**(-1) * eV**(-1)",
+166:                "count /(m**2 * s * eV)",
+168:            u.count * u.m**-2 * u.s**-1 * u.eV**-1,
+175:            ["keV**2 /yr /angstrom", "10**(10) keV**2 /yr /m"],
+178:            # "(10**2 MeV)**2 /yr /m"
+179:            u.keV**2 / (u.yr * u.angstrom),
+183:                "10**(46) erg /s",
+184:                "10**46 erg /s",
+185:                "10**(39) J /s",
+186:                "10**(39) W",
+187:                "10**(15) YW",
+190:            10**46 * u.erg / u.s,
+194:                "10**(-7) J /cm**2 /MeV",
+195:                "10**(-9) J m**(-2) eV**(-1)",
+196:                "nJ m**(-2) eV**(-1)",
+197:                "nJ /m**2 /eV",
+199:            10**-7 * u.J * u.cm**-2 * u.MeV**-1,
+204:                "(erg /pixel /s /GHz)**(0.5)",
+205:                "(erg /pixel /s /GHz)**(1/2)",
+206:                "erg**(0.5) pixel**(-0.5) s**(-0.5) GHz**(-0.5)",
+208:            (u.erg * u.pixel**-1 * u.s**-1 * u.GHz**-1) ** 0.5,
+214:                "count /pixel /s**2",
+# file_editor: /workspace/astropy/astropy/units/tests/test_format.py
+Here's the result of running `cat -n` on /workspace/astropy/astropy/units/tests/test_format.py:
+   280	        ],
+   281	    )
+   282	    def test_roundtrip(self, unit):
+   283	        self.check_roundtrip(unit)
+   284	        self.check_roundtrip(unit, output_format="unicode")
+   285	        self.check_roundtrip_decompose(unit)
+   286	
+   287	
+   288	class TestRoundtripVOUnit(RoundtripBase):
+   289	    format_ = "vounit"
+   290	    deprecated_units = u_format.VOUnit._deprecated_units
+   291	
+   292	    @pytest.mark.parametrize(
+   293	        "unit",
+   294	        [
+   295	            unit
+   296	            for unit in u_format.VOUnit._units.values()
+   297	            if (isinstance(unit, UnitBase) and not isinstance(unit, PrefixUnit))
+   298	        ],
+   299	    )
+   300	    def test_roundtrip(self, unit):
+   301	        self.check_roundtrip(unit)
+   302	        if unit not in (u.mag, u.dB):
+   303	            self.check_roundtrip_decompose(unit)
+   304	
+   305	
+   306	class TestRoundtripFITS(RoundtripBase):
+   307	    format_ = "fits"
+   308	    deprecated_units = u_format.Fits._deprecated_units
+   309	
+   310	    @pytest.mark.parametrize(
+   311	        "unit",
+   312	        [
+   313	            unit
+   314	            for unit in u_format.Fits._units.values()
+   315	            if (isinstance(unit, UnitBase) and not isinstance(unit, PrefixUnit))
+   316	        ],
+   317	    )
+   318	    def test_roundtrip(self, unit):
+   319	        self.check_roundtrip(unit)
+   320	
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ print(repr((u.m/u.s).to_string('vounit', fraction=True)))
+$ print(repr((u.m/u.s**2).to_string('vounit', fraction=True)))
+$ print(repr((u.m**0.5).to_string('vounit')))
+$ print(repr((u.m**0.5/u.s).to_string('vounit', fraction=True)))
+$ "
+'m / s'
+'m / s**2'
+'m(1/2)'
+'m(1/2) / s'
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ print(u.Unit('m(1/2)', format='vounit'))
+$ print(u.Unit('m**(1/2)', format='vounit'))
+$ "
+m(1/2)
+m(1/2)
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ a = u.Unit('m**(1/2)', format='vounit')
+$ print(repr(a), a == u.m**0.5)
+$ b = u.Unit('m(1/2)', format='vounit')
+$ print(repr(b))
+$ "
+Unit("m(1/2)") True
+Unit("m(1/2)")
+# file_editor: /workspace/astropy/astropy/units/format/vounit.py
+The file /workspace/astropy/astropy/units/format/vounit.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/astropy/astropy/units/format/vounit.py:
+   192	
+   193	        return def_base(unit)
+   194	
+   195	    @classmethod
+   196	    def _format_superscript(cls, number):
+   197	        return f"**({number})" if "/" in number or "." in number else f"**{number}"
+   198	
+   199	    @classmethod
+   200	    def format_exponential_notation(cls, val, format_spec=".8g"):
+   201	        return super().format_exponential_notation(val, format_spec)
+   202	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/astropy && python -c "
+$ import astropy.units as u
+$ print(repr((u.m**0.5).to_string('vounit')))
+$ print(repr((u.m**1.5).to_string('vounit')))
+$ print(repr((u.Hz**(2/3)).to_string('vounit')))
+$ print(repr((u.km**2).to_string('vounit')))
+$ print(repr((u.km**-1).to_string('vounit')))
+$ print(repr((u.m**0.5/u.s).to_string('vounit', fraction=True)))
+$ a=(u.m**0.5).to_string('vounit'); print(u.Unit(a,format='vounit')==u.m**0.5)
+$ "
+'m**(1/2)'
+'m**(3/2)'
+'Hz**(2/3)'
+'km**2'
+'km**-1'
+'m**(1/2) / s'
+True
+$ cd /workspace/astropy && python -m pytest astropy/units/tests/test_format.py -q 2>&1 | tail -20
+<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject
+Internet access disabled
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 46%]
+........................................................................ [ 55%]
+........................................................................ [ 64%]
+........................................................................ [ 73%]
+........................................................................ [ 83%]
+........................................................................ [ 92%]
+............................................................             [100%]
+780 passed in 0.74s
+$ cd /workspace/astropy && ls docs/changes/units/ 2>/dev/null | head; ls docs/changes/ 2>/dev/null | head
+README.rst
+config
+constants
+convolution
+coordinates
+cosmology
+extern
+io.ascii
+io.fits
+io.misc
+$ cd /workspace/astropy && ls docs/changes/units/
+# file_editor: Add changelog fragment
+File created successfully at: /workspace/astropy/docs/changes/units/15282.bugfix.rst
+$ cd /workspace/astropy && python -m pytest astropy/units/tests/test_format.py -q -k "vounit or VOUnit or roundtrip or Roundtrip or styles" 2>&1 | tail -8
+........................................................................ [ 37%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 74%]
+........................................................................ [ 86%]
+........................................................................ [ 98%]
+......                                                                   [100%]
+582 passed, 198 deselected in 0.44s
+# finish: Completed vounit formatting fix
+## Summary
+
+I implemented the fix for the only source-code issue in the description: **Issue 1 (#15288) — Backport PR #15282: Fix vounit formatting of fractions and powers**. The other listed items (#15289, #15308, #15324, #15325, #15330, #15335, #15340, #15345, #15349, #15357, #15361, #15242, #15371, #15383, #15389, #15398, #15407, #15413, #15416, #15424) are CI workflow, test-infrastructure, documentation, and changelog backports that do not require changes to library source logic (and tests were already provided).
+
+### Root Cause
+In `astropy/units/format/vounit.py`, `_format_superscript` omitted the required `**` operator for fractional/decimal powers:
+```python
+return f"({number})" if "/" in number or "." in number else f"**{number}"
+```
+This produced invalid VOUnit strings such as `m(1/2)` for `u.m**0.5`, while integer powers correctly produced `m**2`, `km**-1`, etc. The VOUnit standard requires every power to be preceded by `**`.
+
+### Fix
+```python
+return f"**({number})" if "/" in number or "." in number else f"**{number}"
+```
+
+Resulting behavior:
+- `u.m**0.5` → `'m**(1/2)'` (was `'m(1/2)'`)
+- `u.m**1.5` → `'m**(3/2)'`
+- `u.Hz**(2/3)` → `'Hz**(2/3)'`
+- `(u.m**0.5 / u.s)` with `fraction=True` → `'m**(1/2) / s'`
+- Integer powers (`km**2`, `km**-1`) unchanged.
+
+I also added a changelog fragment at `docs/changes/units/15282.bugfix.rst`.
+
+### Verification
+- Confirmed the buggy output before the change and the corrected output after.
+- Verified round-trip parsing still yields equivalent units.
+- Ran `astropy/units/tests/test_format.py`: all 780 tests pass.

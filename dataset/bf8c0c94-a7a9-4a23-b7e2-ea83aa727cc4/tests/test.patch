@@ -1,0 +1,165 @@
+diff --git a/tests/builder/hidden_args.rs b/tests/builder/hidden_args.rs
+index 4cdfb245349..537c8fc1b5a 100644
+--- a/tests/builder/hidden_args.rs
++++ b/tests/builder/hidden_args.rs
+@@ -1,6 +1,6 @@
+ use super::utils;
+ 
+-use clap::{arg, Arg, ArgAction, Command};
++use clap::{arg, builder::PossibleValue, Arg, ArgAction, Command};
+ 
+ static HIDDEN_ARGS: &str = "\
+ tests stuff
+@@ -278,3 +278,27 @@ fn hide_subcmds_only() {
+ 
+     utils::assert_output(cmd, "test --help", HIDDEN_SUBCMDS_ONLY, false);
+ }
++
++#[test]
++fn hidden_arg_with_possible_value_with_help() {
++    // Normally the presence of a possible value with a help text triggers a
++    // change of the --help help text by appending `(see more with '--help')`
++    // or `(see a summary with '-h')`. When the argument is completely hidden
++    // we however do not want it to trigger that change.
++    static POS_VALS_HELP: &str = "\
++Usage: ctest
++
++Options:
++  -h, --help  Print help
++";
++    let app = Command::new("ctest").arg(
++        Arg::new("pos")
++            .hide(true)
++            .value_parser([
++                PossibleValue::new("fast"),
++                PossibleValue::new("slow").help("not as fast"),
++            ])
++            .action(ArgAction::Set),
++    );
++    utils::assert_output(app, "ctest --help", POS_VALS_HELP, false);
++}
+diff --git a/tests/builder/ignore_errors.rs b/tests/builder/ignore_errors.rs
+index c98cfc2e142..dfb35753640 100644
+--- a/tests/builder/ignore_errors.rs
++++ b/tests/builder/ignore_errors.rs
+@@ -21,7 +21,7 @@ fn single_long_arg_without_value() {
+ 
+     let r = cmd.try_get_matches_from(vec!["cmd", "--config" /* missing: , "config file" */]);
+ 
+-    assert!(r.is_ok(), "unexpected error: {:?}", r);
++    assert!(r.is_ok(), "unexpected error: {r:?}");
+     let m = r.unwrap();
+     assert!(m.contains_id("config"));
+ }
+diff --git a/tests/builder/positionals.rs b/tests/builder/positionals.rs
+index b931b119abe..f15b2edc316 100644
+--- a/tests/builder/positionals.rs
++++ b/tests/builder/positionals.rs
+@@ -179,7 +179,7 @@ fn positional_possible_values() {
+             Arg::new("positional").index(1).value_parser(["test123"]),
+         ])
+         .try_get_matches_from(vec!["", "-f", "test123"]);
+-    assert!(r.is_ok(), "{:#?}", r);
++    assert!(r.is_ok(), "{r:#?}");
+     let m = r.unwrap();
+     assert!(m.contains_id("positional"));
+     assert!(*m.get_one::<bool>("flag").expect("defaulted by clap"));
+diff --git a/tests/builder/tests.rs b/tests/builder/tests.rs
+index 072a8773cc3..a7148574fe4 100644
+--- a/tests/builder/tests.rs
++++ b/tests/builder/tests.rs
+@@ -195,7 +195,7 @@ pub fn check_complex_output(args: &str, out: &str) {
+     }
+ 
+     if let Some(p) = matches.get_one::<String>("positional").map(|v| v.as_str()) {
+-        writeln!(w, "positional present with value: {}", p).unwrap();
++        writeln!(w, "positional present with value: {p}").unwrap();
+     } else {
+         writeln!(w, "positional NOT present").unwrap();
+     }
+@@ -207,17 +207,17 @@ pub fn check_complex_output(args: &str, out: &str) {
+                     writeln!(w, "flag NOT present").unwrap();
+                 }
+                 n => {
+-                    writeln!(w, "flag present {} times", n).unwrap();
++                    writeln!(w, "flag present {n} times").unwrap();
+                 }
+             }
+ 
+             if matches.contains_id("option") {
+                 if let Some(v) = matches.get_one::<String>("option").map(|v| v.as_str()) {
+-                    writeln!(w, "scoption present with value: {}", v).unwrap();
++                    writeln!(w, "scoption present with value: {v}").unwrap();
+                 }
+                 if let Some(ov) = matches.get_many::<String>("option") {
+                     for o in ov {
+-                        writeln!(w, "An scoption: {}", o).unwrap();
++                        writeln!(w, "An scoption: {o}").unwrap();
+                     }
+                 }
+             } else {
+@@ -228,7 +228,7 @@ pub fn check_complex_output(args: &str, out: &str) {
+                 .get_one::<String>("scpositional")
+                 .map(|v| v.as_str())
+             {
+-                writeln!(w, "scpositional present with value: {}", p).unwrap();
++                writeln!(w, "scpositional present with value: {p}").unwrap();
+             }
+         }
+     } else {
+diff --git a/tests/builder/utils.rs b/tests/builder/utils.rs
+index f76efbec26c..e0b434e2956 100644
+--- a/tests/builder/utils.rs
++++ b/tests/builder/utils.rs
+@@ -28,7 +28,7 @@ pub fn assert_output(l: Command, args: &str, expected: &str, stderr: bool) {
+     let mut buf = Cursor::new(Vec::with_capacity(50));
+     let res = l.try_get_matches_from(args.split(' ').collect::<Vec<_>>());
+     let err = res.unwrap_err();
+-    write!(&mut buf, "{}", err).unwrap();
++    write!(&mut buf, "{err}").unwrap();
+     let actual = buf.into_inner();
+     let actual = String::from_utf8(actual).unwrap();
+     assert_eq!(
+diff --git a/tests/derive/utils.rs b/tests/derive/utils.rs
+index a6a0e36d917..d08ef999283 100644
+--- a/tests/derive/utils.rs
++++ b/tests/derive/utils.rs
+@@ -17,8 +17,8 @@ pub const FULL_TEMPLATE: &str = "\
+ pub fn get_help<T: CommandFactory>() -> String {
+     let output = <T as CommandFactory>::command().render_help().to_string();
+ 
+-    eprintln!("\n%%% HELP %%%:=====\n{}\n=====\n", output);
+-    eprintln!("\n%%% HELP (DEBUG) %%%:=====\n{:?}\n=====\n", output);
++    eprintln!("\n%%% HELP %%%:=====\n{output}\n=====\n");
++    eprintln!("\n%%% HELP (DEBUG) %%%:=====\n{output:?}\n=====\n");
+ 
+     output
+ }
+@@ -28,8 +28,8 @@ pub fn get_long_help<T: CommandFactory>() -> String {
+         .render_long_help()
+         .to_string();
+ 
+-    eprintln!("\n%%% LONG_HELP %%%:=====\n{}\n=====\n", output);
+-    eprintln!("\n%%% LONG_HELP (DEBUG) %%%:=====\n{:?}\n=====\n", output);
++    eprintln!("\n%%% LONG_HELP %%%:=====\n{output}\n=====\n");
++    eprintln!("\n%%% LONG_HELP (DEBUG) %%%:=====\n{output:?}\n=====\n");
+ 
+     output
+ }
+@@ -42,14 +42,8 @@ pub fn get_subcommand_long_help<T: CommandFactory>(subcmd: &str) -> String {
+         .render_long_help()
+         .to_string();
+ 
+-    eprintln!(
+-        "\n%%% SUBCOMMAND `{}` HELP %%%:=====\n{}\n=====\n",
+-        subcmd, output
+-    );
+-    eprintln!(
+-        "\n%%% SUBCOMMAND `{}` HELP (DEBUG) %%%:=====\n{:?}\n=====\n",
+-        subcmd, output
+-    );
++    eprintln!("\n%%% SUBCOMMAND `{subcmd}` HELP %%%:=====\n{output}\n=====\n",);
++    eprintln!("\n%%% SUBCOMMAND `{subcmd}` HELP (DEBUG) %%%:=====\n{output:?}\n=====\n",);
+ 
+     output
+ }

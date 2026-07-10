@@ -1,0 +1,200 @@
+   457	
+   458		host := uri.Host()
+   459	
+   460		isTLS := false
+   461		scheme := uri.Scheme()
+   462		if bytes.Equal(scheme, strHTTPS) {
+   463			isTLS = true
+   464		} else if !bytes.Equal(scheme, strHTTP) {
+   465			return fmt.Errorf("unsupported protocol %q. http and https are supported", scheme)
+   466		}
+   467	
+   468		startCleaner := false
+   469	
+   470		c.mLock.Lock()
+# file_editor: View fasthttp Response.Reset implementation
+Here's the result of running `cat -n` on /go/pkg/mod/github.com/valyala/fasthttp@v1.16.0/http.go:
+   904	func (resp *Response) Reset() {
+   905		resp.Header.Reset()
+   906		resp.resetSkipHeader()
+   907		resp.SkipBody = false
+   908		resp.raddr = nil
+   909		resp.laddr = nil
+   910		resp.ImmediateHeaderFlush = false
+   911	}
+   912	
+   913	func (resp *Response) resetSkipHeader() {
+   914		resp.ResetBody()
+# file_editor: View fasthttp Response.Read implementation
+Here's the result of running `cat -n` on /go/pkg/mod/github.com/valyala/fasthttp@v1.16.0/http.go:
+  1054	func (resp *Response) Read(r *bufio.Reader) error {
+  1055		return resp.ReadLimitBody(r, 0)
+  1056	}
+  1057	
+  1058	// ReadLimitBody reads response from the given r, limiting the body size.
+  1059	//
+  1060	// If maxBodySize > 0 and the body size exceeds maxBodySize,
+  1061	// then ErrBodyTooLarge is returned.
+  1062	//
+  1063	// io.EOF is returned if r is closed before reading the first header byte.
+  1064	func (resp *Response) ReadLimitBody(r *bufio.Reader, maxBodySize int) error {
+  1065		resp.resetSkipHeader()
+  1066		err := resp.Header.Read(r)
+  1067		if err != nil {
+  1068			return err
+  1069		}
+  1070		if resp.Header.StatusCode() == StatusContinue {
+  1071			// Read the next response according to http://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html .
+  1072			if err = resp.Header.Read(r); err != nil {
+  1073				return err
+  1074			}
+$ grep -n "func (h \*ResponseHeader) Read\|func (h \*ResponseHeader) reset" /go/pkg/mod/github.com/valyala/fasthttp@v1.16.0/header.go | head -40; sed -n '1740,1770p' /go/pkg/mod/github.com/valyala/fasthttp@v1.16.0/header.go
+649:func (h *ResponseHeader) resetSkipNormalize() {
+1279:func (h *ResponseHeader) Read(r *bufio.Reader) error {
+        }
+        if buf[n] != ':' {
+                return nil
+        }
+        n++
+        if buf[n] != ' ' {
+                return nil
+        }
+        n++
+        buf = buf[n:]
+        n = bytes.IndexByte(buf, '\n')
+        if n < 0 {
+                return nil
+        }
+        if n > 0 && buf[n-1] == '\r' {
+                n--
+        }
+        return buf[:n]
+}
+
+func readRawHeaders(dst, buf []byte) ([]byte, int, error) {
+        n := bytes.IndexByte(buf, '\n')
+        if n < 0 {
+                return dst[:0], 0, errNeedMore
+        }
+        if (n == 1 && buf[0] == '\r') || n == 0 {
+                // empty headers
+                return dst, n + 1, nil
+        }
+
+        n++
+# file_editor: View fasthttp ResponseHeader.Read body
+Here's the result of running `cat -n` on /go/pkg/mod/github.com/valyala/fasthttp@v1.16.0/header.go:
+  1279	func (h *ResponseHeader) Read(r *bufio.Reader) error {
+  1280		n := 1
+  1281		for {
+  1282			err := h.tryRead(r, n)
+  1283			if err == nil {
+  1284				return nil
+  1285			}
+  1286			if err != errNeedMore {
+  1287				h.resetSkipNormalize()
+  1288				return err
+  1289			}
+  1290			n = r.Buffered() + 1
+  1291		}
+  1292	}
+  1293	
+  1294	func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
+  1295		h.resetSkipNormalize()
+$ cd /workspace/fiber; git --no-pager diff -- router.go middleware/requestid/requestid.go | sed -n '1,180p'
+diff --git a/middleware/requestid/requestid.go b/middleware/requestid/requestid.go
+index ef0de78..e2ac440 100644
+--- a/middleware/requestid/requestid.go
++++ b/middleware/requestid/requestid.go
+@@ -21,13 +21,19 @@ type Config struct {
+        //
+        // Optional. Default: utils.UUID
+        Generator func() string
++
++       // ContextKey defines the key used when storing the request ID in Locals.
++       //
++       // Optional. Default: "requestid"
++       ContextKey string
+ }
+
+ // ConfigDefault is the default config
+ var ConfigDefault = Config{
+-       Next:      nil,
+-       Header:    fiber.HeaderXRequestID,
+-       Generator: utils.UUID,
++       Next:       nil,
++       Header:     fiber.HeaderXRequestID,
++       Generator:  utils.UUID,
++       ContextKey: "requestid",
+ }
+
+ // New creates a new middleware handler
+@@ -46,6 +52,9 @@ func New(config ...Config) fiber.Handler {
+                if cfg.Generator == nil {
+                        cfg.Generator = ConfigDefault.Generator
+                }
++               if cfg.ContextKey == "" {
++                       cfg.ContextKey = ConfigDefault.ContextKey
++               }
+        }
+
+        // Return new handler
+@@ -55,11 +64,17 @@ func New(config ...Config) fiber.Handler {
+                        return c.Next()
+                }
+                // Get id from request, else we generate one
+-               rid := c.Get(cfg.Header, cfg.Generator())
++               rid := c.Get(cfg.Header)
++               if rid == "" {
++                       rid = cfg.Generator()
++               }
+
+                // Set new id to response header
+                c.Set(cfg.Header, rid)
+
++               // Store id in Locals
++               c.Locals(cfg.ContextKey, rid)
++
+                // Continue stack
+                return c.Next()
+        }
+diff --git a/router.go b/router.go
+index 63874f3..242b1e0 100644
+--- a/router.go
++++ b/router.go
+@@ -61,6 +61,7 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
+                return true
+                // '*' wildcard matches any path
+        } else if r.star {
++               params[0] = ""
+                if len(original) > 1 {
+                        params[0] = original[1:]
+                }
+# finish: Summarize implemented fixes and verification results
+Implemented the requested non-test changes in `/workspace/fiber`.
+
+Summary of changes:
+- Fixed wildcard `*` route params persisting by clearing direct wildcard params on empty matches.
+- Improved `Ctx.BaseURL()` to use fasthttp URI data with `0 B/op` and `0 allocs/op`.
+- Added request ID storage in `Locals` with configurable `ContextKey` defaulting to `"requestid"`.
+- Updated proxy middleware so headers set via `c.Set(...)` during `ModifyRequest` are forwarded to the upstream request, and documented the preferred `c.Request().Header.Set(...)` usage.
+- Bumped Fiber version to `2.1.1`.
+- Fixed documentation typos/translations and proxy middleware links/examples, including `README_id.md` and `CONTRIBUTING.md`.
+
+Verification:
+- Created and ran a temporary `go run` reproduction script covering:
+  - wildcard param clearing across repeated requests,
+  - nested wildcard paths,
+  - optional params,
+  - request ID locals including custom key,
+  - proxy forwarded headers,
+  - BaseURL HTTP/HTTPS behavior and zero allocations.
+- Removed temporary repro files afterward.
+- Passed targeted tests:
+  - `go test . -run 'Test_Ctx_BaseURL|Test_Ctx_Params'`
+  - `go test ./middleware/proxy -run 'Test_Proxy'`
+  - `go test ./middleware/requestid -run 'Test_RequestID'`
+- Passed broad suite excluding unrelated broken `internal/go-ole` subtree:
+  - `pkgs=$(go list ./... 2>/dev/null | grep -v '^github.com/gofiber/fiber/v2/internal/go-ole'); go test $pkgs`
+- `go test ./...` still fails due an unrelated existing `internal/go-ole` Linux build issue (`undefined: VARIANT`).
+- Confirmed no `*_test.go` files were modified.

@@ -1,0 +1,200 @@
+set(LAPACK_FPFLAGS "${LAPACK_FPFLAGS} ${FPFLAGS}")
+
+#Disable -fopenmp for LAPACK Fortran codes on Windows.
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+  set(FILTER_FLAGS "-fopenmp;-mp;-openmp;-xopenmp=parallel")
+  foreach (FILTER_FLAG ${FILTER_FLAGS})
+    string(REPLACE ${FILTER_FLAG} "" LAPACK_FFLAGS ${LAPACK_FFLAGS})
+    string(REPLACE ${FILTER_FLAG} "" LAPACK_FPFLAGS ${LAPACK_FPFLAGS})
+  endforeach ()
+endif ()
+
+if ("${F_COMPILER}" STREQUAL "GFORTRAN")
+  # lapack-netlib is rife with uninitialized warnings -hpa
+  set(LAPACK_FFLAGS "${LAPACK_FFLAGS} -Wno-maybe-uninitialized")
+endif ()
+
+set(LAPACK_CFLAGS "${CMAKE_C_CFLAGS} -DHAVE_LAPACK_CONFIG_H")
+if (INTERFACE64)
+  set(LAPACK_CFLAGS "${LAPACK_CFLAGS} -DLAPACK_ILP64")
+endif ()
+# file_editor: Fix CMake gfortran EXTRALIB expansion
+The file /workspace/OpenBLAS/cmake/fc.cmake has been edited. Here's the result of running `cat -n` on a snippet of /workspace/OpenBLAS/cmake/fc.cmake:
+    45	if (${F_COMPILER} STREQUAL "GFORTRAN")
+    46	  set(CCOMMON_OPT "${CCOMMON_OPT} -DF_INTERFACE_GFORT")
+    47	  set(FCOMMON_OPT "${FCOMMON_OPT} -Wall -frecursive")
+    48	  #Don't include -lgfortran, when NO_LAPACK=1 or lsbcc
+    49	  if (NOT NO_LAPACK)
+    50	    set(EXTRALIB "${EXTRALIB} -lgfortran")
+    51	  endif ()
+    52	  if (NO_BINARY_MODE)
+    53	    if (MIPS64)
+    54	      if (BINARY64)
+    55	        set(FCOMMON_OPT "${FCOMMON_OPT} -mabi=64")
+    56	      else ()
+    57	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/OpenBLAS && rm -rf /tmp/openblas-cmake-check && cmake -S . -B /tmp/openblas-cmake-check -DNOFORTRAN=1 -DBUILD_WITHOUT_CBLAS=ON -DNO_AFFINITY=ON > /tmp/openblas_cmake.log 2>&1; status=$?; tail -40 /tmp/openblas_cmake.log; echo CMAKE_STATUS=$status
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+CMake Warning at CMakeLists.txt:60 (message):
+  CMake support is experimental.  It does not yet support all build options
+  and may not produce the same Makefiles that OpenBLAS ships with.
+
+
+-- GEMM multithread threshold set to 4.
+-- Multi-threading enabled with 64 threads.
+-- Running getarch
+-- GETARCH results:
+CORE=ARMV8
+LIBCORE=armv8
+NUM_CORES=64
+MAKE += -j 64
+
+-- Building Single Precision
+-- Building Double Precision
+-- Building Complex Precision
+-- Building Double Complex Precision
+-- Reading vars from /workspace/OpenBLAS/kernel/arm64/KERNEL...
+-- Reading vars from /workspace/OpenBLAS/kernel/arm64/KERNEL.ARMV8...
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - found
+-- Found Threads: TRUE
+-- Generating openblas_config.h in include/openblas
+-- Copying LAPACKE header files to include/openblas
+-- Found PkgConfig: /usr/bin/pkg-config (found version "0.29.2")
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /tmp/openblas-cmake-check
+CMAKE_STATUS=0
+$ cd /workspace/OpenBLAS && make -s clean >/tmp/openblas_clean_thread.log 2>&1; make TARGET=ARMV8 NOFORTRAN=1 ONLY_CBLAS=1 USE_THREAD=1 NO_AFFINITY=0 -j2 libs > /tmp/openblas_make_thread.log 2>&1; status=$?; tail -80 /tmp/openblas_make_thread.log; echo MAKE_THREAD_STATUS=$status; make -s clean >/tmp/openblas_clean_thread_after.log 2>&1
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zgemm_beta -DASMFNAME=zgemm_beta_ -DNAME=zgemm_beta_ -DCNAME=zgemm_beta -DCHAR_NAME=\"zgemm_beta_\" -DCHAR_CNAME=\"zgemm_beta\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX ../kernel/arm64/../generic/zgemm_beta.c -o zgemm_beta.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_LN -DASMFNAME=ztrmm_kernel_LN_ -DNAME=ztrmm_kernel_LN_ -DCNAME=ztrmm_kernel_LN -DCHAR_NAME=\"ztrmm_kernel_LN_\" -DCHAR_CNAME=\"ztrmm_kernel_LN\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -DLEFT -UTRANSA -UCONJ -DNN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_LN.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_LT -DASMFNAME=ztrmm_kernel_LT_ -DNAME=ztrmm_kernel_LT_ -DCNAME=ztrmm_kernel_LT -DCHAR_NAME=\"ztrmm_kernel_LT_\" -DCHAR_CNAME=\"ztrmm_kernel_LT\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -DLEFT -DTRANSA -UCONJ -DNN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_LT.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_LR -DASMFNAME=ztrmm_kernel_LR_ -DNAME=ztrmm_kernel_LR_ -DCNAME=ztrmm_kernel_LR -DCHAR_NAME=\"ztrmm_kernel_LR_\" -DCHAR_CNAME=\"ztrmm_kernel_LR\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -DLEFT -UTRANSA -DCONJ -DCN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_LR.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_LC -DASMFNAME=ztrmm_kernel_LC_ -DNAME=ztrmm_kernel_LC_ -DCNAME=ztrmm_kernel_LC -DCHAR_NAME=\"ztrmm_kernel_LC_\" -DCHAR_CNAME=\"ztrmm_kernel_LC\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -DLEFT -DTRANSA -DCONJ -DCN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_LC.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_RN -DASMFNAME=ztrmm_kernel_RN_ -DNAME=ztrmm_kernel_RN_ -DCNAME=ztrmm_kernel_RN -DCHAR_NAME=\"ztrmm_kernel_RN_\" -DCHAR_CNAME=\"ztrmm_kernel_RN\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -ULEFT -UTRANSA -UCONJ -DNN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_RN.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_RT -DASMFNAME=ztrmm_kernel_RT_ -DNAME=ztrmm_kernel_RT_ -DCNAME=ztrmm_kernel_RT -DCHAR_NAME=\"ztrmm_kernel_RT_\" -DCHAR_CNAME=\"ztrmm_kernel_RT\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -ULEFT -DTRANSA -UCONJ -DNN ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_RT.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_RR -DASMFNAME=ztrmm_kernel_RR_ -DNAME=ztrmm_kernel_RR_ -DCNAME=ztrmm_kernel_RR -DCHAR_NAME=\"ztrmm_kernel_RR_\" -DCHAR_CNAME=\"ztrmm_kernel_RR\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -ULEFT -UTRANSA -DCONJ -DNC ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_RR.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_kernel_RC -DASMFNAME=ztrmm_kernel_RC_ -DNAME=ztrmm_kernel_RC_ -DCNAME=ztrmm_kernel_RC -DCHAR_NAME=\"ztrmm_kernel_RC_\" -DCHAR_CNAME=\"ztrmm_kernel_RC\" -I.. -DDOUBLE  -DCOMPLEX -c -DTRMMKERNEL -DDOUBLE -DCOMPLEX -ULEFT -DTRANSA -DCONJ -DNC ../kernel/arm64/ztrmm_kernel_4x4.S -o ztrmm_kernel_RC.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_LN -DASMFNAME=ztrsm_kernel_LN_ -DNAME=ztrsm_kernel_LN_ -DCNAME=ztrsm_kernel_LN -DCHAR_NAME=\"ztrsm_kernel_LN_\" -DCHAR_CNAME=\"ztrsm_kernel_LN\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -DUPPER -DLN -UCONJ ../kernel/arm64/../generic/trsm_kernel_LN.c -o ztrsm_kernel_LN.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_LT -DASMFNAME=ztrsm_kernel_LT_ -DNAME=ztrsm_kernel_LT_ -DCNAME=ztrsm_kernel_LT -DCHAR_NAME=\"ztrsm_kernel_LT_\" -DCHAR_CNAME=\"ztrsm_kernel_LT\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -UUPPER -DLT -UCONJ ../kernel/arm64/../generic/trsm_kernel_LT.c -o ztrsm_kernel_LT.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_LR -DASMFNAME=ztrsm_kernel_LR_ -DNAME=ztrsm_kernel_LR_ -DCNAME=ztrsm_kernel_LR -DCHAR_NAME=\"ztrsm_kernel_LR_\" -DCHAR_CNAME=\"ztrsm_kernel_LR\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -DUPPER -DLN -DCONJ ../kernel/arm64/../generic/trsm_kernel_LN.c -o ztrsm_kernel_LR.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_LC -DASMFNAME=ztrsm_kernel_LC_ -DNAME=ztrsm_kernel_LC_ -DCNAME=ztrsm_kernel_LC -DCHAR_NAME=\"ztrsm_kernel_LC_\" -DCHAR_CNAME=\"ztrsm_kernel_LC\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -UUPPER -DLT -DCONJ ../kernel/arm64/../generic/trsm_kernel_LT.c -o ztrsm_kernel_LC.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_RN -DASMFNAME=ztrsm_kernel_RN_ -DNAME=ztrsm_kernel_RN_ -DCNAME=ztrsm_kernel_RN -DCHAR_NAME=\"ztrsm_kernel_RN_\" -DCHAR_CNAME=\"ztrsm_kernel_RN\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -DUPPER -DRN -UCONJ ../kernel/arm64/../generic/trsm_kernel_RN.c -o ztrsm_kernel_RN.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_RT -DASMFNAME=ztrsm_kernel_RT_ -DNAME=ztrsm_kernel_RT_ -DCNAME=ztrsm_kernel_RT -DCHAR_NAME=\"ztrsm_kernel_RT_\" -DCHAR_CNAME=\"ztrsm_kernel_RT\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -UUPPER -DRT -UCONJ ../kernel/arm64/../generic/trsm_kernel_RT.c -o ztrsm_kernel_RT.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_RR -DASMFNAME=ztrsm_kernel_RR_ -DNAME=ztrsm_kernel_RR_ -DCNAME=ztrsm_kernel_RR -DCHAR_NAME=\"ztrsm_kernel_RR_\" -DCHAR_CNAME=\"ztrsm_kernel_RR\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -DUPPER -DRN -DCONJ ../kernel/arm64/../generic/trsm_kernel_RN.c -o ztrsm_kernel_RR.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrsm_kernel_RC -DASMFNAME=ztrsm_kernel_RC_ -DNAME=ztrsm_kernel_RC_ -DCNAME=ztrsm_kernel_RC -DCHAR_NAME=\"ztrsm_kernel_RC_\" -DCHAR_CNAME=\"ztrsm_kernel_RC\" -I.. -DDOUBLE  -DCOMPLEX -DTRSMKERNEL -DCOMPLEX -DDOUBLE -UUPPER -DRT -DCONJ ../kernel/arm64/../generic/trsm_kernel_RT.c -o ztrsm_kernel_RC.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iunucopy -DASMFNAME=ztrmm_iunucopy_ -DNAME=ztrmm_iunucopy_ -DCNAME=ztrmm_iunucopy -DCHAR_NAME=\"ztrmm_iunucopy_\" -DCHAR_CNAME=\"ztrmm_iunucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -ULOWER -DUNIT generic/ztrmm_uncopy_4.c -o ztrmm_iunucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iunncopy -DASMFNAME=ztrmm_iunncopy_ -DNAME=ztrmm_iunncopy_ -DCNAME=ztrmm_iunncopy -DCHAR_NAME=\"ztrmm_iunncopy_\" -DCHAR_CNAME=\"ztrmm_iunncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -ULOWER -UUNIT generic/ztrmm_uncopy_4.c -o ztrmm_iunncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_ilnucopy -DASMFNAME=ztrmm_ilnucopy_ -DNAME=ztrmm_ilnucopy_ -DCNAME=ztrmm_ilnucopy -DCHAR_NAME=\"ztrmm_ilnucopy_\" -DCHAR_CNAME=\"ztrmm_ilnucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -DLOWER -DUNIT generic/ztrmm_lncopy_4.c -o ztrmm_ilnucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_ilnncopy -DASMFNAME=ztrmm_ilnncopy_ -DNAME=ztrmm_ilnncopy_ -DCNAME=ztrmm_ilnncopy -DCHAR_NAME=\"ztrmm_ilnncopy_\" -DCHAR_CNAME=\"ztrmm_ilnncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -DLOWER -UUNIT generic/ztrmm_lncopy_4.c -o ztrmm_ilnncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iutucopy -DASMFNAME=ztrmm_iutucopy_ -DNAME=ztrmm_iutucopy_ -DCNAME=ztrmm_iutucopy -DCHAR_NAME=\"ztrmm_iutucopy_\" -DCHAR_CNAME=\"ztrmm_iutucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -ULOWER -DUNIT generic/ztrmm_utcopy_4.c -o ztrmm_iutucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iutncopy -DASMFNAME=ztrmm_iutncopy_ -DNAME=ztrmm_iutncopy_ -DCNAME=ztrmm_iutncopy -DCHAR_NAME=\"ztrmm_iutncopy_\" -DCHAR_CNAME=\"ztrmm_iutncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -ULOWER -UUNIT generic/ztrmm_utcopy_4.c -o ztrmm_iutncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iltucopy -DASMFNAME=ztrmm_iltucopy_ -DNAME=ztrmm_iltucopy_ -DCNAME=ztrmm_iltucopy -DCHAR_NAME=\"ztrmm_iltucopy_\" -DCHAR_CNAME=\"ztrmm_iltucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -DLOWER -DUNIT generic/ztrmm_ltcopy_4.c -o ztrmm_iltucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_iltncopy -DASMFNAME=ztrmm_iltncopy_ -DNAME=ztrmm_iltncopy_ -DCNAME=ztrmm_iltncopy -DCHAR_NAME=\"ztrmm_iltncopy_\" -DCHAR_CNAME=\"ztrmm_iltncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -UOUTER -DLOWER -UUNIT generic/ztrmm_ltcopy_4.c -o ztrmm_iltncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_ounucopy -DASMFNAME=ztrmm_ounucopy_ -DNAME=ztrmm_ounucopy_ -DCNAME=ztrmm_ounucopy -DCHAR_NAME=\"ztrmm_ounucopy_\" -DCHAR_CNAME=\"ztrmm_ounucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -DOUTER -ULOWER -DUNIT generic/ztrmm_uncopy_4.c -o ztrmm_ounucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_ounncopy -DASMFNAME=ztrmm_ounncopy_ -DNAME=ztrmm_ounncopy_ -DCNAME=ztrmm_ounncopy -DCHAR_NAME=\"ztrmm_ounncopy_\" -DCHAR_CNAME=\"ztrmm_ounncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -DOUTER -ULOWER -UUNIT generic/ztrmm_uncopy_4.c -o ztrmm_ounncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_olnucopy -DASMFNAME=ztrmm_olnucopy_ -DNAME=ztrmm_olnucopy_ -DCNAME=ztrmm_olnucopy -DCHAR_NAME=\"ztrmm_olnucopy_\" -DCHAR_CNAME=\"ztrmm_olnucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -DOUTER -DLOWER -DUNIT generic/ztrmm_lncopy_4.c -o ztrmm_olnucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_olnncopy -DASMFNAME=ztrmm_olnncopy_ -DNAME=ztrmm_olnncopy_ -DCNAME=ztrmm_olnncopy -DCHAR_NAME=\"ztrmm_olnncopy_\" -DCHAR_CNAME=\"ztrmm_olnncopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -DOUTER -DLOWER -UUNIT generic/ztrmm_lncopy_4.c -o ztrmm_olnncopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=ztrmm_outucopy -DASMFNAME=ztrmm_outucopy_ -DNAME=ztrmm_outucopy_ -DCNAME=ztrmm_outucopy -DCHAR_NAME=\"ztrmm_outucopy_\" -DCHAR_CNAME=\"ztrmm_outucopy\" -I.. -DDOUBLE  -DCOMPLEX -Wno-uninitialized -DDOUBLE -DCOMPLEX -DOUTER -ULOWER -DUNIT generic/ztrmm_utcopy_4.c -o ztrmm_outucopy.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_<response clipped><NOTE>Due to the max output limit, only part of the full response has been shown to you.</NOTE> -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -UCONJ ../kernel/arm64/../arm/zomatcopy_cn.c -o zomatcopy_k_cn.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_rn -DASMFNAME=zomatcopy_k_rn_ -DNAME=zomatcopy_k_rn_ -DCNAME=zomatcopy_k_rn -DCHAR_NAME=\"zomatcopy_k_rn_\" -DCHAR_CNAME=\"zomatcopy_k_rn\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -UCONJ ../kernel/arm64/../arm/zomatcopy_rn.c -o zomatcopy_k_rn.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_ct -DASMFNAME=zomatcopy_k_ct_ -DNAME=zomatcopy_k_ct_ -DCNAME=zomatcopy_k_ct -DCHAR_NAME=\"zomatcopy_k_ct_\" -DCHAR_CNAME=\"zomatcopy_k_ct\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -UCONJ ../kernel/arm64/../arm/zomatcopy_ct.c -o zomatcopy_k_ct.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_rt -DASMFNAME=zomatcopy_k_rt_ -DNAME=zomatcopy_k_rt_ -DCNAME=zomatcopy_k_rt -DCHAR_NAME=\"zomatcopy_k_rt_\" -DCHAR_CNAME=\"zomatcopy_k_rt\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -UCONJ ../kernel/arm64/../arm/zomatcopy_rt.c -o zomatcopy_k_rt.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_cnc -DASMFNAME=zomatcopy_k_cnc_ -DNAME=zomatcopy_k_cnc_ -DCNAME=zomatcopy_k_cnc -DCHAR_NAME=\"zomatcopy_k_cnc_\" -DCHAR_CNAME=\"zomatcopy_k_cnc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -DCONJ ../kernel/arm64/../arm/zomatcopy_cnc.c -o zomatcopy_k_cnc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_rnc -DASMFNAME=zomatcopy_k_rnc_ -DNAME=zomatcopy_k_rnc_ -DCNAME=zomatcopy_k_rnc -DCHAR_NAME=\"zomatcopy_k_rnc_\" -DCHAR_CNAME=\"zomatcopy_k_rnc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -DCONJ ../kernel/arm64/../arm/zomatcopy_rnc.c -o zomatcopy_k_rnc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_ctc -DASMFNAME=zomatcopy_k_ctc_ -DNAME=zomatcopy_k_ctc_ -DCNAME=zomatcopy_k_ctc -DCHAR_NAME=\"zomatcopy_k_ctc_\" -DCHAR_CNAME=\"zomatcopy_k_ctc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -DCONJ ../kernel/arm64/../arm/zomatcopy_ctc.c -o zomatcopy_k_ctc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zomatcopy_k_rtc -DASMFNAME=zomatcopy_k_rtc_ -DNAME=zomatcopy_k_rtc_ -DCNAME=zomatcopy_k_rtc -DCHAR_NAME=\"zomatcopy_k_rtc_\" -DCHAR_CNAME=\"zomatcopy_k_rtc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -DCONJ ../kernel/arm64/../arm/zomatcopy_rtc.c -o zomatcopy_k_rtc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_cn -DASMFNAME=zimatcopy_k_cn_ -DNAME=zimatcopy_k_cn_ -DCNAME=zimatcopy_k_cn -DCHAR_NAME=\"zimatcopy_k_cn_\" -DCHAR_CNAME=\"zimatcopy_k_cn\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -UCONJ ../kernel/arm64/../generic/zimatcopy_cn.c -o zimatcopy_k_cn.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_rn -DASMFNAME=zimatcopy_k_rn_ -DNAME=zimatcopy_k_rn_ -DCNAME=zimatcopy_k_rn -DCHAR_NAME=\"zimatcopy_k_rn_\" -DCHAR_CNAME=\"zimatcopy_k_rn\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -UCONJ ../kernel/arm64/../generic/zimatcopy_rn.c -o zimatcopy_k_rn.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_ct -DASMFNAME=zimatcopy_k_ct_ -DNAME=zimatcopy_k_ct_ -DCNAME=zimatcopy_k_ct -DCHAR_NAME=\"zimatcopy_k_ct_\" -DCHAR_CNAME=\"zimatcopy_k_ct\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -UCONJ ../kernel/arm64/../generic/zimatcopy_ct.c -o zimatcopy_k_ct.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_rt -DASMFNAME=zimatcopy_k_rt_ -DNAME=zimatcopy_k_rt_ -DCNAME=zimatcopy_k_rt -DCHAR_NAME=\"zimatcopy_k_rt_\" -DCHAR_CNAME=\"zimatcopy_k_rt\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -UCONJ ../kernel/arm64/../generic/zimatcopy_rt.c -o zimatcopy_k_rt.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_cnc -DASMFNAME=zimatcopy_k_cnc_ -DNAME=zimatcopy_k_cnc_ -DCNAME=zimatcopy_k_cnc -DCHAR_NAME=\"zimatcopy_k_cnc_\" -DCHAR_CNAME=\"zimatcopy_k_cnc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -DCONJ ../kernel/arm64/../generic/zimatcopy_cnc.c -o zimatcopy_k_cnc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_rnc -DASMFNAME=zimatcopy_k_rnc_ -DNAME=zimatcopy_k_rnc_ -DCNAME=zimatcopy_k_rnc -DCHAR_NAME=\"zimatcopy_k_rnc_\" -DCHAR_CNAME=\"zimatcopy_k_rnc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -DCONJ ../kernel/arm64/../generic/zimatcopy_rnc.c -o zimatcopy_k_rnc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_ctc -DASMFNAME=zimatcopy_k_ctc_ -DNAME=zimatcopy_k_ctc_ -DCNAME=zimatcopy_k_ctc -DCHAR_NAME=\"zimatcopy_k_ctc_\" -DCHAR_CNAME=\"zimatcopy_k_ctc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM -DCONJ ../kernel/arm64/../generic/zimatcopy_ctc.c -o zimatcopy_k_ctc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zimatcopy_k_rtc -DASMFNAME=zimatcopy_k_rtc_ -DNAME=zimatcopy_k_rtc_ -DCNAME=zimatcopy_k_rtc -DCHAR_NAME=\"zimatcopy_k_rtc_\" -DCHAR_CNAME=\"zimatcopy_k_rtc\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -DROWM -DCONJ ../kernel/arm64/../generic/zimatcopy_rtc.c -o zimatcopy_k_rtc.o
+cc -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=zgeadd_k -DASMFNAME=zgeadd_k_ -DNAME=zgeadd_k_ -DCNAME=zgeadd_k -DCHAR_NAME=\"zgeadd_k_\" -DCHAR_CNAME=\"zgeadd_k\" -I.. -DDOUBLE  -DCOMPLEX -c -DDOUBLE -DCOMPLEX -UROWM ../kernel/arm64/../generic/zgeadd.c -o zgeadd_k.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=lsame -DASMFNAME=lsame_ -DNAME=lsame_ -DCNAME=lsame -DCHAR_NAME=\"lsame_\" -DCHAR_CNAME=\"lsame\" -I.. -DF_INTERFACE ../kernel/arm64/../generic/lsame.c -o lsame.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=scabs1 -DASMFNAME=scabs1_ -DNAME=scabs1_ -DCNAME=scabs1 -DCHAR_NAME=\"scabs1_\" -DCHAR_CNAME=\"scabs1\" -I.. -DCOMPLEX -UDOUBLE -DF_INTERFACE ../kernel/arm64/../generic/cabs.c -o scabs1.o
+cc -c -O2 -DMAX_STACK_ALLOC=2048 -Wall -DF_INTERFACE_GFORT -fPIC -DNO_LAPACK -DNO_LAPACKE -DSMP_SERVER -DNO_WARMUP -DMAX_CPU_NUMBER=64 -DMAX_PARALLEL_NUMBER=1 -DVERSION=\"0.3.6\" -march=armv8-a -DASMNAME=dcabs1 -DASMFNAME=dcabs1_ -DNAME=dcabs1_ -DCNAME=dcabs1 -DCHAR_NAME=\"dcabs1_\" -DCHAR_CNAME=\"dcabs1\" -I.. -DCOMPLEX -DDOUBLE -DF_INTERFACE ../kernel/arm64/../generic/cabs.c -o dcabs1.o
+ar  -ru ../libopenblas_armv8p-r0.3.6.a samax_k.o samin_k.o smax_k.o smin_k.o isamax_k.o isamin_k.o ismax_k.o ismin_k.o sasum_k.o ssum_k.o saxpy_k.o scopy_k.o sdot_k.o sdsdot_k.o dsdot_k.o snrm2_k.o srot_k.o sscal_k.o sswap_k.o saxpby_k.o sgemv_n.o sgemv_t.o ssymv_U.o ssymv_L.o sger_k.o sgemm_kernel.o sgemm_incopy.o sgemm_itcopy.o sgemm_oncopy.o sgemm_otcopy.o sgemm_beta.o strmm_kernel_LN.o strmm_kernel_LT.o strmm_kernel_RN.o strmm_kernel_RT.o strsm_kernel_LN.o strsm_kernel_LT.o strsm_kernel_RN.o strsm_kernel_RT.o strmm_iunucopy.o strmm_iunncopy.o strmm_ilnucopy.o strmm_ilnncopy.o strmm_iutucopy.o strmm_iutncopy.o strmm_iltucopy.o strmm_iltncopy.o strmm_ounucopy.o strmm_ounncopy.o strmm_olnucopy.o strmm_olnncopy.o strmm_outucopy.o strmm_outncopy.o strmm_oltucopy.o strmm_oltncopy.o strsm_iunucopy.o strsm_iunncopy.o strsm_ilnucopy.o strsm_ilnncopy.o strsm_iutucopy.o strsm_iutncopy.o strsm_iltucopy.o strsm_iltncopy.o strsm_ounucopy.o strsm_ounncopy.o strsm_olnucopy.o strsm_olnncopy.o strsm_outucopy.o strsm_outncopy.o strsm_oltucopy.o strsm_oltncopy.o ssymm_iutcopy.o ssymm_iltcopy.o ssymm_outcopy.o ssymm_oltcopy.o somatcopy_k_cn.o somatcopy_k_rn.o somatcopy_k_ct.o somatcopy_k_rt.o simatcopy_k_cn.o simatcopy_k_rn.o simatcopy_k_ct.o simatcopy_k_rt.o sgeadd_k.o damax_k.o damin_k.o dmax_k.o dmin_k.o idamax_k.o idamin_k.o idmax_k.o idmin_k.o dasum_k.o daxpy_k.o dcopy_k.o ddot_k.o dnrm2_k.o drot_k.o dscal_k.o dswap_k.o daxpby_k.o dsum_k.o dgemv_n.o dgemv_t.o dsymv_U.o dsymv_L.o dger_k.o dgemm_kernel.o dgemm_incopy.o dgemm_itcopy.o dgemm_oncopy.o dgemm_otcopy.o dgemm_beta.o dtrmm_kernel_LN.o dtrmm_kernel_LT.o dtrmm_kernel_RN.o dtrmm_kernel_RT.o dtrsm_kernel_LN.o dtrsm_kernel_LT.o dtrsm_kernel_RN.o dtrsm_kernel_RT.o dtrmm_iunucopy.o dtrmm_iunncopy.o dtrmm_ilnucopy.o dtrmm_ilnncopy.o dtrmm_iutucopy.o dtrmm_iutncopy.o dtrmm_iltucopy.o dtrmm_iltncopy.o dtrmm_ounucopy.o dtrmm_ounncopy.o dtrmm_olnucopy.o dtrmm_olnncopy.o dtrmm_outucopy.o dtrmm_outncopy.o dtrmm_oltucopy.o dtrmm_oltncopy.o dtrsm_iunucopy.o dtrsm_iunncopy.o dtrsm_ilnucopy.o dtrsm_ilnncopy.o dtrsm_iutucopy.o dtrsm_iutncopy.o dtrsm_iltucopy.o dtrsm_iltncopy.o dtrsm_ounucopy.o dtrsm_ounncopy.o dtrsm_olnucopy.o dtrsm_olnncopy.o dtrsm_outucopy.o dtrsm_outncopy.o dtrsm_oltucopy.o dtrsm_oltncopy.o dsymm_iutcopy.o dsymm_iltcopy.o dsymm_outcopy.o dsymm_oltcopy.o domatcopy_k_cn.o domatcopy_k_rn.o domatcopy_k_ct.o domatcopy_k_rt.o dimatcopy_k_cn.o dimatcopy_k_rn.o dimatcopy_k_ct.o dimatcopy_k_rt.o dgeadd_k.o camax_k.o camin_k.o icamax_k.o icamin_k.o casum_k.o caxpy_k.o caxpyc_k.o ccopy_k.o cdotc_k.o cdotu_k.o cnrm2_k.o csrot_k.o cscal_k.o cswap_k.o caxpby_k.o csum_k.o cgemv_n.o cgemv_t.o cgemv_r.o cgemv_c.o cgemv_o.o cgemv_u.o cgemv_s.o cgemv_d.o csymv_U.o csymv_L.o chemv_U.o chemv_L.o chemv_V.o chemv_M.o cgeru_k.o cgerc_k.o cgerv_k.o cgerd_k.o cgemm_kernel_n.o cgemm_kernel_r.o cgemm_kernel_l.o cgemm_kernel_b.o cgemm_incopy.o cgemm_itcopy.o cgemm_oncopy.o cgemm_otcopy.o cgemm_beta.o ctrmm_kernel_LN.o ctrmm_kernel_LT.o ctrmm_kernel_LR.o ctrmm_kernel_LC.o ctrmm_kernel_RN.o ctrmm_kernel_RT.o ctrmm_kernel_RR.o ctrmm_kernel_RC.o ctrsm_kernel_LN.o ctrsm_kernel_LT.o ctrsm_kernel_LR.o ctrsm_kernel_LC.o ctrsm_kernel_RN.o ctrsm_kernel_RT.o ctrsm_kernel_RR.o ctrsm_kernel_RC.o ctrmm_iunucopy.o ctrmm_iunncopy.o ctrmm_ilnucopy.o ctrmm_ilnncopy.o ctrmm_iutucopy.o ctrmm_iutncopy.o ctrmm_iltucopy.o ctrmm_iltncopy.o ctrmm_ounucopy.o ctrmm_ounncopy.o ctrmm_olnucopy.o ctrmm_olnncopy.o ctrmm_outucopy.o ctrmm_outncopy.o ctrmm_oltucopy.o ctrmm_oltncopy.o ctrsm_iunucopy.o ctrsm_iunncopy.o ctrsm_ilnucopy.o ctrsm_ilnncopy.o ctrsm_iutucopy.o ctrsm_iutncopy.o ctrsm_iltucopy.o ctrsm_iltncopy.o ctrsm_ounucopy.o ctrsm_ounncopy.o ctrsm_olnucopy.o ctrsm_olnncopy.o ctrsm_outucopy.o ctrsm_outncopy.o ctrsm_oltucopy.o ctrsm_oltncopy.o csymm_iutcopy.o csymm_iltcopy.o csymm_outcopy.o csymm_oltcopy.o chemm_iutcopy.o chemm_iltcopy.o chemm_outcopy.o chemm_oltcopy.o comatcopy_k_cn.o comatcopy_k_rn.o comatcopy_k_ct.o comatcopy_k_rt.o comatcopy_k_cnc.o comatcopy_k_rnc.o comatcopy_k_ctc.o comatcopy_k_rtc.o cimatcopy_k_cn.o cimatcopy_k_rn.o cimatcopy_k_ct.o cimatcopy_k_rt.o cimatcopy_k_cnc.o cimatcopy_k_rnc.o cimatcopy_k_ctc.o cimatcopy_k_rtc.o cgeadd_k.o zamax_k.o zamin_k.o izamax_k.o izamin_k.o zasum_k.o zaxpy_k.o zaxpyc_k.o zcopy_k.o zdotc_k.o zdotu_k.o znrm2_k.o zdrot_k.o zscal_k.o zswap_k.o zaxpby_k.o zsum_k.o zgemv_n.o zgemv_t.o zgemv_r.o zgemv_c.o zgemv_o.o zgemv_u.o zgemv_s.o zgemv_d.o zsymv_U.o zsymv_L.o zhemv_U.o zhemv_L.o zhemv_V.o zhemv_M.o zgeru_k.o zgerc_k.o zgerv_k.o zgerd_k.o zgemm_kernel_n.o zgemm_kernel_r.o zgemm_kernel_l.o zgemm_kernel_b.o zgemm_oncopy.o zgemm_otcopy.o zgemm_beta.o ztrmm_kernel_LN.o ztrmm_kernel_LT.o ztrmm_kernel_LR.o ztrmm_kernel_LC.o ztrmm_kernel_RN.o ztrmm_kernel_RT.o ztrmm_kernel_RR.o ztrmm_kernel_RC.o ztrsm_kernel_LN.o ztrsm_kernel_LT.o ztrsm_kernel_LR.o ztrsm_kernel_LC.o ztrsm_kernel_RN.o ztrsm_kernel_RT.o ztrsm_kernel_RR.o ztrsm_kernel_RC.o ztrmm_iunucopy.o ztrmm_iunncopy.o ztrmm_ilnucopy.o ztrmm_ilnncopy.o ztrmm_iutucopy.o ztrmm_iutncopy.o ztrmm_iltucopy.o ztrmm_iltncopy.o ztrmm_ounucopy.o ztrmm_ounncopy.o ztrmm_olnucopy.o ztrmm_olnncopy.o ztrmm_outucopy.o ztrmm_outncopy.o ztrmm_oltucopy.o ztrmm_oltncopy.o ztrsm_iunucopy.o ztrsm_iunncopy.o ztrsm_ilnucopy.o ztrsm_ilnncopy.o ztrsm_iutucopy.o ztrsm_iutncopy.o ztrsm_iltucopy.o ztrsm_iltncopy.o ztrsm_ounucopy.o ztrsm_ounncopy.o ztrsm_olnucopy.o ztrsm_olnncopy.o ztrsm_outucopy.o ztrsm_outncopy.o ztrsm_oltucopy.o ztrsm_oltncopy.o zsymm_iutcopy.o zsymm_iltcopy.o zsymm_outcopy.o zsymm_oltcopy.o zhemm_iutcopy.o zhemm_iltcopy.o zhemm_outcopy.o zhemm_oltcopy.o zomatcopy_k_cn.o zomatcopy_k_rn.o zomatcopy_k_ct.o zomatcopy_k_rt.o zomatcopy_k_cnc.o zomatcopy_k_rnc.o zomatcopy_k_ctc.o zomatcopy_k_rtc.o zimatcopy_k_cn.o zimatcopy_k_rn.o zimatcopy_k_ct.o zimatcopy_k_rt.o zimatcopy_k_cnc.o zimatcopy_k_rnc.o zimatcopy_k_ctc.o zimatcopy_k_rtc.o zgeadd_k.o lsame.o scabs1.o dcabs1.o
+ar: `u' modifier ignored since `D' is the default (see `U')
+make[1]: Leaving directory '/workspace/OpenBLAS/kernel'
+MAKE_THREAD_STATUS=0
+$ cd /workspace/OpenBLAS && git status --short | head -100
+M CMakeLists.txt
+ M Makefile.arm
+ M Makefile.system
+ M cmake/fc.cmake
+ M common_power.h
+ M cpuid_x86.c
+ M driver/others/dynamic.c
+ M driver/others/init.c
+ M driver/others/memory.c
+ M exports/Makefile
+ M getarch.c
+ M kernel/arm/KERNEL.ARMV6
+ M kernel/x86_64/KERNEL.SKYLAKEX
+ M kernel/x86_64/iamax_sse.S
+ M lapack/getrf/getrf_parallel.c
+?? reproduce_issues.sh
+# task_tracker: Update task plan after verification
+Task list has been updated with 5 item(s).
+$ cd /workspace/OpenBLAS && git diff --name-only | sort && printf '\nTest path modifications:\n' && git diff --name-only | grep -E '^(test|utest|ctest|exports/test|lapack-netlib/TESTING)/' || true
+CMakeLists.txt
+Makefile.arm
+Makefile.system
+cmake/fc.cmake
+common_power.h
+cpuid_x86.c
+driver/others/dynamic.c
+driver/others/init.c
+driver/others/memory.c
+exports/Makefile
+getarch.c
+kernel/arm/KERNEL.ARMV6
+kernel/x86_64/KERNEL.SKYLAKEX
+kernel/x86_64/iamax_sse.S
+lapack/getrf/getrf_parallel.c
+
+Test path modifications:
+# task_tracker: Mark OpenBLAS task plan complete
+Task list has been updated with 5 item(s).
+# finish: Finish OpenBLAS issue implementation
+Implemented the requested non-test OpenBLAS fixes in `/workspace/OpenBLAS`.
+
+Summary of changes:
+- Fixed Linux affinity handling for older glibc paths (`CPU_ISSET`, `CPU_COUNT`, and uninitialized `cpusetp`).
+- Made `USE_TLS=0` and `NO_AFFINITY=0` behave correctly in the make build.
+- Added `NO_AFFINITY` as a CMake option, defaulting ON.
+- Fixed GCC/Clang AVX512 compiler capability detection in `getarch.c` without redefining `NO_AVX512`.
+- Removed forced ARM `-march=armv*` flags from `Makefile.arm`.
+- Fixed the x86_64 non-unit-stride `isamin` scalar compare bug.
+- Disabled SkylakeX DGEMM inner-copy overrides to inherit the conservative Haswell fallback.
+- Split ARMV6 index-returning min/max kernels from value-returning VFP kernels for softfp correctness.
+- Added FreeBSD/powerpc64 and PPC970 FreeBSD macro handling.
+- Added Intel Ice Lake CPUID handling in static and dynamic detection.
+- Avoided PGI’s broken `.init,"ax"` inline asm path by using constructor/destructor attributes for PGI.
+- Improved `munmap` failure diagnostics with `strerror(errno)`.
+- Avoided spurious gfortran runtime linkage in relevant make/CMake paths.
+- Changed macOS `install_name` to avoid embedding the build directory.
+- Removed the three redundant locked polling reads in `getrf_parallel.c`.
+- Added `/workspace/OpenBLAS/reproduce_issues.sh` as the requested reproduction/verification script.
+
+Verification run:
+- `bash reproduce_issues.sh` — passed.
+- `bash -n reproduce_issues.sh` — passed.
+- `cmake -S . -B /tmp/openblas-cmake-check -DNOFORTRAN=1 -DBUILD_WITHOUT_CBLAS=ON -DNO_AFFINITY=ON` — passed.
+- `make TARGET=ARMV8 NOFORTRAN=1 ONLY_CBLAS=1 USE_THREAD=1 NO_AFFINITY=0 -j2 libs` — passed, followed by `make clean`.
+
+I also verified that no files under the repository’s test directories were modified.

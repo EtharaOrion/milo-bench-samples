@@ -1,0 +1,200 @@
+$     parts=Text(s).split('\0', allow_blank=True)
+$     print(repr(s), [p.plain for p in parts])
+$ PY
+'\x00bar' ['', 'bar']
+'foo\x00' ['foo', '']
+'foo\x00bar' ['foo', 'bar']
+'foo\x00\x00bar' ['foo', '', 'bar']
+# file_editor: Improve carriage return handling with markup-safe placeholder
+The file /workspace/rich/rich/console.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/console.py:
+  1419	                append(sep_text.join(text))
+  1420	                del text[:]
+  1421	
+  1422	        def append_text_with_control(text_value: str) -> None:
+  1423	            if "\r" not in text_value:
+  1424	                append_text(
+  1425	                    self.render_str(
+  1426	                        text_value,
+  1427	                        emoji=emoji,
+  1428	                        markup=markup,
+  1429	                        highlighter=_highlighter,
+  1430	                    )
+  1431	                )
+  1432	                return
+  1433	            rendered_text = self.render_str(
+  1434	                text_value.replace("\r", "\0"),
+  1435	                emoji=emoji,
+  1436	                markup=markup,
+  1437	                highlighter=_highlighter,
+  1438	            )
+  1439	            parts = rendered_text.split("\0", allow_blank=True)
+  1440	            for index, part in enumerate(parts):
+  1441	                if part:
+  1442	                    append_text(part)
+  1443	                if index != len(parts) - 1:
+  1444	                    check_text(end_text=False)
+  1445	                    append(Control(ControlType.CARRIAGE_RETURN))
+  1446	
+  1447	        for renderable in objects:
+  1448	            # I promise this is sane
+  1449	            # This detects an object which claims to have all attributes, such as MagicMock.mock_calls
+  1450	            if hasattr(
+  1451	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python - <<'PY'
+$ import io
+$ from rich.console import Console
+$ for text in ['foo\rbar', '[red]foo\rbar[/]']:
+$     s=io.StringIO()
+$     c=Console(file=s, force_terminal=True, color_system='standard', _environ={})
+$     c.print(text, end='')
+$     print(repr(s.getvalue()))
+$     assert '\r' in s.getvalue()
+$ PY
+$ python -m pytest tests/test_control.py::test_strip_control_codes tests/test_text.py::test_strip_control_codes -q
+cd /workspace/rich && python - <<'PY'
+import io
+from rich.console import Console
+for text in ['foo\rbar', '[red]foo\rbar[/]']:
+    s=io.StringIO()
+    c=Console(file=s, force_terminal=True, color_system='standard', _environ={})
+    c.print(text, end='')
+    print(repr(s.getvalue()))
+    assert '\r' in s.getvalue()
+PY
+
+'foo\rbar'
+'\x1b[31mfoo\x1b[0m\r\x1b[31mbar\x1b[0m'
+
+
+python -m pytest tests/test_control.py::test_strip_control_codes tests/test_text.py::test_strip_control_codes -q
+..                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               [100%]
+2 passed in 0.06s
+$ cd /workspace/rich && python -m compileall -q rich && python -m pytest tests/test_console.py::test_dumb_terminal tests/test_console.py::test_export_html tests/test_console.py::test_export_html_inline tests/test_console.py::test_save_html tests/test_logging.py tests/test_pretty.py::test_user_dict tests/test_table.py tests/test_control.py::test_strip_control_codes tests/test_text.py::test_strip_control_codes -q
+................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 [100%]
+16 passed in 0.26s
+$ cd /workspace/rich && python - <<'PY'
+$ import io, logging, os, subprocess, sys
+$ from rich.console import Console
+$ from rich.logging import RichHandler
+$ from rich.pretty import pretty_repr
+$ 
+$ result = subprocess.run([sys.executable, '-m', 'rich.json'], input='{"x": 1}', text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'PYTHONPATH': os.getcwd()})
+$ assert result.returncode == 0, result.stderr
+$ assert '"x": 1' in result.stdout
+$ 
+$ stream = io.StringIO()
+$ console = Console(file=stream, force_terminal=True, color_system='standard', width=80, _environ={})
+$ handler = RichHandler(console=console, show_time=False, show_path=False)
+$ logger = logging.getLogger('rich_direct_check')
+$ logger.handlers[:] = [handler]
+$ logger.propagate = False
+$ logger.setLevel(1)
+$ logging.addLevelName(70, '[green]CUSTOM[/]')
+$ logger.log(70, 'message')
+$ assert '[green]' not in stream.getvalue() and '\x1b[32m' in stream.getvalue(), repr(stream.getvalue())
+$ 
+$ html_stream = io.StringIO()
+$ html_console = Console(file=html_stream, record=True)
+$ html_console.print('<tag attr="value">\'&')
+$ html = html_console.export_html(inline_styles=True)
+$ assert '&quot;value&quot;' in html and '&#x27;&amp;' in html
+$ 
+$ class BadRichRepr:
+$     __rich_repr__ = object()
+$ assert 'BadRichRepr' in pretty_repr(BadRichRepr())
+$ 
+$ term_console = Console(force_terminal=True, _environ={'TERM': 'unknown'})
+$ assert not term_console.is_dumb_terminal and term_console.color_system is not None
+$ cr_stream = io.StringIO()
+$ cr_console = Console(file=cr_stream, force_terminal=True, width=20, _environ={})
+$ cr_console.print('\r', 'updated', sep='', end='')
+$ assert cr_stream.getvalue().startswith('\rupdated'), repr(cr_stream.getvalue())
+$ print('direct reproduction checks: ok')
+$ PY
+cd /workspace/rich && python - <<'PY'
+import io, logging, os, subprocess, sys
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.pretty import pretty_repr
+result = subprocess.run([sys.executable, '-m', 'rich.json'], input='{"x": 1}', text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'PYTHONPATH': os.getcwd()})
+assert result.returncode == 0, result.stderr
+assert '"x": 1' in result.stdout
+stream = io.StringIO()
+console = Console(file=stream, force_terminal=True, color_system='standard', width=80, _environ={})
+handler = RichHandler(console=console, show_time=False, show_path=False)
+logger = logging.getLogger('rich_direct_check')
+logger.handlers[:] = [handler]
+logger.propagate = False
+logger.setLevel(1)
+logging.addLevelName(70, '[green]CUSTOM[/]')
+logger.log(70, 'message')
+assert '[green]' not in stream.getvalue() and '\x1b[32m' in stream.getvalue(), repr(stream.getvalue())
+html_stream = io.StringIO()
+html_console = Console(file=html_stream, record=True)
+html_console.print('<tag attr="value">\'&')
+html = html_console.export_html(inline_styles=True)
+assert '&quot;value&quot;' in html and '&#x27;&amp;' in html
+class BadRichRepr:
+    __rich_repr__ = object()
+assert 'BadRichRepr' in pretty_repr(BadRichRepr())
+term_console = Console(force_terminal=True, _environ={'TERM': 'unknown'})
+assert not term_console.is_dumb_terminal and term_console.color_system is not None
+cr_stream = io.StringIO()
+cr_console = Console(file=cr_stream, force_terminal=True, width=20, _environ={})
+cr_console.print('\r', 'updated', sep='', end='')
+assert cr_stream.getvalue().startswith('\rupdated'), repr(cr_stream.getvalue())
+print('direct reproduction checks: ok')
+PY
+direct reproduction checks: ok
+# task_tracker: Complete task tracker with final verification notes
+Task list has been updated with 5 item(s).
+$ cd /workspace/rich && git status --short && git --no-pager diff --stat
+M CHANGELOG.md
+ M docs/requirements.txt
+ M poetry.lock
+ M rich/console.py
+ M rich/json.py
+ M rich/jupyter.py
+ M rich/logging.py
+ M rich/pretty.py
+ M rich/table.py
+ CHANGELOG.md          |  4 ++--
+ docs/requirements.txt |  2 +-
+ poetry.lock           | 19 +++++++++----------
+ rich/console.py       | 52 ++++++++++++++++++++++++++++++++++++----------------
+ rich/json.py          |  9 +++++++--
+ rich/jupyter.py       |  7 ++-----
+ rich/logging.py       | 10 ++++++++++
+ rich/pretty.py        | 10 +++++-----
+ rich/table.py         |  4 ++--
+ 9 files changed, 74 insertions(+), 43 deletions(-)
+# finish: Summarize completed changes and verification results
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary of changes:
+- `rich.json` CLI now reads from stdin when no path is provided, while preserving `-` stdin support.
+- `Console` now treats `TERM=unknown` as usable when forced, while still treating `TERM=dumb` as dumb.
+- `Console.print` now preserves carriage returns (`\r`) as terminal control segments, without changing `Text` / `strip_control_codes` sanitization behavior.
+- Jupyter output now respects an explicitly supplied `file=` / `stderr=True` instead of always displaying via IPython.
+- HTML export and Jupyter HTML rendering now use `html.escape`, including quote escaping and escaped link attributes.
+- `RichHandler` custom log level names can include markup, e.g. `[green]CUSTOM[/]`, and render styled text instead of literal markup.
+- `pretty_repr` now ignores non-callable `__rich_repr__` attributes instead of crashing.
+- Removed a duplicate import in `rich.pretty`.
+- Fixed `Table` docstring typos.
+- Updated changelog years and bumped dependency metadata for `typing-extensions`, `pytest`, `Sphinx`, and `ipywidgets` with refreshed lock hashes.
+
+Verification performed:
+- Created and ran a temporary reproduction script; confirmed the original JSON-stdin failure, then confirmed all reproduction checks passed after fixes. Removed the temporary script afterward.
+- Ran direct reproduction checks for JSON stdin, custom log markup, HTML quote escaping, bad `__rich_repr__`, `TERM=unknown`, and carriage return preservation: passed.
+- Ran focused pytest checks for modified paths:
+  - `tests/test_console.py::{test_dumb_terminal,test_export_html,test_export_html_inline,test_save_html}`
+  - `tests/test_logging.py`
+  - `tests/test_pretty.py::test_user_dict`
+  - `tests/test_table.py`
+  - `tests/test_control.py::test_strip_control_codes`
+  - `tests/test_text.py::test_strip_control_codes`
+  - Result: `16 passed`.
+- Ran full suite: `536 passed, 1 skipped, 17 failed`. The remaining failures appear unrelated to these changes and are due to the local unlocked environment producing different expected output under Python 3.12 / Pygments 2.20 / attrs 26, mainly syntax highlighting / inspect / attrs repr golden-output differences.
+
+Note: I attempted to run Black on the modified Python files, but `black` is not installed in this environment (`No module named black`). I manually kept the edited code formatted.

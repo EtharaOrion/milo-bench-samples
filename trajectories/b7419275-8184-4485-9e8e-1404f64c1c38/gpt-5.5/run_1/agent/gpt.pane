@@ -1,0 +1,200 @@
+   source: Literal,
+
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
++
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ export type ImportSpecifier = ModuleSpecifier & {
+@@ -952,6 +954,8 @@ export type ExportAllDeclaration = NodeBase & {
+   type: "ExportAllDeclaration",
+   source: Literal,
+   exportKind?: "type" | "value", // TODO: Not in spec
++
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ // JSX (TODO: Not in spec)
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts
+index cb3179edfa..536d1a3d2d 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts
+@@ -1,7 +1,7 @@
+ import { declare } from "@babel/helper-plugin-utils";
+ import type { PluginPass } from "@babel/core";
+ import type { Visitor } from "@babel/traverse";
+-import { shouldTransform } from "./util";
++import { renameCollidingFunctionParam, shouldTransform } from "./util";
+
+ export default declare(api => {
+   api.assertVersion("^7.16.0");
+@@ -14,10 +14,8 @@ export default declare(api => {
+         const name = shouldTransform(path);
+         if (name) {
+           // Now we have (function a([a]) {})
+-          const { scope } = path;
+-          // invariant: path.node.id is always an Identifier here
+-          const newParamName = scope.generateUid(name);
+-          scope.rename(name, newParamName);
++          const newParamName = path.scope.generateUid(name);
++          renameCollidingFunctionParam(path, name, newParamName);
+         }
+       },
+     } as Visitor<PluginPass>,
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd8..c4cc88828c 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -1,6 +1,21 @@
+ import type { FunctionExpression } from "@babel/types";
+ import type { NodePath } from "@babel/traverse";
+
++function isFunctionParam(
++  path: NodePath,
++  functionPath: NodePath<FunctionExpression>,
++) {
++  return functionPath
++    .get("params")
++    .some(
++      param => path === param || path.findParent(parent => parent === param),
++    );
++}
++
++function isNonSimpleParameter(path: NodePath) {
++  return !path.isIdentifier();
++}
++
+ /**
+  * Check whether a function expression can be affected by
+  * https://bugs.webkit.org/show_bug.cgi?id=220517
+@@ -15,23 +30,36 @@ export function shouldTransform(
+   if (!functionId) return false;
+
+   const name = functionId.name;
+-  // On collision, `getOwnBinding` returns the param binding
+-  // with the id binding be registered as constant violation
+-  const paramNameBinding = path.scope.getOwnBinding(name);
+-  const constantViolations = paramNameBinding.constantViolations;
++  const binding = path.scope.getOwnBinding(name);
++  if (!binding) return false;
++
++  const { constantViolations } = binding;
+   if (constantViolations.length === 0) {
+     // the function scope has no such collided bindings
+     return false;
+   }
+-  const firstViolation = constantViolations[0];
+
++  if (binding.path.node === node) {
++    // Current @babel/traverse registers the function id as the binding and
++    // the colliding parameter pattern as a constant violation.
++    return constantViolations.some(
++      violation =>
++        isFunctionParam(violation, path) && isNonSimpleParameter(violation),
++    )
++      ? name
++      : false;
++  }
++
++  // Older @babel/traverse versions registered the parameter as the binding and
++  // the function id as a constant violation.
++  const firstViolation = constantViolations[0];
+   if (firstViolation.node !== node) {
+     // the violation does not happen in id
+     // e.g. (function a() { var a; })
+     return false;
+   }
+
+-  if (paramNameBinding.identifier === paramNameBinding.path.node) {
++  if (binding.identifier === binding.path.node) {
+     // the param binding is a simple parameter
+     // e.g. (function a(a) {})
+     return false;
+@@ -39,3 +67,32 @@ export function shouldTransform(
+
+   return name;
+ }
++
++export function renameCollidingFunctionParam(
++  path: NodePath<FunctionExpression>,
++  name: string,
++  newName: string,
++) {
++  const binding = path.scope.getOwnBinding(name);
++  if (!binding || binding.path.node !== path.node) {
++    path.scope.rename(name, newName);
++    return;
++  }
++
++  for (const param of path.get("params")) {
++    const ids = param.getBindingIdentifierPaths(true)[name] as unknown as
++      | NodePath[]
++      | undefined;
++    if (ids) {
++      for (const id of ids) {
++        id.node.name = newName;
++      }
++    }
++  }
++
++  for (const reference of binding.referencePaths) {
++    reference.node.name = newName;
++  }
++
++  path.scope.crawl();
++}
+$ cd /workspace/babel && node - <<'NODE'
+$ require('@babel/register')({ extensions: ['.ts'], ignore: [/node_modules/], babelrc: false, configFile: false, presets: [[require.resolve('@babel/preset-typescript'), { allowDeclareFields: true }]], plugins: [require.resolve('@babel/plugin-transform-modules-commonjs')] });
+$ const assert = require('assert');
+$ const { parseSync, traverse } = require('@babel/core');
+$ const { shouldTransform } = require('./packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts');
+$ let target;
+$ traverse(parseSync('(function a() {})', { filename: 'x.js', configFile: false }), { FunctionExpression(path) { target = path; path.stop(); } });
+$ delete target.scope.bindings.a;
+$ assert.strictEqual(shouldTransform(target), false);
+$ console.log('missing binding guard verified');
+$ NODE
+Browserslist: caniuse-lite is outdated. Please run:
+npx browserslist@latest --update-db
+
+Why you should do it regularly:
+https://github.com/browserslist/browserslist#browsers-data-updating
+Browserslist: caniuse-lite is outdated. Please run:
+npx browserslist@latest --update-db
+
+Why you should do it regularly:
+https://github.com/browserslist/browserslist#browsers-data-updating
+missing binding guard verified
+$ cd /workspace/babel && git status --short
+M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+# task_tracker: Mark all tasks completed
+Task list has been updated with 5 item(s).
+# finish: Summarize Babel source fixes and verification results
+Implemented the requested non-test source changes in `/workspace/babel`.
+
+Summary:
+- Added the missing `assertions?: $ReadOnlyArray<ImportAttribute>` parser Flow types for:
+  - `ImportDeclaration`
+  - `ExportAllDeclaration`
+- Fixed `@babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression` so it:
+  - Safely handles missing function-id bindings instead of throwing `Cannot read properties of undefined`.
+  - Supports the current Babel binding shape where the function id is the binding and colliding params are constant violations.
+  - Preserves compatibility with the older binding shape.
+  - Renames the colliding parameter binding/references without renaming the function expression id.
+
+Files changed:
+- `packages/babel-parser/src/types.js`
+- `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/index.ts`
+- `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts`
+
+Verification performed:
+- Created and ran a temporary reproduction/edge-case script, then removed it.
+  - `ts-node repro-13907.ts` could not be run because `ts-node` is not installed in this environment.
+  - Ran the same reproduction with Node and Babel register successfully.
+- Ran targeted tests:
+  - `node_modules/.bin/jest packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/test/util.test.js --runInBand` ✅
+- Verified parser import/export assertions AST fields through `@babel/core.parseSync` ✅
+- Verified `shouldTransform` safely returns `false` when the binding is missing ✅
+- Attempted all Jest tests with `node_modules/.bin/jest --runInBand --bail`; the run fails because this checkout lacks generated/build artifacts such as package `lib/` outputs and runtime generated files, not because of the modified source files.

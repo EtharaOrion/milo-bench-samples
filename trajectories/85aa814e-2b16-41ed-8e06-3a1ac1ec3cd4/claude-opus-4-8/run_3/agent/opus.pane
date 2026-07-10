@@ -1,0 +1,200 @@
+  1180	            .unwrap()
+  1181	            .map(|v| v.as_str())
+  1182	            .collect::<Vec<_>>(),
+  1183	        ["file1", "file2", "file3"]
+  1184	    );
+  1185	    assert!(m.contains_id("target"));
+  1186	    assert_eq!(
+  1187	        m.get_one::<String>("target").map(|v| v.as_str()).unwrap(),
+  1188	        "target"
+  1189	    );
+  1190	    assert_eq!(
+  1191	        m.get_one::<String>("opt").map(|v| v.as_str()).unwrap(),
+  1192	        "test"
+  1193	    );
+  1194	}
+  1195	
+  1196	#[test]
+  1197	fn low_index_positional_with_flag() {
+  1198	    let m = Command::new("lip")
+  1199	        .arg(
+  1200	            Arg::new("files")
+  1201	                .index(1)
+  1202	                .takes_value(true)
+  1203	                .required(true)
+  1204	                .multiple_values(true),
+  1205	        )
+  1206	        .arg(Arg::new("target").index(2).required(true))
+  1207	        .arg(Arg::new("flg").long("flag").action(ArgAction::SetTrue))
+  1208	        .try_get_matches_from(vec!["lip", "file1", "file2", "file3", "target", "--flag"]);
+  1209	
+  1210	    assert!(m.is_ok(), "{:?}", m.unwrap_err().kind());
+  1211	    let m = m.unwrap();
+  1212	
+  1213	    assert!(m.contains_id("files"));
+  1214	    assert_eq!(
+  1215	        m.get_many::<String>("files")
+  1216	            .unwrap()
+  1217	            .map(|v| v.as_str())
+  1218	            .collect::<Vec<_>>(),
+  1219	        ["file1", "file2", "file3"]
+  1220	    );
+  1221	    assert!(m.contains_id("target"));
+  1222	    assert_eq!(
+  1223	        m.get_one::<String>("target").map(|v| v.as_str()).unwrap(),
+  1224	        "target"
+  1225	    );
+  1226	    assert!(*m.get_one::<bool>("flg").expect("defaulted by clap"));
+  1227	}
+  1228	
+  1229	#[test]
+  1230	fn multiple_value_terminator_option() {
+# file_editor: /workspace/clap/tests/builder/multiple_values.rs
+The file /workspace/clap/tests/builder/multiple_values.rs has been edited. Here's the result of running `cat -n` on a snippet of /workspace/clap/tests/builder/multiple_values.rs:
+  1223	        m.get_one::<String>("target").map(|v| v.as_str()).unwrap(),
+  1224	        "target"
+  1225	    );
+  1226	    assert!(*m.get_one::<bool>("flg").expect("defaulted by clap"));
+  1227	}
+  1228	
+  1229	#[test]
+  1230	fn low_index_positional_with_option_and_flag_first() {
+  1231	    let m = Command::new("lip")
+  1232	        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue))
+  1233	        .arg(Arg::new("one").long("one").action(ArgAction::Set))
+  1234	        .arg(Arg::new("two").long("two").action(ArgAction::Set))
+  1235	        .arg(
+  1236	            Arg::new("input")
+  1237	                .index(1)
+  1238	                .required(true)
+  1239	                .multiple_values(true),
+  1240	        )
+  1241	        .arg(Arg::new("output").index(2).required(true))
+  1242	        .try_get_matches_from(vec![
+  1243	            "lip", "--one", "1", "--two", "2", "3", "4", "5", "6", "7", "8",
+  1244	        ]);
+  1245	
+  1246	    assert!(m.is_ok(), "{:?}", m.unwrap_err().kind());
+  1247	    let m = m.unwrap();
+  1248	
+  1249	    assert_eq!(
+  1250	        m.get_many::<String>("input")
+  1251	            .unwrap()
+  1252	            .map(|v| v.as_str())
+  1253	            .collect::<Vec<_>>(),
+  1254	        ["3", "4", "5", "6", "7"]
+  1255	    );
+  1256	    assert_eq!(
+  1257	        m.get_one::<String>("output").map(|v| v.as_str()).unwrap(),
+  1258	        "8"
+  1259	    );
+  1260	    assert_eq!(m.get_one::<String>("one").map(|v| v.as_str()).unwrap(), "1");
+  1261	    assert_eq!(m.get_one::<String>("two").map(|v| v.as_str()).unwrap(), "2");
+  1262	    assert!(!*m.get_one::<bool>("yes").expect("defaulted by clap"));
+  1263	}
+  1264	
+  1265	#[test]
+  1266	fn multiple_value_terminator_option() {
+  1267	    let m = Command::new("lip")
+  1268	        .arg(
+  1269	            Arg::new("files")
+  1270	                .short('f')
+  1271	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/clap && cargo test --test builder low_index 2>&1 | tail -20
+running 15 tests
+test legacy::multiple_values::low_index_positional ... ok
+test legacy::multiple_values::low_index_positional_in_subcmd ... ok
+test legacy::multiple_values::low_index_positional_not_required - should panic ... ok
+test legacy::multiple_values::low_index_positional_last_multiple_too - should panic ... ok
+test legacy::multiple_values::low_index_positional_too_far_back - should panic ... ok
+test legacy::multiple_values::low_index_positional_with_flag ... ok
+test legacy::multiple_values::low_index_positional_with_option ... ok
+test multiple_values::low_index_positional ... ok
+test multiple_values::low_index_positional_in_subcmd ... ok
+test multiple_values::low_index_positional_last_multiple_too - should panic ... ok
+test multiple_values::low_index_positional_not_required - should panic ... ok
+test multiple_values::low_index_positional_too_far_back - should panic ... ok
+test multiple_values::low_index_positional_with_flag ... ok
+test multiple_values::low_index_positional_with_option ... ok
+test multiple_values::low_index_positional_with_option_and_flag_first ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 1568 filtered out; finished in 0.00s
+$ cd /workspace/clap && rm examples/repro3959.rs && cargo test --test builder 2>&1 | tail -5
+test version::version_flag_from_version_long ... ok
+test version::version_flag_from_version_short ... ok
+
+test result: ok. 1583 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+$ cd /workspace/clap && cargo test --lib --tests 2>&1 | grep -E "test result|error\[|warning: unused" | tail -30
+warning: unused return value of `App::<'help>::subcommand` that must be used
+test result: ok. 112 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1583 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.76s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+$ cd /workspace/clap && git --no-pager diff src/
+diff --git a/src/parser/parser.rs b/src/parser/parser.rs
+index 2352eff6..0230d6cb 100644
+--- a/src/parser/parser.rs
++++ b/src/parser/parser.rs
+@@ -128,7 +128,12 @@ impl<'help, 'cmd> Parser<'help, 'cmd> {
+                     low_index_mults
+                 );
+
+-                if low_index_mults || missing_pos {
++                if matches!(parse_state, ParseState::Opt(_)) {
++                    // We are still consuming values for a previously seen option, so
++                    // the current argument is not a positional and the counter must
++                    // not be advanced based on it.
++                    pos_counter
++                } else if low_index_mults || missing_pos {
+                     let skip_current = if let Some(n) = raw_args.peek(&args_cursor) {
+                         if let Some(arg) = self
+                             .cmd
+$ cd /workspace/clap && git --no-pager diff --stat && echo "---" && git status --short
+src/parser/parser.rs             |  7 ++++++-
+ tests/builder/multiple_values.rs | 36 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+---
+ M src/parser/parser.rs
+ M tests/builder/multiple_values.rs
+# finish: Completed fix for positional parsing bug
+## Summary
+
+I resolved issue #3959 ("Error with multiple flags and positional arguments") in the clap repository.
+
+### Problem
+When options/flags were placed before multiple positional arguments (e.g. `--one 1 --two 2 3 4 5 6 7 8` with a `multiple_values` positional `input` and a required positional `output`), clap incorrectly errored with `Found argument '4' which wasn't expected`.
+
+### Root Cause
+In `src/parser/parser.rs`, the `get_matches_with` loop's "Correct pos_counter" block executed at the start of **every** iteration — including iterations where the current token was actually a value being consumed by a previously seen option (`parse_state == ParseState::Opt(_)`).
+
+While processing `1` (the value of `--one`), the `low_index_mults` heuristic peeked at the next token (`--two`), decided it looked like a new argument, and **bumped `pos_counter` from 1 to 2**. That stray mutation persisted, so subsequent real positional values were assigned to the wrong positional index (`output` instead of `input`), eventually triggering the "unexpected argument" error.
+
+### Fix
+Added a guard so the positional-counter correction is skipped while we are still consuming an option's values (since in that case the current argument is not a positional):
+
+```rust
+if matches!(parse_state, ParseState::Opt(_)) {
+    // We are still consuming values for a previously seen option, so
+    // the current argument is not a positional and the counter must
+    // not be advanced based on it.
+    pos_counter
+} else if low_index_mults || missing_pos {
+    ...
+```
+
+### Verification
+- Confirmed via a reproduction binary that the parsing now produces the expected output (`input: ["3","4","5","6","7"]`, `output: "8"`, `one: Some("1")`, `two: Some("2")`, `yes: Some(false)`), then removed the temporary file.
+- Added regression test `low_index_positional_with_option_and_flag_first` in `tests/builder/multiple_values.rs`.
+- All test suites pass with `0 failed`: builder (1583 tests, including the new one), lib (112), macros (25), derive, and others. Existing `low_index_positional_*` tests (options after positionals) still pass, confirming no regressions.
+
+### Files changed
+- `src/parser/parser.rs` — the parser fix (minimal, 6 lines added).
+- `tests/builder/multiple_values.rs` — new regression test.
+
+Note: The task header also referenced issue #3955 ("docs: reduce the need to guess"), but the reproducible code, debug output, and expected behavior all concern the parser bug (#3959), which is the substantive, implementable change addressed here.

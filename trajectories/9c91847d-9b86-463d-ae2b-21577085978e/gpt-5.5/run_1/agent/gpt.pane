@@ -1,0 +1,200 @@
+   118	            yield from first_prefix if line_number == 0 else next_prefix
+   119	            yield from line
+   120	            yield Segment.line()
+   121	
+   122	        if self.expanded:
+   123	            child_prefix = prefix + [not last]
+   124	            for index, child in enumerate(self.children):
+   125	                yield from child._render(
+   126	                    console,
+   127	                    options,
+   128	                    child_prefix,
+   129	                    index == len(self.children) - 1,
+   130	                )
+   131	
+   132	    def _render_label(
+   133	        self, console: "Console", options: "ConsoleOptions", prefix_width: int
+   134	    ) -> List[List[Segment]]:
+   135	        style = console.get_style(self.style)
+   136	        label_options = options.update(
+   137	            max_width=max(1, options.max_width - prefix_width),
+   138	            highlight=self.highlight,
+   139	        )
+   140	        lines = console.render_lines(self.label, label_options, style=style, pad=False)
+   141	        return lines or [[]]
+   142	
+   143	    def __rich_measure__(self, console: "Console", max_width: int) -> Measurement:
+   144	        width = self._measure(console, max_width, 0)
+   145	        return Measurement(0, min(max_width, width))
+   146	
+   147	    def _measure(self, console: "Console", max_width: int, level: int) -> int:
+   148	        label_width = 0
+   149	        if not (level == 0 and self.hide_root):
+   150	            label_measurement = Measurement.get(
+   151	                console, self.label, max(1, max_width - level * 4)
+   152	            )
+   153	            label_width = label_measurement.maximum + level * 4
+   154	        if self.expanded and self.children:
+   155	            child_width = max(
+   156	                child._measure(console, max_width, level + 1)
+   157	                for child in self.children
+   158	            )
+   159	            label_width = max(label_width, child_width)
+   160	        return label_width
+   161	
+   162	    @staticmethod
+   163	    def _get_guide(options: "ConsoleOptions") -> Tuple[str, str, str, str]:
+   164	        if options.ascii_only:
+   165	            return "|   ", "    ", "+-- ", "`-- "
+   166	        return "│   ", "    ", "├── ", "└── "
+   167	
+# file_editor: View new Tree docs reference
+Here's the result of running `cat -n` on /workspace/rich/docs/source/reference/tree.rst:
+     1	Tree
+     2	====
+     3	
+     4	.. automodule:: rich.tree
+     5	    :members:
+     6	
+# file_editor: Wrap long child style docstring line
+The file /workspace/rich/rich/tree.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/tree.py:
+    54	
+    55	        Args:
+    56	            label (RenderableType): The renderable or text for the child label.
+    57	            style (StyleType, optional): Style of the child tree, or None to
+    58	                inherit.
+    59	            guide_style (StyleType, optional): Style of the guide lines, or None
+    60	                to inherit.
+    61	            expanded (bool, optional): Also display children. Defaults to True.
+    62	            highlight (bool, optional): Highlight labels, or None to inherit.
+    63	
+    64	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Wrap long render_lines call in Tree
+The file /workspace/rich/rich/tree.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/tree.py:
+   138	            max_width=max(1, options.max_width - prefix_width),
+   139	            highlight=self.highlight,
+   140	        )
+   141	        lines = console.render_lines(
+   142	            self.label, label_options, style=style, pad=False
+   143	        )
+   144	        return lines or [[]]
+   145	
+   146	    def __rich_measure__(self, console: "Console", max_width: int) -> Measurement:
+   147	        width = self._measure(console, max_width, 0)
+   148	        return Measurement(0, min(max_width, width))
+   149	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python - <<'PY'
+$ import io
+$ from rich.console import Console
+$ from rich.style import Style
+$ from rich.tree import Tree
+$ 
+$ file = io.StringIO()
+$ Console(file=file, force_terminal=True, color_system=None, legacy_windows=False).print('[red bold]Hello[/]')
+$ text = file.getvalue()
+$ assert '\x1b[1m' in text and '\x1b[31m' not in text
+$ file = io.StringIO()
+$ Console(file=file, force_terminal=False, color_system='standard').print('[red bold]Hello[/]')
+$ assert file.getvalue() == 'Hello\n'
+$ assert Style(color='red', italic=True).render('x', color_system=None) == '\x1b[3mx\x1b[0m'
+$ tree = Tree('root')
+$ branch = tree.add('branch')
+$ branch.add('leaf')
+$ tree.add('last')
+$ file = io.StringIO()
+$ Console(file=file, force_terminal=False, width=40).print(tree)
+$ assert file.getvalue().splitlines() == ['root', '├── branch', '│   └── leaf', '└── last']
+$ print('inline smoke checks passed')
+$ PY
+$ python -m py_compile rich/tree.py rich/style.py rich/console.py rich/default_styles.py
+cd /workspace/rich && python - <<'PY'
+import io
+from rich.console import Console
+from rich.style import Style
+from rich.tree import Tree
+file = io.StringIO()
+Console(file=file, force_terminal=True, color_system=None, legacy_windows=False).print('[red bold]Hello[/]')
+text = file.getvalue()
+assert '\x1b[1m' in text and '\x1b[31m' not in text
+file = io.StringIO()
+Console(file=file, force_terminal=False, color_system='standard').print('[red bold]Hello[/]')
+assert file.getvalue() == 'Hello\n'
+assert Style(color='red', italic=True).render('x', color_system=None) == '\x1b[3mx\x1b[0m'
+tree = Tree('root')
+branch = tree.add('branch')
+branch.add('leaf')
+tree.add('last')
+file = io.StringIO()
+Console(file=file, force_terminal=False, width=40).print(tree)
+assert file.getvalue().splitlines() == ['root', '├── branch', '│   └── leaf', '└── last']
+print('inline smoke checks passed')
+PY
+
+inline smoke checks passed
+
+
+python -m py_compile rich/tree.py rich/style.py rich/console.py rich/default_styles.py
+$ cd /workspace/rich && pytest tests/test_console.py tests/test_style.py tests/test_segment.py -q
+...................................................................................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              [100%]
+83 passed in 0.13s
+$ cd /workspace/rich && git status --short && find rich -type d -name __pycache__ -maxdepth 3 | head -20 && git --no-pager diff --check
+M docs/requirements.txt
+ M docs/source/progress.rst
+ M docs/source/reference.rst
+ M poetry.lock
+ M rich/console.py
+ M rich/default_styles.py
+ M rich/style.py
+?? docs/source/reference/tree.rst
+?? rich/tree.py
+find: warning: you have specified the global option -maxdepth after the argument -type, but global options are not positional, i.e., -maxdepth affects tests specified before it as well as those specified after it.  Please specify global options before other arguments.
+rich/__pycache__
+# think: Reflect on edge cases and visible test failures
+Your thought has been logged.
+# task_tracker: Mark all tasks complete with validation notes
+Task list has been updated with 6 item(s).
+# finish: Summarize completed Rich repository fixes and validation
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary of changes:
+- Added `rich.tree.Tree` renderable with:
+  - nested children via `add()`
+  - inherited label / guide styles
+  - collapsed branches via `expanded=False`
+  - `hide_root=True`
+  - ASCII fallback for non-UTF encodings
+  - measurement support
+- Added default styles:
+  - `tree`
+  - `tree.line`
+- Added Tree API docs reference page and included it in `docs/source/reference.rst`.
+- Fixed `Console(force_terminal=True, color_system=None)` so non-color attributes such as bold / italic render while colors are suppressed.
+- Fixed `Console(force_terminal=False, color_system='standard')` so terminal escape styling is suppressed.
+- Added missing `import time` to the Progress advanced usage docs example.
+- Bumped docs dependencies:
+  - `Sphinx==3.4.1` → `Sphinx==3.4.3`
+  - `sphinx-rtd-theme==0.5.0` → `sphinx-rtd-theme==0.5.1`
+- Bumped `ipywidgets` in `poetry.lock` from `7.6.2` to `7.6.3` with updated hashes.
+
+Validation performed:
+- Created and ran a temporary reproduction script before fixing; it confirmed the original color/style failure.
+- Expanded that script for edge cases covering:
+  - color disabled but attributes preserved
+  - `force_terminal=False` suppressing ANSI output
+  - nested Tree rendering
+  - hidden root
+  - collapsed branch
+  - ASCII tree guides
+- Reran the expanded reproduction script successfully, then removed it as a temporary file.
+- Ran final inline smoke checks successfully.
+- Ran Python compile checks successfully for modified Python modules.
+- Ran focused tests successfully:
+  - `pytest tests/test_console.py tests/test_style.py tests/test_segment.py -q`
+  - Result: `83 passed`
+
+Full suite note:
+- Ran `pytest -q`.
+- Result: `411 passed, 18 failed`.
+- The failures are from the repository’s existing visible expectations that conflict with the new #882 behavior where `color_system=None` now preserves text attributes, plus Python 3.12 introspection output differences in inspect tests. No test files were modified.

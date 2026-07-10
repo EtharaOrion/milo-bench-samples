@@ -1,0 +1,208 @@
+    59				if t.Before(entry.Attr.Mtime) {
+    60					w.WriteHeader(http.StatusPreconditionFailed)
+    61					return true
+    62				}
+    63			}
+    64		}
+    65	
+    66		ifNoneMatchETagHeader := r.Header.Get("If-None-Match")
+    67		ifModifiedSinceHeader := r.Header.Get("If-Modified-Since")
+    68		if ifNoneMatchETagHeader != "" {
+    69			if util.CanonicalizeETag(etag) == util.CanonicalizeETag(ifNoneMatchETagHeader) {
+    70				SetEtag(w, etag)
+    71				w.WriteHeader(http.StatusNotModified)
+    72				return true
+    73			}
+    74		} else if ifModifiedSinceHeader != "" {
+    75			if t, parseError := time.Parse(http.TimeFormat, ifModifiedSinceHeader); parseError == nil {
+    76				if !t.Before(entry.Attr.Mtime) {
+    77					SetEtag(w, etag)
+    78					w.WriteHeader(http.StatusNotModified)
+    79					return true
+    80				}
+    81			}
+    82		}
+    83	
+    84		return false
+    85	}
+    86	
+    87	func (fs *FilerServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request) {
+    88		ctx := r.Context()
+    89		path := r.URL.Path
+    90		isForDirectory := strings.HasSuffix(path, "/")
+$ cd /workspace/seaweedfs && grep -n "func (s3a \*S3ApiServer) getObjectETag\|func (s3a \*S3ApiServer) etagMatches" weed/s3api/*.go
+weed/s3api/s3api_object_handlers_put.go:1255:func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+weed/s3api/s3api_object_handlers_put.go:1264:func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+# file_editor: /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go
+Here's the result of running `cat -n` on /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go:
+  1255	func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+  1256		// Try to get ETag from Extended attributes first
+  1257		if etagBytes, hasETag := entry.Extended[s3_constants.ExtETagKey]; hasETag {
+  1258			return string(etagBytes)
+  1259		}
+  1260		// Fallback: calculate ETag from chunks
+  1261		return s3a.calculateETagFromChunks(entry.Chunks)
+  1262	}
+  1263	
+  1264	func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+  1265		// Clean the object ETag
+  1266		objectETag = strings.Trim(objectETag, `"`)
+  1267	
+  1268		// Split header value by commas to handle multiple ETags
+  1269		etags := strings.Split(headerValue, ",")
+  1270		for _, etag := range etags {
+  1271			etag = strings.TrimSpace(etag)
+  1272			etag = strings.Trim(etag, `"`)
+  1273			if etag == objectETag {
+  1274				return true
+  1275			}
+  1276		}
+  1277		return false
+  1278	}
+  1279	
+  1280	// checkConditionalHeadersWithGetter is a testable method that accepts a simple EntryGetter
+  1281	// Uses the production getObjectETag and etagMatches methods to ensure testing of real logic
+  1282	func (s3a *S3ApiServer) checkConditionalHeadersWithGetter(getter EntryGetter, r *http.Request, bucket, object string) s3err.ErrorCode {
+  1283		headers, errCode := parseConditionalHeaders(r)
+  1284		if errCode != s3err.ErrNone {
+  1285			glog.V(3).Infof("checkConditionalHeaders: Invalid date format")
+  1286			return errCode
+  1287		}
+  1288		if !headers.isSet {
+  1289			return s3err.ErrNone
+  1290		}
+  1291	
+  1292		// Get object entry for conditional checks.
+  1293		bucketDir := "/buckets/" + bucket
+  1294		entry, entryErr := getter.getEntry(bucketDir, object)
+  1295		objectExists := entryErr == nil
+  1296	
+  1297		// For PUT requests, all specified conditions must be met.
+  1298		// The evaluation order follows AWS S3 behavior for consistency.
+  1299	
+  1300		// 1. Check If-Match
+# think: The cleanest fix: In proxyToFiler, after copying headers from r to proxyReq, delete the conditional headers (If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since) since s3api has already evaluated them. This prevents the filer from re-evaluating with different ETag logic.
+
+However, proxyToFiler is also used by other handlers (HEAD, etc). For HEAD, the conditional check is also done at s3api level (let me verify). Actually the conditional check for GET/HEAD should be done at s3api level. Let me check if HeadObjectHandler does the conditional check too.
+
+Let me look at where proxyToFiler is called and whether stripping is safe in all cases. Actually the s3api always knows best about S3 ETags, so stripping conditional headers in all proxy cases is the right move - the s3api layer has already done the check.
+
+But wait - there could be PUT/write proxies too. Let me check line 505 usage and whether write conditional checks are done. For writes, conditional headers are handled in PutObjectHandler with checkConditionalHeaders. So stripping is fine there too.
+
+Let me add the stripping in proxyToFiler.
+Your thought has been logged.
+$ cd /workspace/seaweedfs && grep -rn "IfMatch\|IfNoneMatch\|IfModifiedSince\|IfUnmodifiedSince" weed/s3api/s3_constants/*.go
+weed/s3api/s3_constants/header.go:61:   IfMatch           = "If-Match"
+weed/s3api/s3_constants/header.go:62:   IfNoneMatch       = "If-None-Match"
+weed/s3api/s3_constants/header.go:63:   IfModifiedSince   = "If-Modified-Since"
+weed/s3api/s3_constants/header.go:64:   IfUnmodifiedSince = "If-Unmodified-Since"
+weed/s3api/s3_constants/header.go:67:   AmzCopySourceIfMatch           = "X-Amz-Copy-Source-If-Match"
+weed/s3api/s3_constants/header.go:68:   AmzCopySourceIfNoneMatch       = "X-Amz-Copy-Source-If-None-Match"
+weed/s3api/s3_constants/header.go:69:   AmzCopySourceIfModifiedSince   = "X-Amz-Copy-Source-If-Modified-Since"
+weed/s3api/s3_constants/header.go:70:   AmzCopySourceIfUnmodifiedSince = "X-Amz-Copy-Source-If-Unmodified-Since"
+# file_editor: Strip conditional headers before proxying to filer
+The file /workspace/seaweedfs/weed/s3api/s3api_object_handlers.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/s3api_object_handlers.go:
+   531				proxyReq.Header[s3_constants.SeaweedFSPartNumber] = v
+   532			}
+   533		}
+   534		for header, values := range r.Header {
+   535			proxyReq.Header[header] = values
+   536		}
+   537		if proxyReq.ContentLength == 0 && r.ContentLength != 0 {
+   538			proxyReq.ContentLength = r.ContentLength
+   539		}
+   540	
+   541		// Strip conditional headers before proxying to the filer.
+   542		// The S3 API layer has already evaluated these conditions using the
+   543		// S3-style ETag (which, for multipart objects, uses the "<md5>-<N>" format).
+   544		// The filer computes a different ETag for multipart objects, so leaving these
+   545		// headers in place would cause the filer to re-evaluate them and incorrectly
+   546		// return 412 Precondition Failed even when the S3 API check passed.
+   547		// See https://github.com/seaweedfs/seaweedfs/issues/7274
+   548		proxyReq.Header.Del(s3_constants.IfMatch)
+   549		proxyReq.Header.Del(s3_constants.IfNoneMatch)
+   550		proxyReq.Header.Del(s3_constants.IfModifiedSince)
+   551		proxyReq.Header.Del(s3_constants.IfUnmodifiedSince)
+   552	
+   553		// ensure that the Authorization header is overriding any previous
+   554		// Authorization header which might be already present in proxyReq
+   555		s3a.maybeAddFilerJwtAuthorization(proxyReq, isWrite)
+   556	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go build ./weed/s3api/ 2>&1 | head -20
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ -run "Conditional|IfMatch|ProxyToFiler|Proxy" -v 2>&1 | tail -50
+--- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectExists/IfModifiedSince_ObjectModifiedAfter_ShouldSucceed (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectExists/IfModifiedSince_ObjectNotModified_ShouldReturn304 (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectExists/IfUnmodifiedSince_ObjectNotModified_ShouldSucceed (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectExists/IfUnmodifiedSince_ObjectModified_ShouldReturn412 (0.00s)
+    --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectNotExists (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectNotExists/IfNoneMatch_ObjectNotExists_ShouldSucceed (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectNotExists/IfMatch_ObjectNotExists_ShouldReturn412 (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectNotExists/IfModifiedSince_ObjectNotExists_ShouldSucceed (0.00s)
+        --- PASS: TestConditionalHeadersForReads/ConditionalReads_ObjectNotExists/IfUnmodifiedSince_ObjectNotExists_ShouldReturn412 (0.00s)
+=== RUN   TestConditionalHeadersWithNonExistentObjects
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist/Asterisk_ShouldSucceed
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist/SpecificETag_ShouldSucceed
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist/SpecificETag_ShouldFail
+=== RUN   TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist/Wildcard_ShouldFail
+=== RUN   TestConditionalHeadersWithNonExistentObjects/DateFormatValidation
+=== RUN   TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfModifiedSince_ValidFormat
+=== RUN   TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfModifiedSince_InvalidFormat
+=== RUN   TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfUnmodifiedSince_InvalidFormat
+=== RUN   TestConditionalHeadersWithNonExistentObjects/NoConditionalHeaders
+--- PASS: TestConditionalHeadersWithNonExistentObjects (0.00s)
+    --- PASS: TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist/Asterisk_ShouldSucceed (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/IfNoneMatch_ObjectDoesNotExist/SpecificETag_ShouldSucceed (0.00s)
+    --- PASS: TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist/SpecificETag_ShouldFail (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/IfMatch_ObjectDoesNotExist/Wildcard_ShouldFail (0.00s)
+    --- PASS: TestConditionalHeadersWithNonExistentObjects/DateFormatValidation (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfModifiedSince_ValidFormat (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfModifiedSince_InvalidFormat (0.00s)
+        --- PASS: TestConditionalHeadersWithNonExistentObjects/DateFormatValidation/IfUnmodifiedSince_InvalidFormat (0.00s)
+    --- PASS: TestConditionalHeadersWithNonExistentObjects/NoConditionalHeaders (0.00s)
+=== RUN   TestConditionalHeadersIntegration
+    s3api_conditional_headers_test.go:677: Integration test - requires running SeaweedFS instance
+--- SKIP: TestConditionalHeadersIntegration (0.00s)
+=== RUN   TestConditionalHeadersMultipartUpload
+=== RUN   TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfNoneMatchAsterisk_ObjectExists_ShouldFail
+=== RUN   TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfNoneMatchAsterisk_ObjectNotExists_ShouldSucceed
+=== RUN   TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatch_ETagMatches_ShouldSucceed
+=== RUN   TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatch_ObjectNotExists_ShouldFail
+=== RUN   TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatchWildcard_ObjectExists_ShouldSucceed
+--- PASS: TestConditionalHeadersMultipartUpload (0.00s)
+    --- PASS: TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfNoneMatchAsterisk_ObjectExists_ShouldFail (0.00s)
+    --- PASS: TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfNoneMatchAsterisk_ObjectNotExists_ShouldSucceed (0.00s)
+    --- PASS: TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatch_ETagMatches_ShouldSucceed (0.00s)
+    --- PASS: TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatch_ObjectNotExists_ShouldFail (0.00s)
+    --- PASS: TestConditionalHeadersMultipartUpload/CompleteMultipartUpload_IfMatchWildcard_ObjectExists_ShouldSucceed (0.00s)
+PASS
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.020s
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ 2>&1 | tail -10
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       2.206s
+# finish: Summarize the conditional header proxy fix
+I fixed Issue 1 (#7274): "[s3proxy] If-Match fails against ETag returned by HeadObject".
+
+## Root Cause
+The S3 API layer (`s3api`) correctly evaluates conditional headers (`If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`) in `checkConditionalHeadersForReads`, using the S3-style ETag. For multipart objects this ETag is in the `"<md5>-<N>"` format and is stored in the object's Extended attributes.
+
+However, `proxyToFiler` then forwarded **all** request headers (including the conditional headers) to the filer. The filer ran its own `checkPreconditions` using `filer.ETagEntry(entry)`, which computes a different ETag for multipart objects. This caused the filer to return `412 Precondition Failed` even though the s3api check had already passed — exactly matching the symptom in the issue logs ("If-Match passed" at s3api, but final response still 412).
+
+## Fix
+In `weed/s3api/s3api_object_handlers.go`, `proxyToFiler` now strips the four conditional headers before sending the request to the filer, since the s3api layer has already authoritatively evaluated them:
+
+```go
+proxyReq.Header.Del(s3_constants.IfMatch)
+proxyReq.Header.Del(s3_constants.IfNoneMatch)
+proxyReq.Header.Del(s3_constants.IfModifiedSince)
+proxyReq.Header.Del(s3_constants.IfUnmodifiedSince)
+```
+
+## Verification
+- `go build ./weed/s3api/` succeeds.
+- All existing s3api tests pass (`go test ./weed/s3api/`), including the conditional-header and multipart conditional-header tests.
+
+This ensures that the conditional evaluation is performed exactly once, at the S3 layer where the correct S3 ETag semantics (including multipart `-N` ETags) are applied.

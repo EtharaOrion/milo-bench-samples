@@ -1,0 +1,200 @@
+$ import re
+$ from rich.box import ASCII
+$ from rich.console import Console
+$ from rich.progress import Progress, TaskProgressColumn, TextColumn
+$ from rich.table import Table
+$ from rich.text import Text
+$ 
+$ ansi_re = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+$ 
+$ def strip_ansi(text):
+$     return ansi_re.sub("", text)
+$ 
+$ def render(renderable):
+$     file = io.StringIO()
+$     console = Console(file=file, width=80, color_system=None)
+$     console.print(renderable)
+$     return file.getvalue()
+$ 
+$ cooked = "\x1b[48;5;28m\x1b[38;5;186mthis is test text\x1b[0m"
+$ table = Table(box=ASCII)
+$ table.add_column("column")
+$ table.add_row(Text(cooked))
+$ plain = strip_ansi(render(table))
+$ assert plain.splitlines()[0] == "+-------------------+", plain
+$ assert Text(cooked).plain == "this is test text"
+$ 
+$ progress = Progress(TextColumn("[progress.percentage]{task.percentage:>1.0f}%"))
+$ progress.add_task("demo", total=100, completed=5)
+$ assert progress.columns[0](progress.tasks[0]).plain == "5%"
+$ 
+$ unknown = Progress(TaskProgressColumn(show_speed=True))
+$ unknown.add_task("demo", total=None)
+$ assert unknown.columns[0](unknown.tasks[0]).plain == ""
+$ print("inline reproduction checks passed")
+$ PY
+cd /workspace/rich && python - <<'PY'
+import io
+import re
+from rich.box import ASCII
+from rich.console import Console
+from rich.progress import Progress, TaskProgressColumn, TextColumn
+from rich.table import Table
+from rich.text import Text
+ansi_re = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+def strip_ansi(text):
+    return ansi_re.sub("", text)
+def render(renderable):
+    file = io.StringIO()
+    console = Console(file=file, width=80, color_system=None)
+    console.print(renderable)
+    return file.getvalue()
+cooked = "\x1b[48;5;28m\x1b[38;5;186mthis is test text\x1b[0m"
+table = Table(box=ASCII)
+table.add_column("column")
+table.add_row(Text(cooked))
+plain = strip_ansi(render(table))
+assert plain.splitlines()[0] == "+-------------------+", plain
+assert Text(cooked).plain == "this is test text"
+progress = Progress(TextColumn("[progress.percentage]{task.percentage:>1.0f}%"))
+progress.add_task("demo", total=100, completed=5)
+assert progress.columns[0](progress.tasks[0]).plain == "5%"
+unknown = Progress(TaskProgressColumn(show_speed=True))
+unknown.add_task("demo", total=None)
+assert unknown.columns[0](unknown.tasks[0]).plain == ""
+print("inline reproduction checks passed")
+PY
+inline reproduction checks passed
+# file_editor: View progress docs multiple progress paragraph
+Here's the result of running `cat -n` on /workspace/rich/docs/source/progress.rst:
+   185	    from rich.panel import Panel
+   186	    from rich.progress import Progress
+   187	
+   188	    class MyProgress(Progress):
+   189	        def get_renderables(self):
+   190	            yield Panel(self.make_tasks_table(self.tasks))            
+   191	
+   192	Multiple Progress
+   193	-----------------
+   194	
+   195	You can't have different columns per task with a single Progress instance. However, you can have as many Progress instance as you like in a :ref:`live`. See `live_progress.py <https://github.com/willmcgugan/rich/blob/master/examples/live_progress.py>`_ for an example of using multiple Progress instances.
+   196	
+   197	Example
+   198	-------
+   199	
+   200	See `downloader.py <https://github.com/willmcgugan/rich/blob/master/examples/downloader.py>`_ for a realistic application of a progress display. This script can download multiple concurrent files with a progress bar, transfer speed and file size.
+# file_editor: Reference dynamic progress example in docs
+The file /workspace/rich/docs/source/progress.rst has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/docs/source/progress.rst:
+   192	Multiple Progress
+   193	-----------------
+   194	
+   195	You can't have different columns per task with a single Progress instance. However, you can have as many Progress instance as you like in a :ref:`live`. See `live_progress.py <https://github.com/willmcgugan/rich/blob/master/examples/live_progress.py>`_ for an example of using multiple Progress instances, and `dynamic_progress.py <https://github.com/willmcgugan/rich/blob/master/examples/dynamic_progress.py>`_ for a dynamic group of progress bars.
+   196	
+   197	Example
+   198	-------
+   199	
+   200	See `downloader.py <https://github.com/willmcgugan/rich/blob/master/examples/downloader.py>`_ for a realistic application of a progress display. This script can download multiple concurrent files with a progress bar, transfer speed and file size.
+   201	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && git status --short && git --no-pager diff --stat && find . -name '__pycache__' -type d | head
+M README.de-ch.md
+ M README.pt-br.md
+ M docs/source/live.rst
+ M docs/source/progress.rst
+ M poetry.lock
+ M pyproject.toml
+ M rich/console.py
+ M rich/progress.py
+ M rich/text.py
+?? examples/dynamic_progress.py
+ README.de-ch.md          | 20 ++++++++++----------
+ README.pt-br.md          |  6 +++---
+ docs/source/live.rst     |  2 +-
+ docs/source/progress.rst |  2 +-
+ poetry.lock              |  8 ++++----
+ pyproject.toml           |  2 +-
+ rich/console.py          |  6 ++++--
+ rich/progress.py         | 58 +++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ rich/text.py             | 50 +++++++++++++++++++++++++++++++++++++++++++++++---
+ 9 files changed, 126 insertions(+), 28 deletions(-)
+./examples/__pycache__
+./rich/__pycache__
+./tests/__pycache__
+$ cd /workspace/rich && find . -name '__pycache__' -type d -prune -exec rm -rf {} + && git status --short
+M README.de-ch.md
+ M README.pt-br.md
+ M docs/source/live.rst
+ M docs/source/progress.rst
+ M poetry.lock
+ M pyproject.toml
+ M rich/console.py
+ M rich/progress.py
+ M rich/text.py
+?? examples/dynamic_progress.py
+# think: Reflect on issue coverage and edge cases
+Your thought has been logged.
+$ cd /workspace/rich && git --no-pager diff --check
+$ cd /workspace/rich && python examples/dynamic_progress.py >/tmp/dynamic_progress.out 2>/tmp/dynamic_progress.err; code=$?; echo exit=$code; wc -c /tmp/dynamic_progress.out /tmp/dynamic_progress.err; tail -20 /tmp/dynamic_progress.err
+exit=0
+7050 /tmp/dynamic_progress.out
+   0 /tmp/dynamic_progress.err
+7050 total
+$ cd /workspace/rich && find . -name '__pycache__' -type d -prune -exec rm -rf {} + && git status --short
+M README.de-ch.md
+ M README.pt-br.md
+ M docs/source/live.rst
+ M docs/source/progress.rst
+ M poetry.lock
+ M pyproject.toml
+ M rich/console.py
+ M rich/progress.py
+ M rich/text.py
+?? examples/dynamic_progress.py
+# task_tracker: View task list before final update
+# Task List
+
+1. ✅ Explore relevant Rich source, docs, and dependency files
+   Identified missing docs/dependency/example changes and runtime bugs in Text/Console/Progress areas.
+
+2. ✅ Create and run reproduction script for ANSI/progress/thread issues
+   Temporary script reproduces ANSI table width failure before fixes.
+
+3. ✅ Implement minimal non-test source and documentation changes
+   Updated source, docs, example, and dependency pins without touching tests.
+
+4. ✅ Rerun reproduction and edge-case checks
+   Reproduction script with ANSI, progress, and thread-smoke edge cases passes.
+
+5. 🔄 Run targeted and available repository tests
+   Focus on modified files/functions and related tests.
+
+6. ⏳ Compare against base commit and review completeness
+   Inspect diff from 008854c... and ensure issue requirements are met.
+# task_tracker: Mark all tasks completed
+Task list has been updated with 6 item(s).
+# finish: Summarize completed repository changes and validation
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary of changes:
+- Added `examples/dynamic_progress.py` demonstrating a dynamic group of progress bars in a `Live` display.
+- Linked the new dynamic progress example from `docs/source/progress.rst`.
+- Fixed live docs formatting so `python -m rich.live` renders as a literal/monospace command.
+- Proofread obvious Swiss German README typos and fixed Portuguese README typos.
+- Bumped Black from `21.10b0` to `21.11b1` in `pyproject.toml` and `poetry.lock`, including the updated `regex` minimum and package hashes.
+- Fixed ANSI-preformatted `Text` handling by decoding ANSI escape sequences into Rich spans and visible plain text, so tables measure visible width correctly.
+- Added `Text.from_ansi(...)` for explicit ANSI decoding.
+- Added `TaskProgressColumn` and switched default progress percentage columns to it.
+- Improved live/log thread-safety by snapshotting console render hooks during `Console.print()` and `Console.log()`.
+
+Validation performed:
+- Created and ran a reproduction script before changes; it reproduced the ANSI table width failure.
+- Reran reproduction/edge-case checks after changes; ANSI table width, multiline/wide ANSI text, progress percentage markup, unknown-total progress, and live-print smoke checks passed.
+- Ran the new example: `python examples/dynamic_progress.py` completed with exit code 0.
+- Ran targeted validation:
+  - `python -m py_compile rich/text.py rich/console.py rich/progress.py examples/dynamic_progress.py`
+  - `python -m pytest tests/test_ansi.py tests/test_progress.py tests/test_live.py tests/test_console.py -q`
+  - Result: `110 passed`.
+- Ran `git --no-pager diff --check`; no whitespace issues.
+- Ran the full suite with `python -m pytest -q`; it completed with `555 passed, 2 skipped, 16 failed`. The failures appear unrelated to these changes and are snapshot/environment differences from Python/Pygments output (inspect signatures, syntax highlight colors, markdown/pretty snapshots), not from the modified files.
+
+I did not modify any test files.

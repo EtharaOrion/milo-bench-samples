@@ -1,0 +1,200 @@
+   712			return m.mockEntry, nil
+   713		}
+   714		return nil, filer_pb.ErrNotFound
+   715	}
+   716	
+   717	// createMockEntryGetter creates a mock EntryGetter for testing
+   718	func createMockEntryGetter(mockEntry *filer_pb.Entry) *MockEntryGetter {
+   719		return &MockEntryGetter{
+   720			mockEntry: mockEntry,
+   721		}
+   722	}
+   723	
+   724	// TestConditionalHeadersMultipartUpload tests conditional headers with multipart uploads
+   725	// This verifies AWS S3 compatibility where conditional headers only apply to CompleteMultipartUpload
+   726	func TestConditionalHeadersMultipartUpload(t *testing.T) {
+# file_editor: Make getObjectETag consistent with filer ETag
+The file /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go:
+  1252	}
+  1253	
+  1254	// S3ApiServer implements EntryGetter interface
+  1255	func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+  1256		// Try to get ETag from Extended attributes first
+  1257		if etagBytes, hasETag := entry.Extended[s3_constants.ExtETagKey]; hasETag {
+  1258			return string(etagBytes)
+  1259		}
+  1260		// Fallback: use the same ETag computation as the filer so that the S3 layer
+  1261		// and the filer agree on the ETag value. The filer prefers the stored Md5
+  1262		// attribute (e.g. for objects created before the Extended ETag was stored)
+  1263		// before falling back to a multipart-style ETag computed from chunks.
+  1264		return filer.ETag(entry)
+  1265	}
+  1266	
+  1267	func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+  1268		// Clean the object ETag
+  1269		objectETag = strings.Trim(objectETag, `"`)
+  1270	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && grep -rn "getObjectETag" weed/s3api/*.go | grep -v "_test.go"
+weed/s3api/s3api_object_handlers_put.go:1255:func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+weed/s3api/s3api_object_handlers_put.go:1284:// Uses the production getObjectETag and etagMatches methods to ensure testing of real logic
+weed/s3api/s3api_object_handlers_put.go:1312:                   // Use production getObjectETag method
+weed/s3api/s3api_object_handlers_put.go:1313:                   objectETag := s3a.getObjectETag(entry)
+weed/s3api/s3api_object_handlers_put.go:1342:                   // Use production getObjectETag method
+weed/s3api/s3api_object_handlers_put.go:1343:                   objectETag := s3a.getObjectETag(entry)
+weed/s3api/s3api_object_handlers_put.go:1376:// Uses the production getObjectETag and etagMatches methods to ensure testing of real logic
+weed/s3api/s3api_object_handlers_put.go:1414:                   // Use production getObjectETag method
+weed/s3api/s3api_object_handlers_put.go:1415:                   objectETag := s3a.getObjectETag(entry)
+weed/s3api/s3api_object_handlers_put.go:1437:           // Use production getObjectETag method
+weed/s3api/s3api_object_handlers_put.go:1438:           objectETag := s3a.getObjectETag(entry)
+weed/s3api/s3api_object_handlers_put.go:1456:                   // Use production getObjectETag method
+weed/s3api/s3api_object_handlers_put.go:1457:                   objectETag := s3a.getObjectETag(entry)
+# file_editor: Quote fallback ETag for S3 compliance
+The file /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go:
+  1257		if etagBytes, hasETag := entry.Extended[s3_constants.ExtETagKey]; hasETag {
+  1258			return string(etagBytes)
+  1259		}
+  1260		// Fallback: use the same ETag computation as the filer so that the S3 layer
+  1261		// and the filer agree on the ETag value. The filer prefers the stored Md5
+  1262		// attribute (e.g. for objects created before the Extended ETag was stored)
+  1263		// before falling back to a multipart-style ETag computed from chunks.
+  1264		etag := filer.ETag(entry)
+  1265		if etag == "" {
+  1266			return "\"\""
+  1267		}
+  1268		return fmt.Sprintf("\"%s\"", etag)
+  1269	}
+  1270	
+  1271	func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+  1272		// Clean the object ETag
+  1273	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Add filer import
+The file /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/s3api_object_handlers_put.go:
+    12		"strings"
+    13		"time"
+    14	
+    15		"github.com/pquerna/cachecontrol/cacheobject"
+    16		"github.com/seaweedfs/seaweedfs/weed/filer"
+    17		"github.com/seaweedfs/seaweedfs/weed/glog"
+    18		"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+    19		"github.com/seaweedfs/seaweedfs/weed/pb/s3_pb"
+    20		"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
+    21		"github.com/seaweedfs/seaweedfs/weed/s3api/s3err"
+    22		"github.com/seaweedfs/seaweedfs/weed/security"
+    23	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go build ./weed/s3api/ && go test ./weed/s3api/ -run "TestConditional|TestETag" 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.019s
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.109s
+# file_editor: Add verification test for getObjectETag Md5 consistency
+File created successfully at: /workspace/seaweedfs/weed/s3api/s3api_etag_consistency_test.go
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ -run "TestGetObjectETagUsesMd5" -v 2>&1 | tail -20
+=== RUN   TestGetObjectETagUsesMd5
+--- PASS: TestGetObjectETagUsesMd5 (0.00s)
+PASS
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.015s
+$ cd /workspace/seaweedfs && go build ./weed/... 2>&1 | tail -20
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/seaweedfs/seaweedfs: permission denied
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/filer/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.126s
+ok      github.com/seaweedfs/seaweedfs/weed/filer       0.019s
+$ cd /workspace/seaweedfs && git --no-pager diff --stat && echo "---" && git --no-pager diff weed/s3api/s3api_object_handlers.go weed/s3api/s3api_object_handlers_put.go
+weed/s3api/s3api_object_handlers.go     | 12 ++++++++++++
+ weed/s3api/s3api_object_handlers_put.go | 12 ++++++++++--
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+---
+diff --git a/weed/s3api/s3api_object_handlers.go b/weed/s3api/s3api_object_handlers.go
+index 163633e22..285991878 100644
+--- a/weed/s3api/s3api_object_handlers.go
++++ b/weed/s3api/s3api_object_handlers.go
+@@ -532,6 +532,18 @@ func (s3a *S3ApiServer) proxyToFiler(w http.ResponseWriter, r *http.Request, des
+                }
+        }
+        for header, values := range r.Header {
++               // Conditional headers (If-Match, If-None-Match, If-Modified-Since, If-Unmodified-Since)
++               // are already evaluated at the S3 layer (checkConditionalHeadersForReads) using the
++               // S3 object ETag. The filer computes ETags differently (e.g. multipart objects get a
++               // "<md5>-<partCount>" suffix), so forwarding these headers would cause the filer to
++               // re-evaluate them against a different ETag and incorrectly return 412/304.
++               // Skip forwarding them to avoid the duplicate (and inconsistent) check.
++               if !isWrite {
++                       switch http.CanonicalHeaderKey(header) {
++                       case s3_constants.IfMatch, s3_constants.IfNoneMatch, s3_constants.IfModifiedSince, s3_constants.IfUnmodifiedSince:
++                               continue
++                       }
++               }
+                proxyReq.Header[header] = values
+        }
+        if proxyReq.ContentLength == 0 && r.ContentLength != 0 {
+diff --git a/weed/s3api/s3api_object_handlers_put.go b/weed/s3api/s3api_object_handlers_put.go
+index fb7d6c3a6..29aa0bfc7 100644
+--- a/weed/s3api/s3api_object_handlers_put.go
++++ b/weed/s3api/s3api_object_handlers_put.go
+@@ -13,6 +13,7 @@ import (
+        "time"
+
+        "github.com/pquerna/cachecontrol/cacheobject"
++       "github.com/seaweedfs/seaweedfs/weed/filer"
+        "github.com/seaweedfs/seaweedfs/weed/glog"
+        "github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+        "github.com/seaweedfs/seaweedfs/weed/pb/s3_pb"
+@@ -1257,8 +1258,15 @@ func (s3a *S3ApiServer) getObjectETag(entry *filer_pb.Entry) string {
+        if etagBytes, hasETag := entry.Extended[s3_constants.ExtETagKey]; hasETag {
+                return string(etagBytes)
+        }
+-       // Fallback: calculate ETag from chunks
+-       return s3a.calculateETagFromChunks(entry.Chunks)
++       // Fallback: use the same ETag computation as the filer so that the S3 layer
++       // and the filer agree on the ETag value. The filer prefers the stored Md5
++       // attribute (e.g. for objects created before the Extended ETag was stored)
++       // before falling back to a multipart-style ETag computed from chunks.
++       etag := filer.ETag(entry)
++       if etag == "" {
++               return "\"\""
++       }
++       return fmt.Sprintf("\"%s\"", etag)
+ }
+
+ func (s3a *S3ApiServer) etagMatches(headerValue, objectETag string) bool {
+$ cd /workspace/seaweedfs && grep -rn "calculateETagFromChunks" weed/s3api/*.go | grep -v _test.go
+weed/s3api/s3api_object_versioning.go:470:                      etag := s3a.calculateETagFromChunks(entry.Chunks)
+weed/s3api/s3api_object_versioning.go:575:                              version.ETag = s3a.calculateETagFromChunks(entry.Chunks)
+weed/s3api/s3api_object_versioning.go:593:// calculateETagFromChunks calculates ETag from file chunks following S3 multipart rules
+weed/s3api/s3api_object_versioning.go:595:func (s3a *S3ApiServer) calculateETagFromChunks(chunks []*filer_pb.FileChunk) string {
+$ cd /workspace/seaweedfs && go vet ./weed/s3api/ 2>&1 | tail && go test ./weed/s3api/ 2>&1 | tail
+weed/s3api/s3_multipart_iam_test.go:483:22: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/s3_multipart_iam_test.go:484:22: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/s3_presigned_url_iam_test.go:447:22: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/s3_presigned_url_iam_test.go:448:22: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/s3_token_differentiation_test.go:22:21: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/s3_token_differentiation_test.go:23:21: github.com/seaweedfs/seaweedfs/weed/iam/sts.FlexibleDuration struct literal uses unkeyed fields
+weed/s3api/chunked_reader_v4_test.go:95:17: call of runWithRequest copies lock value: github.com/seaweedfs/seaweedfs/weed/s3api.IdentityAccessManagement contains sync.RWMutex
+weed/s3api/chunked_reader_v4_test.go:101:17: call of runWithRequest copies lock value: github.com/seaweedfs/seaweedfs/weed/s3api.IdentityAccessManagement contains sync.RWMutex
+weed/s3api/chunked_reader_v4_test.go:104:25: runWithRequest passes lock by value: github.com/seaweedfs/seaweedfs/weed/s3api.IdentityAccessManagement contains sync.RWMutex
+weed/s3api/chunked_reader_v4_test.go:149:9: return copies lock value: github.com/seaweedfs/seaweedfs/weed/s3api.IdentityAccessManagement contains sync.RWMutex
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/filer/ ./weed/server/ 2>&1 | tail -10
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/filer       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/server      0.015s
+# finish: Completed fix for If-Match/HeadObject ETag inconsistency
+I implemented the fix for Issue #7274: "[s3proxy] If-Match fails against ETag returned by HeadObject".
+
+## Root cause
+On multipart objects whose `Md5` attribute is set (e.g. objects created on older SeaweedFS versions), there were two distinct problems:
+
+1. **Inconsistent ETag at the S3 layer.** `getObjectETag()` only honored `Extended[ExtETagKey]`, otherwise computing a *multipart-style* ETag (`<md5>-<partCount>`) from chunks. But `HeadObject` returns the ETag computed by the **filer**, which prefers the stored `Md5` attribute (e.g. `663726330...`). So an `If-Match` using exactly the value returned by `HeadObject` was wrongly rejected at the S3 layer (`expected 663726330..., got 123294de...-2`).
+
+2. **Redundant/inconsistent re-check at the filer.** Even after the S3-layer check passed ("If-Match passed"), `proxyToFiler` forwarded the conditional headers to the filer, which re-evaluated them against *its own* ETag and returned `412` — exactly matching the issue's log where the proxy logged "passed" but the final response was still 412.
+
+## Changes
+- `weed/s3api/s3api_object_handlers_put.go`: `getObjectETag()` now falls back to `filer.ETag(entry)` (which prefers the `Md5` attribute, matching `HeadObject`) instead of only computing a multipart ETag from chunks. The result is quoted to keep S3 compatibility.
+- `weed/s3api/s3api_object_handlers.go`: `proxyToFiler()` no longer forwards the conditional read headers (`If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`) to the filer for read requests, since they are already authoritatively evaluated at the S3 layer with the correct S3 ETag.
+
+## Verification
+- Added `TestGetObjectETagUsesMd5` reproducing the issue's exact object metadata; it confirms the S3 ETag now matches the filer/HeadObject ETag and that `If-Match` with the MD5 hex succeeds.
+- All tests in `weed/s3api`, `weed/filer`, and `weed/server` pass, and the module builds successfully.
+
+This makes `GetObject`/`HeadObject` with `If-Match` work consistently against the ETag returned by `HeadObject`, resolving the 412 PreconditionFailed regression.

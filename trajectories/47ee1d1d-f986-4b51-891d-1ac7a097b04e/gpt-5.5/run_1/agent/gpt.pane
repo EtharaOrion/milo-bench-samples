@@ -1,0 +1,200 @@
+-  const handlerSuggestion =
+-    suggestedHandlers.length > 0
+-      ? getSuggestedHandlersMessage(suggestedHandlers)
+-      : ''
+-
+-  const publicUrl = getPublicUrlFromRequest(request)
+-  const requestHeader = parsedGraphQLQuery
+-    ? `${parsedGraphQLQuery.operationType} ${parsedGraphQLQuery.operationName} (${request.method} ${publicUrl})`
+-    : `${request.method} ${publicUrl}`
+-
+-  const messageTemplate = [
+-    `captured a request without a matching request handler:`,
+-    `  \u2022 ${requestHeader}`,
+-    handlerSuggestion,
+-    `\
++  const applyStrategy = (
++    strategy: UnhandledRequestDefaultStrategy = 'warn',
++  ) => {
++    /**
++     * @note Ignore exceptions during GraphQL request parsing because at this point
++     * we cannot assume the unhandled request is a valid GraphQL request.
++     * If the GraphQL parsing fails, just don't treat it as a GraphQL request.
++     */
++    const parsedGraphQLQuery = tryCatch(() => parseGraphQLRequest(request))
++    const handlerGroups = groupHandlersByType(handlers)
++    const relevantHandlers = parsedGraphQLQuery
++      ? handlerGroups.graphql
++      : handlerGroups.rest
++
++    const suggestedHandlers = getSuggestedHandler(
++      request,
++      relevantHandlers,
++      parsedGraphQLQuery
++        ? getGraphQLHandlerScore(parsedGraphQLQuery)
++        : getRestHandlerScore(),
++    )
++
++    const handlerSuggestion =
++      suggestedHandlers.length > 0
++        ? getSuggestedHandlersMessage(suggestedHandlers)
++        : ''
++
++    const publicUrl = getPublicUrlFromRequest(request)
++    const requestHeader = parsedGraphQLQuery
++      ? `${parsedGraphQLQuery.operationType} ${parsedGraphQLQuery.operationName} (${request.method} ${publicUrl})`
++      : `${request.method} ${publicUrl}`
++
++    const messageTemplate = [
++      `captured a request without a matching request handler:`,
++      `  \u2022 ${requestHeader}`,
++      handlerSuggestion,
++      `\
+ If you still wish to intercept this unhandled request, please create a request handler for it.
+ Read more: https://mswjs.io/docs/getting-started/mocks\
+ `,
+-  ].filter(Boolean)
+-  const message = messageTemplate.join('\n\n')
+-
+-  switch (strategy) {
+-    case 'error': {
+-      // Print a developer-friendly error.
+-      devUtils.error('Error: %s', message)
+-
+-      // Throw an exception to halt request processing and not perform the original request.
+-      throw new Error(
+-        devUtils.formatMessage(
+-          'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
+-        ),
+-      )
+-    }
++    ].filter(Boolean)
++    const message = messageTemplate.join('\n\n')
++
++    switch (strategy) {
++      case 'error': {
++        // Print a developer-friendly error.
++        devUtils.error('Error: %s', message)
++
++        // Throw an exception to halt request processing and not perform the original request.
++        throw new Error(
++          devUtils.formatMessage(
++            'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
++          ),
++        )
++      }
++
++      case 'warn': {
++        devUtils.warn('Warning: %s', message)
++        break
++      }
+
+-    case 'warn': {
+-      devUtils.warn('Warning: %s', message)
+-      break
++      case 'bypass':
++        break
++
++      default:
++        throw new Error(
++          devUtils.formatMessage(
++            'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
++            strategy,
++          ),
++        )
+     }
++  }
+
+-    case 'bypass':
+-      break
++  if (typeof strategy === 'function') {
++    if (strategy.length > 1) {
++      strategy(request, applyStrategy)
++      return
++    }
+
+-    default:
+-      throw new Error(
+-        devUtils.formatMessage(
+-          'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
+-          strategy,
+-        ),
+-      )
++    const requestCallback = strategy as (request: MockedRequest) => void
++    requestCallback(request)
++    return
+   }
++
++  applyStrategy(strategy)
+ }
+diff --git a/yarn.lock b/yarn.lock
+index 2cccbeb..c15d7bc 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -4877,10 +4877,10 @@ graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.2.0, graceful-fs@^4.2.4:
+   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.6.tgz#ff040b2b0853b23c3d31027523706f1885d76bee"
+   integrity sha512-nTnJ528pbqxYanhpDYsi4Rd8MAeaBA67+RZ10CM1m3bTAVFEDcd5AuA4a6W5YkGZ1iNXHzZz8T6TBKLeBuNriQ==
+
+-graphql@^15.5.1:
+-  version "15.5.1"
+-  resolved "https://registry.yarnpkg.com/graphql/-/graphql-15.5.1.tgz#f2f84415d8985e7b84731e7f3536f8bb9d383aad"
+-  integrity sha512-FeTRX67T3LoE3LWAxxOlW2K3Bz+rMYAC18rRguK4wgXaTZMiJwSUwDmPFo3UadAKbzirKIg5Qy+sNJXbpPRnQw==
++graphql@^15.5.1 || ^16.0.0:
++  version "16.0.0"
++  resolved "https://registry.yarnpkg.com/graphql/-/graphql-16.0.0.tgz#5724f2767aefa543418e83671372117c39408c8f"
++  integrity sha512-n9NxoRfwnpYBZB/WJ7L166gyrShuZ8qYgVaX8oxVyELcJfAwkvwPt6WlYIl90WRlzqDjaNWvLmNOSnKs5llZWQ==
+
+ growly@^1.3.0:
+   version "1.3.0"
+$ cd /workspace/msw && git status --short
+M package.json
+ M src/handlers/GraphQLHandler.ts
+ M src/utils/internal/parseGraphQLRequest.ts
+ M src/utils/request/onUnhandledRequest.ts
+ M yarn.lock
+# finish: Finish implementation summary and verification results
+Implemented the requested changes in `/workspace/msw` without modifying any test files.
+
+Summary of changes:
+- Added a `next` delegation callback to custom `onUnhandledRequest` handlers.
+  - `next()` runs the existing default warning behavior.
+  - `next('warn')`, `next('error')`, and `next('bypass')` reuse the existing built-in strategies.
+  - Preserved legacy one-argument callbacks by only passing `next` to callbacks that declare a second parameter.
+- Updated GraphQL support for v16:
+  - Widened `graphql` dependency to `^15.5.1 || ^16.0.0`.
+  - Updated `yarn.lock` to resolve GraphQL `16.0.0`.
+  - Avoided importing GraphQL’s `OperationTypeNode` type directly because GraphQL v16 changed it from a string union to an enum; MSW now uses a local string-literal operation type compatible with both v15 and v16.
+
+Modified files:
+- `package.json`
+- `yarn.lock`
+- `src/utils/request/onUnhandledRequest.ts`
+- `src/utils/internal/parseGraphQLRequest.ts`
+- `src/handlers/GraphQLHandler.ts`
+
+Verification performed:
+- Created and ran a temporary `ts-node` reproduction script before the fix; it failed because `next` was undefined.
+- Expanded and reran that reproduction after the fix, covering:
+  - `next()` default warning behavior
+  - callback opt-out by not calling `next`
+  - `next('bypass')`
+  - `next('error')`
+  - handler suggestions through delegated default behavior
+  - GraphQL dependency range allowing v16
+  - `DocumentNode` GraphQL handler creation
+- Removed the temporary reproduction/type-check scripts after verification.
+- Passed targeted tests:
+  - `src/utils/request/onUnhandledRequest.test.ts`
+  - `src/utils/handleRequest.test.ts`
+  - `src/graphql.test.ts`
+  - `src/handlers/GraphQLHandler.test.ts`
+  - `src/utils/internal/parseGraphQLRequest.test.ts`
+- Passed full unit suite: `53 passed`, `206 tests passed`.
+- Passed ESLint on modified source files.
+- Passed `git diff --check`.
+- Passed a temporary GraphQL v16 type-check against `graphql@16.0.0` declarations.
+
+Notes on commands that could not pass in this environment:
+- `tsc -p tsconfig.json --noEmit` fails due existing `dom`/`webworker` lib declaration conflicts in the repo config.
+- `tsc -p test/typings/tsconfig.json` fails due existing typings config/lib resolution issues.
+- Integration tests fail before execution because the package entrypoints (`msw`, `msw/node`) are unresolved without a built `lib`, and browser setup fails afterward. The full unit suite and all related source tests pass.

@@ -1,0 +1,200 @@
+    50			}
+    51		}
+    52	
+    53		store.Client = redis.NewClient(options)
+    54		store.loadSuperLargeDirectories(superLargeDirectories)
+    55		return
+    56	}
+    57	
+    58	func newTlsConfig(caCert, clientCert, clientKey string) (*tls.Config, error) {
+    59		tlsConfig := &tls.Config{}
+    60	
+    61		// Load the client certificate/key pair for mutual TLS, if provided.
+    62		if clientCert != "" && clientKey != "" {
+    63			cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+    64			if err != nil {
+    65				return nil, fmt.Errorf("can not load client certificate/key pair: %w", err)
+    66			}
+    67			tlsConfig.Certificates = []tls.Certificate{cert}
+    68		}
+    69	
+    70		// Load the CA certificate used to verify the Redis server, if provided.
+    71		if caCert != "" {
+    72			caCertData, err := os.ReadFile(caCert)
+    73			if err != nil {
+    74				return nil, fmt.Errorf("can not read CA certificate: %w", err)
+    75			}
+    76			caCertPool := x509.NewCertPool()
+    77			if !caCertPool.AppendCertsFromPEM(caCertData) {
+    78				return nil, fmt.Errorf("failed to append CA certificate from %s", caCert)
+    79			}
+    80			tlsConfig.RootCAs = caCertPool
+    81		}
+    82	
+    83		return tlsConfig, nil
+    84	}
+    85	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && grep -rn "\.initialize(" weed/filer/redis2/ && go build ./weed/filer/redis2/ 2>&1 | grep -v "writing stat cache" | tail && echo "BUILD OK"
+weed/filer/redis2/redis_cluster_store.go:26:    return store.initialize(
+weed/filer/redis2/redis_sentinel_store.go:23:   return store.initialize(
+weed/filer/redis2/redis_store.go:27:    return store.initialize(
+BUILD OK
+$ cd /workspace/seaweedfs && grep -rn "superLargeDirectories\|\[redis2\]" weed/command/scaffold/filer.toml | head
+158:superLargeDirectories = []
+169:[redis2]
+175:superLargeDirectories = []
+201:superLargeDirectories = []
+210:superLargeDirectories = []
+236:superLargeDirectories = []
+$ cd /workspace/seaweedfs && sed -n '169,180p' weed/command/scaffold/filer.toml
+[redis2]
+enabled = false
+address = "localhost:6379"
+password = ""
+database = 0
+# This changes the data layout. Only add new directories. Removing/Updating will cause data loss.
+superLargeDirectories = []
+
+[redis2_sentinel]
+enabled = false
+addresses = ["172.22.12.7:26379","172.22.12.8:26379","172.22.12.9:26379"]
+masterName = "master"
+# file_editor: /workspace/seaweedfs/weed/command/scaffold/filer.toml
+The file /workspace/seaweedfs/weed/command/scaffold/filer.toml has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/command/scaffold/filer.toml:
+   166	zkquorum = ""
+   167	table = "seaweedfs"
+   168	
+   169	[redis2]
+   170	enabled = false
+   171	address = "localhost:6379"
+   172	password = ""
+   173	database = 0
+   174	# This changes the data layout. Only add new directories. Removing/Updating will cause data loss.
+   175	superLargeDirectories = []
+   176	# Enable TLS (and optionally mutual TLS) for the Redis connection.
+   177	enable_tls = false
+   178	# Path to the CA certificate used to verify the Redis server certificate.
+   179	ca_cert = ""
+   180	# Paths to the client certificate/key pair used for mutual TLS (mTLS).
+   181	client_cert = ""
+   182	client_key = ""
+   183	
+   184	[redis2_sentinel]
+   185	enabled = false
+   186	addresses = ["172.22.12.7:26379","172.22.12.8:26379","172.22.12.9:26379"]
+   187	masterName = "master"
+   188	username = ""
+   189	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && cat .github/workflows/depsreview.yml
+name: 'Dependency Review'
+on: [pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+      - name: 'Dependency Review'
+        uses: actions/dependency-review-action@0659a74c94536054bfa5aeb92241f70d680cc78e
+# file_editor: /workspace/seaweedfs/.github/workflows/depsreview.yml
+The file /workspace/seaweedfs/.github/workflows/depsreview.yml has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/.github/workflows/depsreview.yml:
+    11	      - name: 'Checkout Repository'
+    12	        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+    13	      - name: 'Dependency Review'
+    14	        uses: actions/dependency-review-action@72eb03d02c7872a771aacd928f3123ac62ad6d3a # v4.3.2
+    15	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go build ./weed/... 2>&1 | grep -v "writing stat cache" | tail && echo "BUILD OK"
+BUILD OK
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/topology/ ./weed/filer/redis2/ ./weed/shell/ 2>&1 | grep -v "writing stat cache" | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.023s
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis2        [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/shell       0.174s
+$ cd /workspace/seaweedfs && grep -n "metricsHttpIp\|metricsHttpPort" weed/command/server.go
+$ cd /workspace/seaweedfs && sed -n '160,180p' weed/command/s3.go
+]
+    }
+  ]
+}
+
+`,
+}
+
+func runS3(cmd *Command, args []string) bool {
+
+        util.LoadSecurityConfiguration()
+
+        switch {
+        case *s3StandaloneOptions.metricsHttpIp != "":
+                // noting to do, use s3StandaloneOptions.metricsHttpIp
+        case *s3StandaloneOptions.bindIp != "":
+                *s3StandaloneOptions.metricsHttpIp = *s3StandaloneOptions.bindIp
+        }
+        go stats_collect.StartMetricsServer(*s3StandaloneOptions.metricsHttpIp, *s3StandaloneOptions.metricsHttpPort)
+
+        return s3StandaloneOptions.startS3Server()
+$ cd /workspace/seaweedfs && git --no-pager diff --stat
+.github/workflows/depsreview.yml              |  2 +-
+ weed/command/s3.go                            |  7 +++++--
+ weed/command/scaffold/filer.toml              |  7 +++++++
+ weed/command/server.go                        |  6 +++++-
+ weed/filer/redis2/redis_store.go              | 52 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ weed/s3api/chunked_reader_v4.go               |  9 ++++++++-
+ weed/s3api/s3api_object_handlers_multipart.go | 12 +++++++++++-
+ weed/s3api/s3api_object_handlers_put.go       | 10 ++++++++++
+ weed/shell/command_volume_list.go             |  2 +-
+ weed/topology/topology.go                     |  6 ++++--
+ 10 files changed, 101 insertions(+), 12 deletions(-)
+$ cd /workspace/seaweedfs && go vet ./weed/command/ ./weed/filer/redis2/ 2>&1 | grep -v "writing stat cache" | tail && echo "VET DONE"
+weed/command/filer_backup.go:86:2: unreachable code
+weed/command/filer_meta_backup.go:104:2: unreachable code
+weed/command/filer_meta_backup.go:190:3: unreachable code
+weed/command/filer_sync.go:224:2: unreachable code
+VET DONE
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/topology/ ./weed/shell/ ./weed/command/ ./weed/filer/redis2/ 2>&1 | grep -v "writing stat cache" | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/shell       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/command     0.018s
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis2        [no test files]
+# finish: Summarize all implemented fixes
+I implemented the actionable code changes for the issues in the description. The very old issues (#3xxx, #1xxx, #1xx) are mostly questions, environment-specific reports, or feature requests without a clear single-file change; I focused on the concrete, recent PR-style issues that map directly to source changes.
+
+## Changes made
+
+**Issue 1 (#6715) — `master_pb.CollectionList` ignored `include_normal_volumes`**
+`weed/topology/topology.go`: `ListCollections()` now only includes regular collections when `includeNormalVolumes` is true (previously always included).
+
+**Issue 7 (#6737) — `volume.list` output not ordered**
+`weed/shell/command_volume_list.go`: Fixed integer underflow in the sort comparator: `int(a.Id - b.Id)` → `int(a.Id) - int(b.Id)` (uint32 subtraction underflowed).
+
+**Issue 2 (#6713) — CRC64NVME payload checksum mismatch**
+`weed/s3api/chunked_reader_v4.go`: The CRC64NVMe checksum used the wrong polynomial (`crc64.ISO`). Added `crc64NVMePolynomial = 0x9a6c9329ac4bc9b5` (reflected CRC-64/NVME poly); Go's crc64 already applies the all-ones init/xorout this variant needs. Verified against the standard check value `0xae8b14860a799888` and end-to-end through `newChunkedReader`.
+
+**Issue 4 (#6703) / Issue 5 (#6526) — corrupted (multipart) uploads with aws-chunked encoding**
+Unsigned streaming uploads (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`) were not decoded in all paths, leaving raw chunk markers in stored files:
+- `weed/s3api/s3api_object_handlers_multipart.go`: now decodes `authTypeStreamingUnsigned` via `newChunkedReader` (was only `authTypeStreamingSigned`), in both IAM-enabled and IAM-disabled cases.
+- `weed/s3api/s3api_object_handlers_put.go`: also decodes `authTypeStreamingUnsigned` when IAM is disabled.
+
+**Issue 9 (#6733) — `s3.ip.bind` parameter**
+`weed/command/server.go`: Added `-s3.ip.bind` flag so the combined `weed server` can bind S3 to a different IP than the global `-ip.bind` (falls back to `-ip.bind` when empty).
+
+**Issue 23 (#6746) — `s3.idleTimeout` parameter**
+`weed/command/s3.go`: Added `-idleTimeout` (default 10s) and used it for the S3 HTTP/HTTPS listeners instead of the hardcoded 10s. `weed/command/server.go`: Added `-s3.idleTimeout`.
+
+**Issue 8 (#6738) — Redis mTLS support**
+`weed/filer/redis2/redis_store.go`: Added `enable_tls`, `ca_cert`, `client_cert`, `client_key` config options; builds a `tls.Config` (client cert/key for mTLS, CA cert for server verification) when enabled. Documented options in `weed/command/scaffold/filer.toml`.
+
+**Issue 6 (#6732) — bump dependency-review-action**
+`.github/workflows/depsreview.yml`: Bumped `actions/dependency-review-action` to the v4.3.2 pinned SHA.
+
+**Issue 3 (#6724) — Go 1.24** was already satisfied in the base commit (`go.mod` already requires Go 1.24).
+
+All modified packages build (`go build ./weed/...`) and their tests pass (`go test ./weed/s3api/ ./weed/topology/ ./weed/shell/ ./weed/command/ ./weed/filer/redis2/`).

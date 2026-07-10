@@ -1,0 +1,200 @@
+    47	        title: Optional[TextType] = None,
+    48	        help: bool = False,
+    49	        methods: bool = False,
+    50	        docs: bool = True,
+    51	        private: bool = False,
+    52	        dunder: bool = False,
+    53	        sort: bool = True,
+    54	        all: bool = True,
+    55	        value: bool = True,
+    56	    ) -> None:
+    57	        self.highlighter = ReprHighlighter()
+    58	        self.obj = obj
+    59	        self.title = title or self._make_title(obj)
+    60	        if all:
+    61	            methods = private = dunder = True
+    62	        self.help = help
+    63	        self.methods = methods
+    64	        self.docs = docs or help
+    65	        self.private = private or dunder
+    66	        self.dunder = dunder
+    67	        self.sort = sort
+    68	        self.value = value
+    69	
+    70	    def _make_title(self, obj: Any) -> Text:
+    71	        """Make a default title."""
+    72	        title_str = (
+    73	            str(obj)
+    74	            if (isclass(obj) or callable(obj) or ismodule(obj))
+    75	            else str(type(obj))
+    76	        )
+    77	        title_text = self.highlighter(title_str)
+    78	        return title_text
+    79	
+    80	    def __rich__(self) -> Panel:
+    81	        return Panel.fit(
+    82	            Group(*self._render()),
+    83	            title=self.title,
+    84	            border_style="scope.border",
+    85	            padding=(0, 1),
+    86	        )
+    87	
+    88	    def _get_signature(self, name: str, obj: Any) -> Optional[Text]:
+    89	        """Get a signature for a callable."""
+    90	        try:
+    91	            _signature = str(signature(obj)) + ":"
+    92	        except ValueError:
+    93	            _signature = "(...)"
+    94	        except TypeError:
+    95	            return None
+    96	
+    97	        source_filename: Optional[str] = None
+    98	        try:
+    99	            source_filename = getfile(obj)
+   100	        except TypeError:
+   101	            pass
+   102	
+   103	        callable_name = Text(name, style="inspect.callable")
+   104	        if source_filename:
+   105	            callable_name.stylize(f"link file://{source_filename}")
+   106	        signature_text = self.highlighter(_signature)
+   107	
+   108	        qualname = name or getattr(obj, "__qualname__", name)
+   109	        qual_signature = Text.assemble(
+   110	            ("def ", "inspect.def"), (qualname, "inspect.callable"), signature_text
+   111	        )
+   112	
+   113	        return qual_signature
+   114	
+   115	    def _render(self) -> Iterable[RenderableType]:
+   116	        """Render object."""
+   117	
+   118	        def sort_items(item: Tuple[str, Any]) -> Tuple[bool, str]:
+   119	            key, (_error, value) = item
+   120	            return (callable(value), key.strip("_").lower())
+   121	
+   122	        def safe_getattr(attr_name: str) -> Tuple[Any, Any]:
+   123	            """Get attribute or any exception."""
+   124	            try:
+   125	                return (None, getattr(obj, attr_name))
+   126	            except Exception as error:
+   127	                return (error, None)
+   128	
+   129	        obj = self.obj
+   130	        keys = dir(obj)
+   131	        total_items = len(keys)
+   132	        if not self.dunder:
+   133	            keys = [key for key in keys if not key.startswith("__")]
+   134	        if not self.private:
+   135	            keys = [key for key in keys if not key.startswith("_")]
+   136	        not_shown_count = total_items - len(keys)
+   137	        items = [(key, safe_getattr(key)) for key in keys]
+   138	        if self.sort:
+   139	            items.sort(key=sort_items)
+   140	
+   141	        items_table = Table.grid(padding=(0, 1), expand=False)
+   142	        items_table.add_column(justify="right")
+   143	        add_row = items_table.add_row
+   144	        highlighter = self.highlighter
+   145	
+   146	        if callable(obj):
+   147	            signature = self._get_signature("", obj)
+   148	            if signature is not None:
+   149	                yield signature
+   150	                yield ""
+   151	
+   152	        if self.docs:
+   153	            _doc = getdoc(obj)
+   154	            if _doc is not None:
+   155	                if not self.help:
+   156	                    _doc = _first_paragraph(_doc)
+   157	                doc_text = Text(_reformat_doc(_doc), style="inspect.help")
+   158	                doc_text = highlighter(doc_text)
+   159	                yield doc_text
+   160	                yield ""
+   161	
+   162	        if self.value and not (isclass(obj) or callable(obj) or ismodule(obj)):
+   163	            yield Panel(
+   164	                Pretty(obj, indent_guides=True, max_length=10, max_string=60),
+   165	                border_style="inspect.value.border",
+   166	            )
+   167	            yield ""
+   168	
+   169	        for key, (error, value) in items:
+   170	            key_text = Text.assemble(
+   171	                (
+   172	                    key,
+   173	                    "inspect.attr.dunder" if key.startswith("__") else "inspect.attr",
+   174	                ),
+   175	                (" =", "inspect.equals"),
+   176	            )
+   177	            if error is not None:
+   178	                warning = key_text.copy()
+   179	                warning.stylize("inspect.error")
+   180	                add_row(warning, highlighter(repr(error)))
+   181	                continue
+   182	
+   183	            if callable(value):
+   184	                if not self.methods:
+   185	                    continue
+   186	
+   187	                _signature_text = self._get_signature(key, value)
+   188	                if _signature_text is None:
+   189	                    add_row(key_text, Pretty(value, highlighter=highlighter))
+   190	                else:
+   191	                    if self.docs:
+   192	                        docs = getdoc(value)
+   193	                        if docs is not None:
+   194	                            _doc = _reformat_doc(str(docs))
+   195	                            if not self.help:
+   196	                                _doc = _first_paragraph(_doc)
+   197	                            _signature_text.append("\n" if "\n" in _doc else " ")
+   198	                            doc = highlighter(_doc)
+   199	                            doc.stylize("inspect.doc")
+   200	                            _signature_text.append(doc)
+   201	
+   202	                    add_row(key_text, _signature_text)
+   203	            else:
+   204	                add_row(key_text, Pretty(value, highlighter=highlighter))
+   205	        if items_table.row_count:
+   206	            yield items_table
+   207	        else:
+   208	            yield Text.from_markup(
+   209	                f"[b cyan]{not_shown_count}[/][i] attribute(s) not shown.[/i] Run [b][magenta]inspect[/]([not b]inspect[/])[/b] for options."
+   210	            )
+# finish: Finish Rich repository issue implementation
+Implemented the requested non-test changes in `/workspace/rich` and verified them with a reproduction/edge-case script plus focused test runs.
+
+What changed:
+- `rich.json` now reads JSON from stdin when no path is provided, and still supports `-` and explicit file paths.
+- Updated dependency pins/lock metadata for:
+  - `typing-extensions` 3.10.0.2
+  - `pytest` 6.2.5
+  - `ipywidgets` 7.6.5
+  - docs `Sphinx` 4.2.0
+- Fixed incorrect changelog years.
+- Fixed `Table` docstring typos.
+- Replaced hand-rolled HTML escaping with `html.escape` in console/Jupyter HTML rendering, including link href escaping.
+- Fixed `TERM=unknown` so forced terminal output is not treated as dumb; `TERM=dumb` remains conservative.
+- Preserved carriage returns for all-string `Console.print(...)` calls, covering `print("\r", text, sep="", end="")`, while keeping `strip_control_codes`/`Text` behavior unchanged.
+- Made Jupyter rendering respect explicit `file=...` and `stderr=True`, avoiding output leaking to notebook display when a file target is supplied.
+- Added Rich markup support for custom logging level names, with safe fallback for invalid markup.
+- Made pretty traversal robust against non-callable or broken `__rich_repr__`, preventing traceback/local rendering crashes.
+- Kept/verified UserDict derivative pretty rendering and table row style precedence behavior.
+
+Verification:
+- Created and ran `/workspace/reproduce_rich_issues.py`.
+  - Initially reproduced the relevant failures.
+  - After fixes, including added edge cases: `All reproduction checks passed`.
+- Confirmed no files under `tests/` were modified.
+- `python -m compileall -q rich` passed.
+- Focused related tests passed: `165 passed`.
+- `git diff --check` passed.
+
+Full suite note:
+- Full `pytest -q` currently has unrelated environment snapshot failures: `538 passed, 15 failed, 1 skipped`.
+- The remaining failures are from environment drift, not these changes:
+  - installed Pygments is `2.20.0` while the repository lockfile pins `2.10.0`, causing syntax/markdown/card color snapshot diffs;
+  - Python 3.12 inspect/docstring output differs from the older inspect snapshots.
+
+I also attempted Black formatting, but Black is not installed in this environment (`No module named black`).

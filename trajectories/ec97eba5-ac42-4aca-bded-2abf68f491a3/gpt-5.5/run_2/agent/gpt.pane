@@ -1,0 +1,200 @@
+  RemoveConst<T>* pos;
+  T* endPtr;
+  const ArrayDisposer* disposer;
+
+  inline void dispose() {
+    // Make sure that if an exception is thrown, we are left with a null ptr, so we won't possibly
+    // dispose again.
+    T* ptrCopy = ptr;
+    T* posCopy = pos;
+    T* endCopy = endPtr;
+    if (ptrCopy != nullptr) {
+      ptr = nullptr;
+      pos = nullptr;
+      endPtr = nullptr;
+      disposer->dispose(ptrCopy, posCopy - ptrCopy, endCopy - ptrCopy);
+      disposer = nullptr;
+    }
+  }
+  static SegmentAnd<word*> setListPointer(
+      SegmentBuilder* segment, CapTableBuilder* capTable, WirePointer* ref, ListReader value,
+      BuilderArena* orphanArena = nullptr, bool canonical = false) {
+    auto totalSize = assertMax<kj::maxValueForBits<SEGMENT_WORD_COUNT_BITS>() - 1>(
+        roundBitsUpToWords(upgradeBound<uint64_t>(value.elementCount) * value.step),
+        []() { KJ_FAIL_ASSERT("encountered impossibly long struct list ListReader"); });
+
+    if (value.elementSize != ElementSize::INLINE_COMPOSITE) {
+      // List of non-structs.
+      word* ptr;
+      if (canonical && value.elementSize == ElementSize::VOID && orphanArena == nullptr) {
+        if (!ref->isNull()) zeroObject(segment, capTable, ref);
+        ref->setKindWithZeroOffset(WirePointer::LIST);
+        ptr = ref->target();
+      } else {
+        ptr = allocate(ref, segment, capTable, totalSize, WirePointer::LIST, orphanArena);
+      }
+
+      if (value.elementSize == ElementSize::POINTER) {
+        // List of pointers.
+        ref->listRef.set(ElementSize::POINTER, value.elementCount);
+        for (auto i: kj::zeroTo(value.elementCount * (ONE * POINTERS / ELEMENTS))) {
+          copyPointer(segment, capTable, reinterpret_cast<WirePointer*>(ptr) + i,
+                      value.segment, value.capTable,
+                      reinterpret_cast<const WirePointer*>(value.ptr) + i,
+                      value.nestingLimit, nullptr, canonical);
+        }
+      } else {
+        // List of data.
+        ref->listRef.set(value.elementSize, value.elementCount);
+    case ElementSize::POINTER: {
+      if (reinterpret_cast<const word*>(this->ptr) != *readHead) {
+        return false;
+      }
+      *readHead += this->elementCount * (POINTERS / ELEMENTS) * WORDS_PER_POINTER;
+      for (auto ec: kj::zeroTo(this->elementCount)) {
+        if (!this->getPointerElement(ec).isCanonical(readHead)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case ElementSize::VOID:
+      return ref->target(nullptr) == reinterpret_cast<const word*>(ref + 1);
+    default: {
+      if (reinterpret_cast<const word*>(this->ptr) != *readHead) {
+        return false;
+      }
+
+      auto bitSize = upgradeBound<uint64_t>(this->elementCount) *
+
+namespace {
+
+class ThrowingErrorReporter final: public capnp::compiler::ErrorReporter {
+  // Throws all errors as exceptions.
+public:
+  explicit ThrowingErrorReporter(kj::StringPtr input): lineBreaks(input) {}
+
+  void addError(uint32_t startByte, uint32_t endByte, kj::StringPtr message) override {
+    auto start = lineBreaks.toSourcePos(startByte);
+    auto end = lineBreaks.toSourcePos(endByte);
+    kj::String location;
+    if (start.line == end.line) {
+      if (start.column == end.column) {
+        location = kj::str("line ", start.line + 1, ", column ", start.column + 1);
+      } else {
+        location = kj::str("line ", start.line + 1, ", columns ", start.column + 1,
+                           "-", end.column + 1);
+      }
+    } else {
+      location = kj::str("line ", start.line + 1, ", column ", start.column + 1,
+                         " to line ", end.line + 1, ", column ", end.column + 1);
+    }
+    kj::throwRecoverableException(kj::Exception(kj::Exception::Type::FAILED, __FILE__, __LINE__,
+        kj::str(message, " (", location, ").")));
+  }
+
+  bool hadErrors() override { return false; }
+
+private:
+  capnp::compiler::LineBreakTable lineBreaks;
+};
+
+class ExternalResolver final: public capnp::compiler::ValueTranslator::Resolver {
+  // Throws all external resolution requests as assertion failures.
+public:
+  kj::Maybe<capnp::DynamicValue::Reader>
+  resolveConstant(capnp::compiler::Expression::Reader name) override {
+    KJ_FAIL_REQUIRE("External constants not allowed.");
+  }
+
+  kj::Maybe<kj::Array<const capnp::byte>>
+  readEmbed(capnp::compiler::LocatedText::Reader filename) override {
+    KJ_FAIL_REQUIRE("External embeds not allowed.");
+  }
+};
+
+template <typename Function>
+void lexAndParseExpression(kj::StringPtr input, Function f) {
+  // Parses a single expression from the input and calls `f(expression)`.
+
+  ThrowingErrorReporter errorReporter(input);
+
+  capnp::MallocMessageBuilder tokenArena;
+  auto lexedTokens = tokenArena.initRoot<capnp::compiler::LexedTokens>();
+  capnp::compiler::lex(input, lexedTokens, errorReporter);
+
+  capnp::compiler::CapnpParser parser(tokenArena.getOrphanage(), errorReporter);
+  auto tokens = lexedTokens.asReader().getTokens();
+  capnp::compiler::CapnpParser::ParserInput parserInput(tokens.begin(), tokens.end());
+
+  if (parserInput.getPosition() != tokens.end()) {
+    KJ_IF_MAYBE(expression, parser.getParsers().expression(parserInput)) {
+      // The input is expected to contain a *single* message.
+      if (parserInput.getPosition() != tokens.end()) {
+        errorReporter.addErrorOn(*parserInput.getPosition(), "Extra tokens in input");
+      }
+
+      f(expression->getReader());
+    } else {
+      auto best = parserInput.getBest();
+      if (best == tokens.end()) {
+        KJ_FAIL_REQUIRE("Premature end of input.");
+      } else {
+# think: Reflect on issue coverage and edge cases
+Your thought has been logged.
+$ cd /workspace/capnproto && git --no-pager diff --stat 555150f0636174d0e911db854f2b0045a81c253f && git --no-pager diff --name-only 555150f0636174d0e911db854f2b0045a81c253f
+c++/src/capnp/CMakeLists.txt             |  1 +
+ c++/src/capnp/compat/http-over-capnp.c++ |  2 +-
+ c++/src/capnp/layout.c++                 | 11 ++++++++++-
+ c++/src/capnp/serialize-text.c++         | 39 +++++++++++++++++++++++++++++++--------
+ c++/src/kj/array.h                       | 13 +++++++++++--
+ c++/src/kj/async.h                       |  2 +-
+ c++/src/kj/common.h                      | 12 +++++++++++-
+ c++/src/kj/compat/http.c++               | 12 ++++++------
+ c++/src/kj/compat/tls.c++                | 25 +++++++++++++++++++++++++
+ doc/encoding.md                          |  1 +
+ release.sh                               |  2 +-
+ 11 files changed, 99 insertions(+), 21 deletions(-)
+c++/src/capnp/CMakeLists.txt
+c++/src/capnp/compat/http-over-capnp.c++
+c++/src/capnp/layout.c++
+c++/src/capnp/serialize-text.c++
+c++/src/kj/array.h
+c++/src/kj/async.h
+c++/src/kj/common.h
+c++/src/kj/compat/http.c++
+c++/src/kj/compat/tls.c++
+doc/encoding.md
+release.sh
+# task_tracker: Mark all planned tasks complete
+Task list has been updated with 5 item(s).
+# finish: Summarize completed fixes and verification
+Implemented the requested non-test changes in `/workspace/capnproto`.
+
+Summary of changes:
+- Coalesced small TLS `writev` pieces into a single buffer before `SSL_write()`.
+- Added CMake `CAPNP_INCLUDE_DIR` definition for the built `capnp` tool.
+- Added clang unreachable-code diagnostic suppression for known-unreachable helper paths.
+- Reworked `fastCaseCmp()` to avoid GCC tautological bitwise-compare warnings.
+- Fixed `kj::ArrayBuilder` empty/default disposer handling to avoid UBSAN null-reference binding.
+- Cleaned up `TextCodec` parse error formatting and added line/column spans.
+- Fixed inverted `canceler.isEmpty()` usage in HTTP-over-Cap’n Proto and corrected its docs.
+- Fixed `mainlaine` typo in `release.sh`.
+- Specified and implemented canonical List(Void) offset `0`, including canonical validation.
+- Verified HTTP-over-Capnp/WebSocket behavior with a manual build/run of its test.
+
+Verification performed:
+- Reproduced the ArrayBuilder UBSAN failure, then confirmed fixed with `/tmp/repro_array.cpp`.
+- Ran broader ArrayBuilder edge checks under UBSAN.
+- Compiled `kj/compat/http.c++` with `-Werror=tautological-compare`.
+- Ran a TextCodec parse-error formatting reproducer.
+- Ran a canonical List(Void) offset reproducer.
+- Built and ran manually generated `http-over-capnp-test` successfully.
+- Configured and built relevant CMake targets, then ran:
+  - `kj-tests`
+  - `capnp-tests`
+  - `kj-heavy-tests`
+  - `capnp-heavy-tests`
+- `ctest` was also invoked, but this CMake setup registered no tests.
+
+No repository test files were modified.

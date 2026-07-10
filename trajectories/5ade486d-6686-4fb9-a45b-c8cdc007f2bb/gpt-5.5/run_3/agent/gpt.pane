@@ -1,0 +1,200 @@
+-       WriteAheadLog bool
++       Path              string
++       WriteAheadLog     bool
++       WALAutoCheckpoint int
+ }
+
+ type PostgresConfig struct {
+@@ -272,6 +273,7 @@ func LoadConfig(path string, isFile bool) error {
+        viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
+
+        viper.SetDefault("database.sqlite.write_ahead_log", true)
++       viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000)
+
+        viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
+        viper.SetDefault("oidc.strip_email_domain", true)
+@@ -291,12 +293,21 @@ func LoadConfig(path string, isFile bool) error {
+        viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
+
+        if err := viper.ReadInConfig(); err != nil {
++               var configFileNotFoundError viper.ConfigFileNotFoundError
++               if !isFile && errors.As(err, &configFileNotFoundError) && IsCLIConfigured() {
++                       return nil
++               }
++
+                return fmt.Errorf("fatal error reading config file: %w", err)
+        }
+
+        return nil
+ }
+
++func IsCLIConfigured() bool {
++       return viper.GetString("cli.address") != "" && viper.GetString("cli.api_key") != ""
++}
++
+ func validateServerConfig() error {
+        depr := deprecator{
+                warns:  make(set.Set[string]),
+@@ -748,6 +759,22 @@ func LoadCLIConfig() (*Config, error) {
+        }, nil
+ }
+
++func serverURLContainsBaseDomain(serverURL, baseDomain string) bool {
++       baseDomain = strings.TrimSuffix(strings.ToLower(baseDomain), ".")
++       if baseDomain == "" {
++               return false
++       }
++
++       parsedURL, err := url.Parse(serverURL)
++       host := serverURL
++       if err == nil && parsedURL.Host != "" {
++               host = parsedURL.Hostname()
++       }
++       host = strings.TrimSuffix(strings.ToLower(host), ".")
++
++       return host == baseDomain || strings.HasSuffix(host, "."+baseDomain)
++}
++
+ // LoadServerConfig returns the full Headscale configuration to
+ // host a Headscale server. This is called as part of `headscale serve`.
+ func LoadServerConfig() (*Config, error) {
+@@ -816,7 +843,7 @@ func LoadServerConfig() (*Config, error) {
+        // - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
+        //
+        // TODO(kradalby): remove dnsConfig.UserNameInMagicDNS check when removed.
+-       if !dnsConfig.UserNameInMagicDNS && dnsConfig.BaseDomain != "" && strings.Contains(serverURL, dnsConfig.BaseDomain) {
++       if !dnsConfig.UserNameInMagicDNS && serverURLContainsBaseDomain(serverURL, dnsConfig.BaseDomain) {
+                return nil, errors.New("server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.")
+        }
+$ cd /workspace/headscale && git --no-pager diff -- .goreleaser.yml config-example.yaml docs/packaging/postinstall.sh proto/headscale/v1/headscale.proto gen/go/headscale/v1/headscale.pb.gw.go | sed -n '1,220p'
+diff --git a/.goreleaser.yml b/.goreleaser.yml
+index 4aabde4..51f8000 100644
+--- a/.goreleaser.yml
++++ b/.goreleaser.yml
+@@ -154,7 +154,7 @@ kos:
+       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+       - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+-      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
++      - "{{ if not .Prerelease }}stable-debug{{ else }}unstable-debug{{ end }}"
+       - "{{ .Tag }}-debug"
+       - '{{ trimprefix .Tag "v" }}-debug'
+       - "sha-{{ .ShortCommit }}-debug"
+@@ -177,7 +177,7 @@ kos:
+       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
+       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}-debug{{ end }}"
+       - "{{ if not .Prerelease }}v{{ .Major }}-debug{{ end }}"
+-      - "{{ if not .Prerelease }}stable{{ else }}unstable-debug{{ end }}"
++      - "{{ if not .Prerelease }}stable-debug{{ else }}unstable-debug{{ end }}"
+       - "{{ .Tag }}-debug"
+       - '{{ trimprefix .Tag "v" }}-debug'
+       - "sha-{{ .ShortCommit }}-debug"
+diff --git a/config-example.yaml b/config-example.yaml
+index 04a2f34..46cafe4 100644
+--- a/config-example.yaml
++++ b/config-example.yaml
+@@ -168,6 +168,11 @@ database:
+     # https://www.sqlite.org/wal.html
+     write_ahead_log: true
+
++    # Maximum number of WAL file frames before the WAL file is automatically checkpointed.
++    # https://www.sqlite.org/c3ref/wal_autocheckpoint.html
++    # Set to 0 to disable automatic checkpointing.
++    wal_autocheckpoint: 1000
++
+   # # Postgres config
+   # Please note that using Postgres is highly discouraged as it is only supported for legacy reasons.
+   # See database.type for more information.
+@@ -260,7 +265,6 @@ policy:
+ # all the fields under `dns` should be set to empty values.
+ dns:
+   # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+-  # Only works if there is at least a nameserver defined.
+   magic_dns: true
+
+   # Defines the base domain to create the hostnames for MagicDNS.
+diff --git a/docs/packaging/postinstall.sh b/docs/packaging/postinstall.sh
+index 7d934a9..6036458 100644
+--- a/docs/packaging/postinstall.sh
++++ b/docs/packaging/postinstall.sh
+@@ -29,7 +29,7 @@ ensure_headscale_path() {
+
+ create_headscale_user() {
+        printf "PostInstall: Adding headscale user %s\n" "$HEADSCALE_USER"
+-       useradd -s /bin/sh -c "headscale default user" headscale
++       useradd -s /usr/sbin/nologin -c "headscale default user" headscale
+ }
+
+ create_headscale_group() {
+diff --git a/gen/go/headscale/v1/headscale.pb.gw.go b/gen/go/headscale/v1/headscale.pb.gw.go
+index 59a98ce..a88b396 100644
+--- a/gen/go/headscale/v1/headscale.pb.gw.go
++++ b/gen/go/headscale/v1/headscale.pb.gw.go
+@@ -733,6 +733,10 @@ func request_HeadscaleService_MoveNode_0(ctx context.Context, marshaler runtime.
+        var protoReq MoveNodeRequest
+        var metadata runtime.ServerMetadata
+
++       if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
++               return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
++       }
++
+        var (
+                val string
+                ok  bool
+@@ -766,6 +770,10 @@ func local_request_HeadscaleService_MoveNode_0(ctx context.Context, marshaler ru
+        var protoReq MoveNodeRequest
+        var metadata runtime.ServerMetadata
+
++       if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
++               return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
++       }
++
+        var (
+                val string
+                ok  bool
+diff --git a/proto/headscale/v1/headscale.proto b/proto/headscale/v1/headscale.proto
+index 7324b65..6c41e84 100644
+--- a/proto/headscale/v1/headscale.proto
++++ b/proto/headscale/v1/headscale.proto
+@@ -122,6 +122,7 @@ service HeadscaleService {
+     rpc MoveNode(MoveNodeRequest) returns (MoveNodeResponse) {
+         option (google.api.http) = {
+             post: "/api/v1/node/{node_id}/user"
++            body: "*"
+         };
+     }
+# task_tracker: Mark all implementation tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/headscale && git status --short
+M .goreleaser.yml
+ M config-example.yaml
+ M docs/packaging/postinstall.sh
+ M gen/go/headscale/v1/headscale.pb.gw.go
+ M hscontrol/db/db.go
+ M hscontrol/db/routes.go
+ M hscontrol/oidc.go
+ M hscontrol/policy/acls.go
+ M hscontrol/poll.go
+ M hscontrol/types/config.go
+ M proto/headscale/v1/headscale.proto
+# finish: Summarize completed repository fixes and validation
+Implemented the requested non-test changes in `/workspace/headscale`.
+
+Summary of changes:
+- Allowed remote CLI configuration from `HEADSCALE_CLI_ADDRESS`/`HEADSCALE_CLI_API_KEY` without requiring a config file.
+- Relaxed `server_url`/`dns.base_domain` validation to reject only exact/parent DNS suffix conflicts, not arbitrary substrings.
+- Added SQLite WAL auto-checkpoint configuration and defaulted it to `1000` frames.
+- Fixed deletion of orphaned exit routes that have no associated node.
+- Corrected tagged-node ACL user-permission exclusion logic and made tag listing nil-safe.
+- Persisted client hostname changes from Hostinfo updates.
+- Added OIDC username fallback to `preferred_username` when `email` is absent.
+- Fixed REST `MoveNode` body decoding by adding `body: "*"` and updating generated gateway handling.
+- Updated small packaging/release/docs items: Debian nologin shell, stable debug image tag, MagicDNS nameserver comment removal.
+
+Validation performed:
+- Created and ran `/tmp/headscale_repro.go` with `go run`; it now passes and covers the CLI env-only and base-domain validation regressions plus edge cases.
+- Ran targeted tests: `go test ./hscontrol/types ./hscontrol/db ./hscontrol/policy ./hscontrol`.
+- Ran CLI/generated package tests: `go test ./cmd/headscale ./cmd/headscale/cli ./gen/go/headscale/v1`.
+- Ran full short suite: `go test -short ./...`.
+
+No repository test files were modified.

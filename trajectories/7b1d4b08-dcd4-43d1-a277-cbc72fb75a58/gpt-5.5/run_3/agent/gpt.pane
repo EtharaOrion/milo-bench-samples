@@ -1,0 +1,200 @@
+FAILED tests/test_markdown.py::test_markdown_render - AssertionError: assert '╔═══════════...───┘\x1b[0m\n' == '╔═══════════...───┘\x1b[0m\n'
+FAILED tests/test_markdown.py::test_inline_code - AssertionError: assert 'inline \x1b[...           \n' == 'inline \x1b[...           \n'
+FAILED tests/test_markdown_no_hyperlinks.py::test_markdown_render - AssertionError: assert '╔═══════════...───┘\x1b[0m\n' == '╔═══════════...───┘\x1b[0m\n'
+FAILED tests/test_syntax.py::test_python_render - assert '╭───────────...──────────╯\n' == '╭───────────...──────────╯\n'
+10 failed, 285 passed, 1 warning in 1.05s
+$ cd /workspace/rich && python - <<'PY'
+$ import io, logging, tempfile
+$ from pathlib import Path
+$ from rich.console import Console
+$ from rich.table import Table
+$ from rich.logging import RichHandler
+$ 
+$ # HTML charset in export and save
+$ console = Console(record=True)
+$ console.print('━ café')
+$ html = console.export_html()
+$ assert '<meta charset="UTF-8">' in html
+$ with tempfile.TemporaryDirectory() as tmpdir:
+$     path = Path(tmpdir) / 'report.html'
+$     console = Console(record=True)
+$     console.print('━ café')
+$     console.save_html(str(path))
+$     assert '<meta charset="UTF-8">' in path.read_text(encoding='utf-8')
+$ 
+$ # Table title/caption justification and caption style
+$ console = Console(file=io.StringIO(), width=24, color_system=None)
+$ table = Table('a', title='T', caption='C', width=10, title_justify='left', caption_justify='right')
+$ table.add_row('x')
+$ console.print(table)
+$ lines = console.file.getvalue().splitlines()
+$ assert lines[0].startswith('T') and lines[-1].endswith('C')
+$ 
+$ # Capture preserves terminal settings and avoids write-through
+$ stream = io.StringIO()
+$ console = Console(file=stream, force_terminal=True, color_system='standard')
+$ with console.capture() as capture:
+$     console.print('[bold red]captured[/]')
+$ assert 'captured' in capture.get() and '\x1b[' in capture.get()
+$ assert stream.getvalue() == ''
+$ 
+$ # RichHandler rich tracebacks
+$ stream = io.StringIO()
+$ console = Console(file=stream, force_terminal=True, color_system=None, width=100)
+$ handler = RichHandler(console=console, show_time=False, show_path=False, handle_tracebacks=True, extra_lines=0)
+$ logger = logging.getLogger('verify-rich-handler')
+$ logger.handlers[:] = [handler]
+$ logger.setLevel(logging.ERROR)
+$ logger.propagate = False
+$ try:
+$     1 / 0
+$ except ZeroDivisionError:
+$     logger.exception('boom')
+$ output = stream.getvalue()
+$ assert 'ZeroDivisionError' in output and '╭' in output
+$ assert 'Traceback (most recent call last):\n  File' not in output
+$ 
+$ # Traceback direct cause and suppressed context
+$ console = Console(file=io.StringIO(), color_system=None, width=100)
+$ try:
+$     try:
+$         1 / 0
+$     except ZeroDivisionError as error:
+$         raise RuntimeError('outer') from error
+$ except RuntimeError:
+$     console.print_exception(line_numbers=False, extra_lines=0)
+$ output = console.file.getvalue()
+$ assert 'direct cause' in output and '❱' not in output
+$ console = Console(file=io.StringIO(), color_system=None, width=100)
+$ try:
+$     try:
+$         1 / 0
+$     except ZeroDivisionError:
+$         raise RuntimeError('suppressed') from None
+$ except RuntimeError:
+$     console.print_exception(extra_lines=0)
+$ assert 'ZeroDivisionError' not in console.file.getvalue()
+$ print('custom verification passed')
+$ PY
+cd /workspace/rich && python - <<'PY'
+import io, logging, tempfile
+from pathlib import Path
+from rich.console import Console
+from rich.table import Table
+from rich.logging import RichHandler
+# HTML charset in export and save
+console = Console(record=True)
+console.print('━ café')
+html = console.export_html()
+assert '<meta charset="UTF-8">' in html
+with tempfile.TemporaryDirectory() as tmpdir:
+    path = Path(tmpdir) / 'report.html'
+    console = Console(record=True)
+    console.print('━ café')
+    console.save_html(str(path))
+    assert '<meta charset="UTF-8">' in path.read_text(encoding='utf-8')
+# Table title/caption justification and caption style
+console = Console(file=io.StringIO(), width=24, color_system=None)
+table = Table('a', title='T', caption='C', width=10, title_justify='left', caption_justify='right')
+table.add_row('x')
+console.print(table)
+lines = console.file.getvalue().splitlines()
+assert lines[0].startswith('T') and lines[-1].endswith('C')
+# Capture preserves terminal settings and avoids write-through
+stream = io.StringIO()
+console = Console(file=stream, force_terminal=True, color_system='standard')
+with console.capture() as capture:
+    console.print('[bold red]captured[/]')
+assert 'captured' in capture.get() and '\x1b[' in capture.get()
+assert stream.getvalue() == ''
+# RichHandler rich tracebacks
+stream = io.StringIO()
+console = Console(file=stream, force_terminal=True, color_system=None, width=100)
+handler = RichHandler(console=console, show_time=False, show_path=False, handle_tracebacks=True, extra_lines=0)
+logger = logging.getLogger('verify-rich-handler')
+logger.handlers[:] = [handler]
+logger.setLevel(logging.ERROR)
+logger.propagate = False
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.exception('boom')
+output = stream.getvalue()
+assert 'ZeroDivisionError' in output and '╭' in output
+assert 'Traceback (most recent call last):\n  File' not in output
+# Traceback direct cause and suppressed context
+console = Console(file=io.StringIO(), color_system=None, width=100)
+try:
+    try:
+        1 / 0
+    except ZeroDivisionError as error:
+        raise RuntimeError('outer') from error
+except RuntimeError:
+    console.print_exception(line_numbers=False, extra_lines=0)
+output = console.file.getvalue()
+assert 'direct cause' in output and '❱' not in output
+console = Console(file=io.StringIO(), color_system=None, width=100)
+try:
+    try:
+        1 / 0
+    except ZeroDivisionError:
+        raise RuntimeError('suppressed') from None
+except RuntimeError:
+    console.print_exception(extra_lines=0)
+assert 'ZeroDivisionError' not in console.file.getvalue()
+print('custom verification passed')
+PY
+━ café
+━ café
+custom verification passed
+$ cd /workspace/rich && git status --short && git --no-pager diff --stat && git --no-pager diff --check
+M docs/source/console.rst
+ M rich/console.py
+ M rich/errors.py
+ M rich/highlighter.py
+ M rich/logging.py
+ M rich/markup.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+ docs/source/console.rst | 10 +++++-----
+ rich/console.py         | 65 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----
+ rich/errors.py          |  4 ++++
+ rich/highlighter.py     |  2 +-
+ rich/logging.py         | 76 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ rich/markup.py          |  2 +-
+ rich/syntax.py          | 16 ++++++++++------
+ rich/table.py           | 21 ++++++++++++++++-----
+ rich/tabulate.py        |  6 +++++-
+ rich/traceback.py       | 35 ++++++++++++++++++++++++++++-------
+ 10 files changed, 205 insertions(+), 32 deletions(-)
+# task_tracker: Mark all tasks complete with verification notes
+Task list has been updated with 5 item(s).
+# finish: Finish with implementation and verification summary
+Implemented the requested non-test changes in `/workspace/rich`.
+
+Summary of changes:
+- Added UTF-8 charset declaration to default HTML export/save output.
+- Added `Console.capture()` plus `begin_capture()` / `end_capture()` and `CaptureError`.
+- Added `Table(title_justify=..., caption_justify=...)` and fixed `caption_style` assignment.
+- Updated the `tabulate.py` demo to illustrate title/caption justification.
+- Added rich traceback support to `RichHandler` via `handle_tracebacks=True`, with traceback width/extra_lines/theme/word_wrap options and compatibility aliases.
+- Improved traceback rendering for:
+  - `line_numbers=False`
+  - explicit exception causes (`raise ... from ...`)
+  - suppressed contexts (`raise ... from None`)
+- Fixed `Syntax.line_range` behavior when line numbers are disabled.
+- Fixed small docstring/documentation typos and updated console capture docs.
+
+Verification performed:
+- Created and ran a temporary reproduction script before changes; it confirmed the missing behavior.
+- Reran the reproduction script after implementation; all checks passed, then removed the temporary script.
+- Ran a compact custom verification covering HTML charset, table justification/style, capture behavior, rich logging tracebacks, direct causes, suppressed contexts, and `line_numbers=False`; it passed.
+- Ran `python -m py_compile` on modified Python files; passed.
+- Ran `git diff --check`; passed.
+- Attempted Black formatting, but `black` / `python -m black` is not installed in this environment.
+
+Test suite note:
+- Full `pytest -q` result: `285 passed, 10 failed`.
+- The failures are from the currently visible repository tests expecting pre-change snapshot strings, notably HTML output without the new charset, plus existing render snapshot/logging-capture mismatches. I did not modify any tests, per your instruction.

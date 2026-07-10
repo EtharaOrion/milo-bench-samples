@@ -1,0 +1,200 @@
+test/internals/handleRequest.test.js ................ 41/41
+test/internals/hookRunner.test.js ................... 82/82
+test/internals/hooks.test.js ........................ 27/27
+test/internals/initialConfig.test.js ................ 59/59
+test/internals/logger.test.js ....................... 39/39
+test/internals/plugin.test.js ......................... 7/7
+test/internals/reply.test.js ...................... 205/205
+test/internals/schemas.test.js ........................ 4/4
+test/internals/validation.test.js ................... 25/25
+total ........................................... 4141/4160
+
+
+  4141 passing (4m)
+  19 failing
+# task_tracker: Update verification task status and notes
+Task list has been updated with 6 item(s).
+$ rm /workspace/reproduce-fastify-1881.js && cd /workspace/fastify && git status --short --untracked-files=all
+M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+$ cd /workspace/fastify && git --no-pager diff --stat && git --no-pager diff -- lib/schemas.js lib/reply.js fastify.d.ts docs/Reply.md package.json | sed -n '1,260p'
+docs/Reply.md  | 24 ++++++++++++++++++++++++
+ fastify.d.ts   |  1 +
+ lib/reply.js   | 10 ++++++++++
+ lib/schemas.js |  4 ++--
+ package.json   |  5 +++--
+ 5 files changed, 40 insertions(+), 4 deletions(-)
+diff --git a/docs/Reply.md b/docs/Reply.md
+index d6a7a3f..a88e5a1 100644
+--- a/docs/Reply.md
++++ b/docs/Reply.md
+@@ -5,6 +5,7 @@
+   - [Introduction](#introduction)
+   - [.code(statusCode)](#codestatuscode)
+   - [.header(key, value)](#headerkey-value)
++  - [.headers(object)](#headersobject)
+   - [.getHeader(key)](#getheaderkey)
+   - [.removeHeader(key)](#removeheaderkey)
+   - [.hasHeader(key)](#hasheaderkey)
+@@ -14,6 +15,7 @@
+   - [.type(contentType)](#typecontenttype)
+   - [.serializer(func)](#serializerfunc)
+   - [.sent](#sent)
++  - [.statusCode](#statuscode)
+   - [.send(data)](#senddata)
+     - [Objects](#objects)
+     - [Strings](#strings)
+@@ -33,6 +35,7 @@ and properties:
+ - `.code(statusCode)` - Sets the status code.
+ - `.status(statusCode)` - An alias for `.code(statusCode)`.
+ - `.header(name, value)` - Sets a response header.
++- `.headers(object)` - Sets all the keys of the object as response headers.
+ - `.getHeader(name)` - Retrieve value of already set header.
+ - `.removeHeader(key)` - Remove the value of a previously set header.
+ - `.hasHeader(name)` - Determine if a header has been set.
+@@ -43,6 +46,7 @@ and properties:
+ - `.serializer(function)` - Sets a custom serializer for the payload.
+ - `.send(payload)` - Sends the payload to the user, could be a plain text, a buffer, JSON, stream, or an Error object.
+ - `.sent` - A boolean value that you can use if you need to know if `send` has already been called.
++- `.statusCode` - Read and set the HTTP response status code.
+ - `.res` - The [`http.ServerResponse`](https://nodejs.org/dist/latest/docs/api/http.html#http_class_http_serverresponse) from Node core.
+ - `.log` - The logger instance of the incoming request.
+ - `.request` - The incoming request.
+@@ -76,6 +80,17 @@ to `''`.
+
+ For more information, see [`http.ServerResponse#setHeader`](https://nodejs.org/dist/latest/docs/api/http.html#http_response_setheader_name_value).
+
++<a name="headers"></a>
++### .headers(object)
++Sets all the keys of the object as response headers.
++
++```js
++reply.headers({
++  'x-foo': 'foo',
++  'x-bar': 'bar'
++})
++```
++
+ <a name="getHeader"></a>
+ ### .getHeader(key)
+ Retrieves the value of a previously set header.
+@@ -149,6 +164,15 @@ reply
+
+ See [`.send()`](#send) for more information on sending different types of values.
+
++<a name="statuscode"></a>
++### .statusCode
++Reads and sets the HTTP response status code.
++
++```js
++reply.statusCode = 404
++console.log(reply.statusCode) // 404
++```
++
+ <a name="sent"></a>
+ ### .sent
+
+diff --git a/fastify.d.ts b/fastify.d.ts
+index 935a583..36d94b8 100644
+--- a/fastify.d.ts
++++ b/fastify.d.ts
+@@ -178,6 +178,7 @@ declare namespace fastify {
+     serializer(fn: Function): FastifyReply<HttpResponse>
+     send(payload?: any): FastifyReply<HttpResponse>
+     sent: boolean
++    statusCode: number
+     res: HttpResponse
+     context: FastifyContext
+     request: FastifyRequest
+diff --git a/lib/reply.js b/lib/reply.js
+index 6e354e3..80fd8aa 100644
+--- a/lib/reply.js
++++ b/lib/reply.js
+@@ -86,6 +86,16 @@ Object.defineProperty(Reply.prototype, 'sent', {
+   }
+ })
+
++Object.defineProperty(Reply.prototype, 'statusCode', {
++  enumerable: true,
++  get () {
++    return this.res.statusCode
++  },
++  set (value) {
++    this.code(value)
++  }
++})
++
+ Reply.prototype.send = function (payload) {
+   if (this[kReplyIsRunningOnErrorHook] === true) {
+     throw new FST_ERR_SEND_INSIDE_ONERR()
+diff --git a/lib/schemas.js b/lib/schemas.js
+index 4008030..da6a983 100644
+--- a/lib/schemas.js
++++ b/lib/schemas.js
+@@ -106,8 +106,8 @@ Schemas.prototype.traverse = function (schema, refResolver) {
+       schema[key] = this.resolve(schema[key].slice(0, -1))
+     } else if (key === '$ref' && refResolver) {
+       const refValue = schema[key]
+-
+-      const refId = refValue.slice(0, refValue.indexOf('#'))
++      const refHashIndex = refValue.indexOf('#')
++      const refId = refHashIndex === -1 ? refValue : refValue.slice(0, refHashIndex)
+       if (refId.length > 0 && !this.store[refId]) {
+         const resolvedSchema = refResolver(refId)
+         if (resolvedSchema) {
+diff --git a/package.json b/package.json
+index 583d58f..ab049b2 100644
+--- a/package.json
++++ b/package.json
+@@ -99,7 +99,7 @@
+     "ajv-pack": "^0.3.1",
+     "autocannon": "^3.2.0",
+     "branch-comparer": "^0.4.0",
+-    "concurrently": "^4.1.2",
++    "concurrently": "^5.0.0",
+     "cors": "^2.8.5",
+     "coveralls": "^3.0.6",
+     "dns-prefetch-control": "^0.2.0",
+@@ -159,7 +159,8 @@
+       "@types/node",
+       "tap",
+       "tap-mocha-reporter",
+-      "@typescript-eslint/eslint-plugin"
++      "@typescript-eslint/eslint-plugin",
++      "lolex"
+     ]
+   },
+   "standard": {
+# task_tracker: Mark all tracked tasks complete
+Task list has been updated with 6 item(s).
+# finish: Summarize completed Fastify fixes and verification
+Implemented the requested non-test changes in `/workspace/fastify`.
+
+Summary of changes:
+- Fixed JSON Schema external `$ref` resolution in `lib/schemas.js` so full-schema refs without `#` are not truncated.
+- Added `reply.statusCode` getter/setter in `lib/reply.js`; the setter delegates to `.code()` so redirect/status-code tracking remains correct.
+- Updated `fastify.d.ts` to expose `statusCode` on `FastifyReply`.
+- Documented `.headers(object)` and `.statusCode` in `docs/Reply.md`.
+- Updated `package.json`:
+  - `concurrently` from `^4.1.2` to `^5.0.0`
+  - added `lolex` to Greenkeeper’s ignore list.
+
+Verification performed:
+- Created a temporary reproduction/edge-case script, confirmed the original schema bug, then verified the fix for:
+  - full external refs with no `#`
+  - external refs with fragments
+  - local refs
+  - trailing-hash refs
+  - `reply.statusCode` read/write behavior
+  - `reply.headers()` behavior
+- Removed the temporary script after verification.
+
+Passing checks:
+- `NODE_OPTIONS=--dns-result-order=ipv4first npx tap --no-esm -J test/schemas.test.js test/internals/schemas.test.js test/internals/reply.test.js test/reply-error.test.js`
+- `NODE_OPTIONS=--dns-result-order=ipv4first npm run lint && npm run typescript`
+
+Full-suite note:
+- I also ran `NODE_OPTIONS=--dns-result-order=ipv4first npm test` and a serial full unit suite. Both still fail in unrelated legacy-environment areas on this Node 22 setup, including close/pipelining timing, empty-body request timeouts, an avvio promise ReferenceError, and existing validation message formatting expectations. The targeted tests for the modified files/functions pass.

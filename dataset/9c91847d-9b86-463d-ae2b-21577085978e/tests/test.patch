@@ -1,0 +1,132 @@
+diff --git a/tests/test_console.py b/tests/test_console.py
+index b82c765911..82bc5b48d4 100644
+--- a/tests/test_console.py
++++ b/tests/test_console.py
+@@ -467,3 +467,14 @@ def test_console_style() -> None:
+     expected = "\x1b[31mfoo\x1b[0m\n"
+     result = console.file.getvalue()
+     assert result == expected
++
++
++def test_no_color():
++    console = Console(
++        file=io.StringIO(), color_system="truecolor", force_terminal=True, no_color=True
++    )
++    console.print("[bold magenta on red]FOO")
++    expected = "\x1b[1mFOO\x1b[0m\n"
++    result = console.file.getvalue()
++    print(repr(result))
++    assert result == expected
+diff --git a/tests/test_segment.py b/tests/test_segment.py
+index 2c3344dd1b..42abdcbacf 100644
+--- a/tests/test_segment.py
++++ b/tests/test_segment.py
+@@ -96,3 +96,14 @@ def test_strip_styles():
+ def test_strip_links():
+     segments = [Segment("foo", Style(bold=True, link="https://www.example.org"))]
+     assert list(Segment.strip_links(segments)) == [Segment("foo", Style(bold=True))]
++
++
++def test_remove_color():
++    segments = [
++        Segment("foo", Style(bold=True, color="red")),
++        Segment("bar", None),
++    ]
++    assert list(Segment.remove_color(segments)) == [
++        Segment("foo", Style(bold=True)),
++        Segment("bar", None),
++    ]
+diff --git a/tests/test_style.py b/tests/test_style.py
+index a5075e80fb..8282331f30 100644
+--- a/tests/test_style.py
++++ b/tests/test_style.py
+@@ -196,3 +196,13 @@ def test_background_style():
+     assert Style(bold=True, color="yellow", bgcolor="red").background_style == Style(
+         bgcolor="red"
+     )
++
++
++def test_without_color():
++    style = Style(bold=True, color="red", bgcolor="blue")
++    colorless_style = style.without_color
++    assert colorless_style.color == None
++    assert colorless_style.bgcolor == None
++    assert colorless_style.bold == True
++    null_style = Style.null()
++    assert null_style.without_color == null_style
+diff --git a/tests/test_tree.py b/tests/test_tree.py
+new file mode 100644
+index 0000000000..fc5db87770
+--- /dev/null
++++ b/tests/test_tree.py
+@@ -0,0 +1,70 @@
++from rich.console import Console
++from rich.tree import Tree
++
++
++def test_render_single_node():
++    tree = Tree("foo")
++    console = Console(color_system=None, width=20)
++    console.begin_capture()
++    console.print(tree)
++    assert console.end_capture() == "foo                 \n"
++
++
++def test_render_single_branch():
++    tree = Tree("foo")
++    tree.add("bar")
++    console = Console(color_system=None, width=20)
++    console.begin_capture()
++    console.print(tree)
++    result = console.end_capture()
++    print(repr(result))
++    expected = "foo                 \n└── bar             \n"
++    assert result == expected
++
++
++def test_render_double_branch():
++    tree = Tree("foo")
++    tree.add("bar")
++    tree.add("baz")
++    console = Console(color_system=None, width=20)
++    console.begin_capture()
++    console.print(tree)
++    result = console.end_capture()
++    print(repr(result))
++    expected = "foo                 \n├── bar             \n└── baz             \n"
++    assert result == expected
++
++
++def test_render_ascii():
++    tree = Tree("foo")
++    tree.add("bar")
++    tree.add("baz")
++
++    class AsciiConsole(Console):
++        @property
++        def encoding(self):
++            return "ascii"
++
++    console = AsciiConsole(color_system=None, width=20)
++    console.begin_capture()
++    console.print(tree)
++    result = console.end_capture()
++    expected = "foo                 \n+-- bar             \n`-- baz             \n"
++    assert result == expected
++
++
++def test_render():
++    tree = Tree("foo")
++    tree.add("bar", style="italic")
++    baz_tree = tree.add("baz", guide_style="bold red", style="on blue")
++    baz_tree.add("1")
++    baz_tree.add("2")
++    tree.add("egg")
++
++    console = Console(width=20, force_terminal=True, color_system="standard")
++    console.begin_capture()
++    console.print(tree)
++    result = console.end_capture()
++    print(repr(result))
++    expected = "foo                 \n├── \x1b[3mbar\x1b[0m\x1b[3m             \x1b[0m\n\x1b[44m├── \x1b[0m\x1b[44mbaz\x1b[0m\x1b[44m             \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┣━━ \x1b[0m\x1b[44m1\x1b[0m\x1b[44m           \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┗━━ \x1b[0m\x1b[44m2\x1b[0m\x1b[44m           \x1b[0m\n└── egg             \n"
++    assert result == expected

@@ -1,0 +1,4783 @@
+diff --git a/.github/ISSUE_TEMPLATE/bug-report.yml b/.github/ISSUE_TEMPLATE/bug-report.yml
+index 702830214e3fa..7496543864c8b 100644
+--- a/.github/ISSUE_TEMPLATE/bug-report.yml
++++ b/.github/ISSUE_TEMPLATE/bug-report.yml
+@@ -1,5 +1,5 @@
+ name: "\U0001F41B Bug Report"
+-description: Submit a bug report to help us improve LangChain
++description: Submit a bug report to help us improve LangChain. To report a security issue, please instead use the security option below.
+ labels: ["02 Bug Report"]
+ body:
+   - type: markdown
+diff --git a/.github/actions/poetry_setup/action.yml b/.github/actions/poetry_setup/action.yml
+index bcc9a6045308f..6dbe000264e79 100644
+--- a/.github/actions/poetry_setup/action.yml
++++ b/.github/actions/poetry_setup/action.yml
+@@ -47,8 +47,12 @@ runs:
+           ~/.cache/pip
+         key: pip-${{ runner.os }}-${{ runner.arch }}-py-${{ inputs.python-version }}
+ 
+-    - run: pipx install poetry==${{ inputs.poetry-version }} --python python${{ inputs.python-version }}
++    - name: Install poetry
+       shell: bash
++      env:
++        POETRY_VERSION: ${{ inputs.poetry-version }}
++        PYTHON_VERSION: ${{ inputs.python-version }}
++      run: pipx install "poetry==$POETRY_VERSION" --python "python$PYTHON_VERSION" --verbose
+ 
+     - name: Check Poetry File
+       shell: bash
+diff --git a/.github/workflows/_lint.yml b/.github/workflows/_lint.yml
+index aab4effa077b8..c850258d19576 100644
+--- a/.github/workflows/_lint.yml
++++ b/.github/workflows/_lint.yml
+@@ -107,7 +107,7 @@ jobs:
+           poetry install
+       - name: Install langchain editable
+         working-directory: ${{ inputs.working-directory }}
+-        if: ${{ inputs.working-directory != 'langchain' }}
++        if: ${{ inputs.working-directory != 'libs/langchain' }}
+         run: |
+           pip install -e ../langchain
+ 
+diff --git a/.github/workflows/_pydantic_compatibility.yml b/.github/workflows/_pydantic_compatibility.yml
+new file mode 100644
+index 0000000000000..5a54c2f53c73e
+--- /dev/null
++++ b/.github/workflows/_pydantic_compatibility.yml
+@@ -0,0 +1,76 @@
++name: pydantic v1/v2 compatibility
++
++on:
++  workflow_call:
++    inputs:
++      working-directory:
++        required: true
++        type: string
++        description: "From which folder this pipeline executes"
++
++env:
++  POETRY_VERSION: "1.5.1"
++
++jobs:
++  build:
++    defaults:
++      run:
++        working-directory: ${{ inputs.working-directory }}
++    runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        python-version:
++          - "3.8"
++          - "3.9"
++          - "3.10"
++          - "3.11"
++    name: Pydantic v1/v2 compatibility - Python ${{ matrix.python-version }}
++    steps:
++      - uses: actions/checkout@v3
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: "./.github/actions/poetry_setup"
++        with:
++          python-version: ${{ matrix.python-version }}
++          working-directory: ${{ inputs.working-directory }}
++          poetry-version: ${{ env.POETRY_VERSION }}
++          cache-key: pydantic-cross-compat
++          install-command: poetry install
++      - name: Install the opposite major version of pydantic
++        # If normal tests use pydantic v1, here we'll use v2, and vice versa.
++        shell: bash
++        run: |
++          # Determine the major part of pydantic version
++          REGULAR_VERSION=$(poetry run python -c "import pydantic; print(pydantic.__version__)" | cut -d. -f1)
++
++          if [[ "$REGULAR_VERSION" == "1" ]]; then
++            PYDANTIC_DEP=">=2.1,<3"
++            TEST_WITH_VERSION="2"
++          elif [[ "$REGULAR_VERSION" == "2" ]]; then
++            PYDANTIC_DEP="<2"
++            TEST_WITH_VERSION="1"
++          else
++            echo "Unexpected pydantic major version '$REGULAR_VERSION', cannot determine which version to use for cross-compatibility test."
++            exit 1
++          fi
++
++          # Install via `pip` instead of `poetry add` to avoid changing lockfile,
++          # which would prevent caching from working: the cache would get saved
++          # to a different key than where it gets loaded from.
++          poetry run pip install "pydantic${PYDANTIC_DEP}"
++
++          # Ensure that the correct pydantic is installed now.
++          echo "Checking pydantic version... Expecting ${TEST_WITH_VERSION}"
++
++          # Determine the major part of pydantic version
++          CURRENT_VERSION=$(poetry run python -c "import pydantic; print(pydantic.__version__)" | cut -d. -f1)
++
++          # Check that the major part of pydantic version is as expected, if not
++          # raise an error
++          if [[ "$CURRENT_VERSION" != "$TEST_WITH_VERSION" ]]; then
++            echo "Error: expected pydantic version ${CURRENT_VERSION} to have been installed, but found: ${TEST_WITH_VERSION}"
++            exit 1
++          fi
++          echo "Found pydantic version ${CURRENT_VERSION}, as expected"
++      - name: Run pydantic compatibility tests
++        shell: bash
++        run: make test
+diff --git a/.github/workflows/_release.yml b/.github/workflows/_release.yml
+index e6ee3e6072d89..5ddf79ca7c284 100644
+--- a/.github/workflows/_release.yml
++++ b/.github/workflows/_release.yml
+@@ -16,6 +16,16 @@ jobs:
+     # Disallow publishing from branches that aren't `master`.
+     if: github.ref == 'refs/heads/master'
+     runs-on: ubuntu-latest
++    permissions:
++      # This permission is used for trusted publishing:
++      # https://blog.pypi.org/posts/2023-04-20-introducing-trusted-publishers/
++      #
++      # Trusted publishing has to also be configured on PyPI for each package:
++      # https://docs.pypi.org/trusted-publishers/adding-a-publisher/
++      id-token: write
++
++      # This permission is needed by `ncipollo/release-action` to create the GitHub release.
++      contents: write
+     defaults:
+       run:
+         working-directory: ${{ inputs.working-directory }}
+@@ -44,8 +54,9 @@ jobs:
+           generateReleaseNotes: true
+           tag: v${{ steps.check-version.outputs.version }}
+           commit: master
+-      - name: Publish to PyPI
+-        env:
+-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+-        run: |
+-          poetry publish
++      - name: Publish package distributions to PyPI
++        uses: pypa/gh-action-pypi-publish@release/v1
++        with:
++          packages-dir: ${{ inputs.working-directory }}/dist/
++          verbose: true
++          print-hash: true
+diff --git a/.github/workflows/langchain_ci.yml b/.github/workflows/langchain_ci.yml
+index 9dfbd8c3d6ec8..b91e039ea6fe8 100644
+--- a/.github/workflows/langchain_ci.yml
++++ b/.github/workflows/langchain_ci.yml
+@@ -8,10 +8,15 @@ on:
+     paths:
+       - '.github/workflows/_lint.yml'
+       - '.github/workflows/_test.yml'
++      - '.github/workflows/_pydantic_compatibility.yml'
+       - '.github/workflows/langchain_ci.yml'
+       - 'libs/langchain/**'
+   workflow_dispatch:  # Allows to trigger the workflow manually in GitHub UI
+ 
++env:
++  POETRY_VERSION: "1.5.1"
++  WORKDIR: "libs/langchain"
++
+ jobs:
+   lint:
+     uses:
+@@ -19,10 +24,45 @@ jobs:
+     with:
+       working-directory: libs/langchain
+     secrets: inherit
++
+   test:
+     uses:
+       ./.github/workflows/_test.yml
+     with:
+       working-directory: libs/langchain
+-      test_type: '["core", "extended", "core-pydantic-2"]'
+-    secrets: inherit
+\ No newline at end of file
++    secrets: inherit
++
++  pydantic-compatibility:
++    uses:
++      ./.github/workflows/_pydantic_compatibility.yml
++    with:
++      working-directory: libs/langchain
++    secrets: inherit
++
++  extended-tests:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: ${{ env.WORKDIR }}
++    strategy:
++      matrix:
++        python-version:
++          - "3.8"
++          - "3.9"
++          - "3.10"
++          - "3.11"
++    name: Python ${{ matrix.python-version }} extended tests
++    steps:
++      - uses: actions/checkout@v3
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: "./.github/actions/poetry_setup"
++        with:
++          python-version: ${{ matrix.python-version }}
++          working-directory: ${{ env.WORKDIR }}
++          poetry-version: ${{ env.POETRY_VERSION }}
++          cache-key: extended
++          install-command: |
++            echo "Running extended tests, installing dependencies with poetry..."
++            poetry install -E extended_testing
++      - name: Run extended tests
++        run: make extended_tests
+diff --git a/.github/workflows/langchain_experimental_ci.yml b/.github/workflows/langchain_experimental_ci.yml
+index 9c95634e49cb7..e1d6e66a84636 100644
+--- a/.github/workflows/langchain_experimental_ci.yml
++++ b/.github/workflows/langchain_experimental_ci.yml
+@@ -25,5 +25,4 @@ jobs:
+       ./.github/workflows/_test.yml
+     with:
+       working-directory: libs/experimental
+-      test_type: '["core"]'
+-    secrets: inherit
+\ No newline at end of file
++    secrets: inherit
+diff --git a/.github/workflows/langchain_experimental_release.yml b/.github/workflows/langchain_experimental_release.yml
+index 90fee606d4962..e6c4f2ee3f8d6 100644
+--- a/.github/workflows/langchain_experimental_release.yml
++++ b/.github/workflows/langchain_experimental_release.yml
+@@ -2,11 +2,6 @@
+ name: libs/experimental Release
+ 
+ on:
+-  push:
+-    branches:
+-      - master
+-    paths:
+-      - 'libs/experimental/pyproject.toml'
+   workflow_dispatch:  # Allows to trigger the workflow manually in GitHub UI
+ 
+ jobs:
+diff --git a/.github/workflows/langchain_release.yml b/.github/workflows/langchain_release.yml
+index 6bafc6d2e970d..a024d2525796b 100644
+--- a/.github/workflows/langchain_release.yml
++++ b/.github/workflows/langchain_release.yml
+@@ -2,11 +2,6 @@
+ name: libs/langchain Release
+ 
+ on:
+-  push:
+-    branches:
+-      - master
+-    paths:
+-      - 'libs/langchain/pyproject.toml'
+   workflow_dispatch:  # Allows to trigger the workflow manually in GitHub UI
+ 
+ jobs:
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 0000000000000..dab764652752d
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,6 @@
++# Security Policy
++
++## Reporting a Vulnerability
++
++Please report security vulnerabilities by email to `security@langchain.dev`.
++This email is an alias to a subset of our maintainers, and will ensure the issue is promptly triaged and acted upon as needed.
+diff --git a/docs/api_reference/requirements.txt b/docs/api_reference/requirements.txt
+index 568cafa427ddd..d2a4e1cd7f017 100644
+--- a/docs/api_reference/requirements.txt
++++ b/docs/api_reference/requirements.txt
+@@ -1,5 +1,6 @@
+ -e libs/langchain
+ -e libs/experimental
++pydantic<2
+ autodoc_pydantic==1.8.0
+ myst_parser
+ nbsphinx==0.8.9
+diff --git a/docs/docs_skeleton/docs/get_started/introduction.mdx b/docs/docs_skeleton/docs/get_started/introduction.mdx
+index 5a037eafd1408..03193cdf176db 100644
+--- a/docs/docs_skeleton/docs/get_started/introduction.mdx
++++ b/docs/docs_skeleton/docs/get_started/introduction.mdx
+@@ -28,7 +28,7 @@ LangChain provides standard, extendable interfaces and external integrations for
+ 
+ #### [Model I/O](/docs/modules/model_io/)
+ Interface with language models
+-#### [Data connection](/docs/modules/data_connection/)
++#### [Retrieval](/docs/modules/data_connection/)
+ Interface with application-specific data
+ #### [Chains](/docs/modules/chains/)
+ Construct sequences of calls
+diff --git a/docs/docs_skeleton/docs/modules/index.mdx b/docs/docs_skeleton/docs/modules/index.mdx
+index cb581dd0675f1..4d897e1e3eec5 100644
+--- a/docs/docs_skeleton/docs/modules/index.mdx
++++ b/docs/docs_skeleton/docs/modules/index.mdx
+@@ -8,7 +8,7 @@ LangChain provides standard, extendable interfaces and external integrations for
+ 
+ #### [Model I/O](/docs/modules/model_io/)
+ Interface with language models
+-#### [Data connection](/docs/modules/data_connection/)
++#### [Retrieval](/docs/modules/data_connection/)
+ Interface with application-specific data
+ #### [Chains](/docs/modules/chains/)
+ Construct sequences of calls
+diff --git a/docs/extras/guides/deployments/template_repos.mdx b/docs/extras/guides/deployments/template_repos.mdx
+index ec8d03237bf0e..45c4a43dec46f 100644
+--- a/docs/extras/guides/deployments/template_repos.mdx
++++ b/docs/extras/guides/deployments/template_repos.mdx
+@@ -79,3 +79,7 @@ See OpenLLM's [integration doc](https://github.com/bentoml/OpenLLM#%EF%B8%8F-int
+ ## [Databutton](https://databutton.com/home?new-data-app=true)
+ 
+ These templates serve as examples of how to build, deploy, and share LangChain applications using Databutton. You can create user interfaces with Streamlit, automate tasks by scheduling Python code, and store files and data in the built-in store. Examples include a Chatbot interface with conversational memory, a Personal search engine, and a starter template for LangChain apps. Deploying and sharing is just one click away.
++
++## [AzureML Online Endpoint](https://github.com/Azure/azureml-examples/blob/main/sdk/python/endpoints/online/llm/langchain/1_langchain_basic_deploy.ipynb)
++
++A minimal example of how to deploy LangChain to an Azure Machine Learning Online Endpoint. 
+\ No newline at end of file
+diff --git a/docs/extras/integrations/document_loaders/polars_dataframe.ipynb b/docs/extras/integrations/document_loaders/polars_dataframe.ipynb
+new file mode 100644
+index 0000000000000..52936f1654006
+--- /dev/null
++++ b/docs/extras/integrations/document_loaders/polars_dataframe.ipynb
+@@ -0,0 +1,225 @@
++{
++ "cells": [
++  {
++   "cell_type": "markdown",
++   "id": "213a38a2",
++   "metadata": {},
++   "source": [
++    "# Polars DataFrame\n",
++    "\n",
++    "This notebook goes over how to load data from a [polars](https://pola-rs.github.io/polars-book/user-guide/) DataFrame."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 1,
++   "id": "f6a7a9e4-80d6-486a-b2e3-636c568aa97c",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "#!pip install polars"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 2,
++   "id": "79331964",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import polars as pl"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 3,
++   "id": "e487044c",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "df = pl.read_csv(\"example_data/mlb_teams_2012.csv\")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 4,
++   "id": "ac273ca1",
++   "metadata": {},
++   "outputs": [
++    {
++     "data": {
++      "text/html": [
++       "<div><style>\n",
++       ".dataframe > thead > tr > th,\n",
++       ".dataframe > tbody > tr > td {\n",
++       "  text-align: right;\n",
++       "}\n",
++       "</style>\n",
++       "<small>shape: (5, 3)</small><table border=\"1\" class=\"dataframe\"><thead><tr><th>Team</th><th> &quot;Payroll (millions)&quot;</th><th> &quot;Wins&quot;</th></tr><tr><td>str</td><td>f64</td><td>i64</td></tr></thead><tbody><tr><td>&quot;Nationals&quot;</td><td>81.34</td><td>98</td></tr><tr><td>&quot;Reds&quot;</td><td>82.2</td><td>97</td></tr><tr><td>&quot;Yankees&quot;</td><td>197.96</td><td>95</td></tr><tr><td>&quot;Giants&quot;</td><td>117.62</td><td>94</td></tr><tr><td>&quot;Braves&quot;</td><td>83.31</td><td>94</td></tr></tbody></table></div>"
++      ],
++      "text/plain": [
++       "shape: (5, 3)\n",
++       "┌───────────┬───────────────────────┬─────────┐\n",
++       "│ Team      ┆  \"Payroll (millions)\" ┆  \"Wins\" │\n",
++       "│ ---       ┆ ---                   ┆ ---     │\n",
++       "│ str       ┆ f64                   ┆ i64     │\n",
++       "╞═══════════╪═══════════════════════╪═════════╡\n",
++       "│ Nationals ┆ 81.34                 ┆ 98      │\n",
++       "│ Reds      ┆ 82.2                  ┆ 97      │\n",
++       "│ Yankees   ┆ 197.96                ┆ 95      │\n",
++       "│ Giants    ┆ 117.62                ┆ 94      │\n",
++       "│ Braves    ┆ 83.31                 ┆ 94      │\n",
++       "└───────────┴───────────────────────┴─────────┘"
++      ]
++     },
++     "execution_count": 4,
++     "metadata": {},
++     "output_type": "execute_result"
++    }
++   ],
++   "source": [
++    "df.head()"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 5,
++   "id": "66e47a13",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.document_loaders import PolarsDataFrameLoader"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 6,
++   "id": "2334caca",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "loader = PolarsDataFrameLoader(df, page_content_column=\"Team\")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 7,
++   "id": "d616c2b0",
++   "metadata": {},
++   "outputs": [
++    {
++     "data": {
++      "text/plain": [
++       "[Document(page_content='Nationals', metadata={' \"Payroll (millions)\"': 81.34, ' \"Wins\"': 98}),\n",
++       " Document(page_content='Reds', metadata={' \"Payroll (millions)\"': 82.2, ' \"Wins\"': 97}),\n",
++       " Document(page_content='Yankees', metadata={' \"Payroll (millions)\"': 197.96, ' \"Wins\"': 95}),\n",
++       " Document(page_content='Giants', metadata={' \"Payroll (millions)\"': 117.62, ' \"Wins\"': 94}),\n",
++       " Document(page_content='Braves', metadata={' \"Payroll (millions)\"': 83.31, ' \"Wins\"': 94}),\n",
++       " Document(page_content='Athletics', metadata={' \"Payroll (millions)\"': 55.37, ' \"Wins\"': 94}),\n",
++       " Document(page_content='Rangers', metadata={' \"Payroll (millions)\"': 120.51, ' \"Wins\"': 93}),\n",
++       " Document(page_content='Orioles', metadata={' \"Payroll (millions)\"': 81.43, ' \"Wins\"': 93}),\n",
++       " Document(page_content='Rays', metadata={' \"Payroll (millions)\"': 64.17, ' \"Wins\"': 90}),\n",
++       " Document(page_content='Angels', metadata={' \"Payroll (millions)\"': 154.49, ' \"Wins\"': 89}),\n",
++       " Document(page_content='Tigers', metadata={' \"Payroll (millions)\"': 132.3, ' \"Wins\"': 88}),\n",
++       " Document(page_content='Cardinals', metadata={' \"Payroll (millions)\"': 110.3, ' \"Wins\"': 88}),\n",
++       " Document(page_content='Dodgers', metadata={' \"Payroll (millions)\"': 95.14, ' \"Wins\"': 86}),\n",
++       " Document(page_content='White Sox', metadata={' \"Payroll (millions)\"': 96.92, ' \"Wins\"': 85}),\n",
++       " Document(page_content='Brewers', metadata={' \"Payroll (millions)\"': 97.65, ' \"Wins\"': 83}),\n",
++       " Document(page_content='Phillies', metadata={' \"Payroll (millions)\"': 174.54, ' \"Wins\"': 81}),\n",
++       " Document(page_content='Diamondbacks', metadata={' \"Payroll (millions)\"': 74.28, ' \"Wins\"': 81}),\n",
++       " Document(page_content='Pirates', metadata={' \"Payroll (millions)\"': 63.43, ' \"Wins\"': 79}),\n",
++       " Document(page_content='Padres', metadata={' \"Payroll (millions)\"': 55.24, ' \"Wins\"': 76}),\n",
++       " Document(page_content='Mariners', metadata={' \"Payroll (millions)\"': 81.97, ' \"Wins\"': 75}),\n",
++       " Document(page_content='Mets', metadata={' \"Payroll (millions)\"': 93.35, ' \"Wins\"': 74}),\n",
++       " Document(page_content='Blue Jays', metadata={' \"Payroll (millions)\"': 75.48, ' \"Wins\"': 73}),\n",
++       " Document(page_content='Royals', metadata={' \"Payroll (millions)\"': 60.91, ' \"Wins\"': 72}),\n",
++       " Document(page_content='Marlins', metadata={' \"Payroll (millions)\"': 118.07, ' \"Wins\"': 69}),\n",
++       " Document(page_content='Red Sox', metadata={' \"Payroll (millions)\"': 173.18, ' \"Wins\"': 69}),\n",
++       " Document(page_content='Indians', metadata={' \"Payroll (millions)\"': 78.43, ' \"Wins\"': 68}),\n",
++       " Document(page_content='Twins', metadata={' \"Payroll (millions)\"': 94.08, ' \"Wins\"': 66}),\n",
++       " Document(page_content='Rockies', metadata={' \"Payroll (millions)\"': 78.06, ' \"Wins\"': 64}),\n",
++       " Document(page_content='Cubs', metadata={' \"Payroll (millions)\"': 88.19, ' \"Wins\"': 61}),\n",
++       " Document(page_content='Astros', metadata={' \"Payroll (millions)\"': 60.65, ' \"Wins\"': 55})]"
++      ]
++     },
++     "execution_count": 7,
++     "metadata": {},
++     "output_type": "execute_result"
++    }
++   ],
++   "source": [
++    "loader.load()"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 8,
++   "id": "beb55c2f",
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "page_content='Nationals' metadata={' \"Payroll (millions)\"': 81.34, ' \"Wins\"': 98}\n",
++      "page_content='Reds' metadata={' \"Payroll (millions)\"': 82.2, ' \"Wins\"': 97}\n",
++      "page_content='Yankees' metadata={' \"Payroll (millions)\"': 197.96, ' \"Wins\"': 95}\n",
++      "page_content='Giants' metadata={' \"Payroll (millions)\"': 117.62, ' \"Wins\"': 94}\n",
++      "page_content='Braves' metadata={' \"Payroll (millions)\"': 83.31, ' \"Wins\"': 94}\n",
++      "page_content='Athletics' metadata={' \"Payroll (millions)\"': 55.37, ' \"Wins\"': 94}\n",
++      "page_content='Rangers' metadata={' \"Payroll (millions)\"': 120.51, ' \"Wins\"': 93}\n",
++      "page_content='Orioles' metadata={' \"Payroll (millions)\"': 81.43, ' \"Wins\"': 93}\n",
++      "page_content='Rays' metadata={' \"Payroll (millions)\"': 64.17, ' \"Wins\"': 90}\n",
++      "page_content='Angels' metadata={' \"Payroll (millions)\"': 154.49, ' \"Wins\"': 89}\n",
++      "page_content='Tigers' metadata={' \"Payroll (millions)\"': 132.3, ' \"Wins\"': 88}\n",
++      "page_content='Cardinals' metadata={' \"Payroll (millions)\"': 110.3, ' \"Wins\"': 88}\n",
++      "page_content='Dodgers' metadata={' \"Payroll (millions)\"': 95.14, ' \"Wins\"': 86}\n",
++      "page_content='White Sox' metadata={' \"Payroll (millions)\"': 96.92, ' \"Wins\"': 85}\n",
++      "page_content='Brewers' metadata={' \"Payroll (millions)\"': 97.65, ' \"Wins\"': 83}\n",
++      "page_content='Phillies' metadata={' \"Payroll (millions)\"': 174.54, ' \"Wins\"': 81}\n",
++      "page_content='Diamondbacks' metadata={' \"Payroll (millions)\"': 74.28, ' \"Wins\"': 81}\n",
++      "page_content='Pirates' metadata={' \"Payroll (millions)\"': 63.43, ' \"Wins\"': 79}\n",
++      "page_content='Padres' metadata={' \"Payroll (millions)\"': 55.24, ' \"Wins\"': 76}\n",
++      "page_content='Mariners' metadata={' \"Payroll (millions)\"': 81.97, ' \"Wins\"': 75}\n",
++      "page_content='Mets' metadata={' \"Payroll (millions)\"': 93.35, ' \"Wins\"': 74}\n",
++      "page_content='Blue Jays' metadata={' \"Payroll (millions)\"': 75.48, ' \"Wins\"': 73}\n",
++      "page_content='Royals' metadata={' \"Payroll (millions)\"': 60.91, ' \"Wins\"': 72}\n",
++      "page_content='Marlins' metadata={' \"Payroll (millions)\"': 118.07, ' \"Wins\"': 69}\n",
++      "page_content='Red Sox' metadata={' \"Payroll (millions)\"': 173.18, ' \"Wins\"': 69}\n",
++      "page_content='Indians' metadata={' \"Payroll (millions)\"': 78.43, ' \"Wins\"': 68}\n",
++      "page_content='Twins' metadata={' \"Payroll (millions)\"': 94.08, ' \"Wins\"': 66}\n",
++      "page_content='Rockies' metadata={' \"Payroll (millions)\"': 78.06, ' \"Wins\"': 64}\n",
++      "page_content='Cubs' metadata={' \"Payroll (millions)\"': 88.19, ' \"Wins\"': 61}\n",
++      "page_content='Astros' metadata={' \"Payroll (millions)\"': 60.65, ' \"Wins\"': 55}\n"
++     ]
++    }
++   ],
++   "source": [
++    "# Use lazy load for larger table, which won't read the full table into memory\n",
++    "for i in loader.lazy_load():\n",
++    "    print(i)"
++   ]
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "display_name": "Python 3 (ipykernel)",
++   "language": "python",
++   "name": "python3"
++  },
++  "language_info": {
++   "codemirror_mode": {
++    "name": "ipython",
++    "version": 3
++   },
++   "file_extension": ".py",
++   "mimetype": "text/x-python",
++   "name": "python",
++   "nbconvert_exporter": "python",
++   "pygments_lexer": "ipython3",
++   "version": "3.11.3"
++  }
++ },
++ "nbformat": 4,
++ "nbformat_minor": 5
++}
+diff --git a/docs/extras/integrations/llms/promptguard.ipynb b/docs/extras/integrations/llms/promptguard.ipynb
+new file mode 100644
+index 0000000000000..7cc447bbf462b
+--- /dev/null
++++ b/docs/extras/integrations/llms/promptguard.ipynb
+@@ -0,0 +1,214 @@
++{
++ "cells": [
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# PromptGuard\n",
++    "\n",
++    "[PromptGuard](https://promptguard.readthedocs.io/en/latest/) is a service that enables applications to leverage the power of language models without compromising user privacy. Designed for composability and ease of integration into existing applications and services, PromptGuard is consumable via a simple Python library as well as through LangChain. Perhaps more importantly, PromptGuard leverages the power of [confidential computing](https://en.wikipedia.org/wiki/Confidential_computing) to ensure that even the PromptGuard service itself cannot access the data it is protecting.\n",
++    " \n",
++    "\n",
++    "This notebook goes over how to use LangChain to interact with `PromptGuard`."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# install the promptguard and langchain packages\n",
++    "! pip install promptguard langchain"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "Accessing the PromptGuard API requires an API key, which you can get by creating an account on [the PromptGuard website](https://promptguard.opaque.co/). Once you have an account, you can find your API key on [the API Keys page](https://promptguard.opaque.co/api-keys)."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import os\n",
++    "\n",
++    "# Set API keys\n",
++    "\n",
++    "os.environ['PROMPT_GUARD_API_KEY'] = \"<PROMPT_GUARD_API_KEY>\"\n",
++    "os.environ['OPENAI_API_KEY'] = \"<OPENAI_API_KEY>\""
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# Use PromptGuardLLMWrapper\n",
++    "\n",
++    "Applying promptguard to your application could be as simple as wrapping your LLM using the PromptGuardLLMWrapper class by replace `llm=OpenAI()` with `llm=PromptGuardLLMWrapper(OpenAI())`."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import langchain\n",
++    "from langchain import LLMChain, PromptTemplate\n",
++    "from langchain.callbacks.stdout import StdOutCallbackHandler\n",
++    "from langchain.llms import OpenAI\n",
++    "from langchain.memory import ConversationBufferWindowMemory\n",
++    "\n",
++    "from langchain.llms import PromptGuardLLMWrapper\n",
++    "\n",
++    "langchain.verbose = True\n",
++    "langchain.debug = True\n",
++    "\n",
++    "prompt_template = \"\"\"\n",
++    "As an AI assistant, you will answer questions according to given context.\n",
++    "\n",
++    "Sensitive personal information in the question is masked for privacy.\n",
++    "For instance, if the original text says \"Giana is good,\" it will be changed\n",
++    "to \"PERSON_998 is good.\" \n",
++    "\n",
++    "Here's how to handle these changes:\n",
++    "* Consider these masked phrases just as placeholders, but still refer to\n",
++    "them in a relevant way when answering.\n",
++    "* It's possible that different masked terms might mean the same thing.\n",
++    "Stick with the given term and don't modify it.\n",
++    "* All masked terms follow the \"TYPE_ID\" pattern.\n",
++    "* Please don't invent new masked terms. For instance, if you see \"PERSON_998,\"\n",
++    "don't come up with \"PERSON_997\" or \"PERSON_999\" unless they're already in the question.\n",
++    "\n",
++    "Conversation History: ```{history}```\n",
++    "Context : ```During our recent meeting on February 23, 2023, at 10:30 AM,\n",
++    "John Doe provided me with his personal details. His email is johndoe@example.com\n",
++    "and his contact number is 650-456-7890. He lives in New York City, USA, and\n",
++    "belongs to the American nationality with Christian beliefs and a leaning towards\n",
++    "the Democratic party. He mentioned that he recently made a transaction using his\n",
++    "credit card 4111 1111 1111 1111 and transferred bitcoins to the wallet address\n",
++    "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa. While discussing his European travels, he noted\n",
++    "down his IBAN as GB29 NWBK 6016 1331 9268 19. Additionally, he provided his website\n",
++    "as https://johndoeportfolio.com. John also discussed some of his US-specific details.\n",
++    "He said his bank account number is 1234567890123456 and his drivers license is Y12345678.\n",
++    "His ITIN is 987-65-4321, and he recently renewed his passport, the number for which is\n",
++    "123456789. He emphasized not to share his SSN, which is 123-45-6789. Furthermore, he\n",
++    "mentioned that he accesses his work files remotely through the IP 192.168.1.1 and has\n",
++    "a medical license number MED-123456. ```\n",
++    "Question: ```{question}```\n",
++    "\n",
++    "\"\"\"\n",
++    "\n",
++    "chain = LLMChain(\n",
++    "    prompt=PromptTemplate.from_template(prompt_template),\n",
++    "    llm=PromptGuardLLMWrapper(llm=OpenAI()),\n",
++    "    memory=ConversationBufferWindowMemory(k=2),\n",
++    "    verbose=True,\n",
++    ")\n",
++    "\n",
++    "\n",
++    "print(\n",
++    "    chain.run(\n",
++    "        {\"question\": \"\"\"Write a message to remind John to do password reset for his website to stay secure.\"\"\"},\n",
++    "        callbacks=[StdOutCallbackHandler()],\n",
++    "    )\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "From the output, you can see the following context from user input has sensitive data.\n",
++    "\n",
++    "``` \n",
++    "# Context from user input\n",
++    "\n",
++    "During our recent meeting on February 23, 2023, at 10:30 AM, John Doe provided me with his personal details. His email is johndoe@example.com and his contact number is 650-456-7890. He lives in New York City, USA, and belongs to the American nationality with Christian beliefs and a leaning towards the Democratic party. He mentioned that he recently made a transaction using his credit card 4111 1111 1111 1111 and transferred bitcoins to the wallet address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa. While discussing his European travels, he noted down his IBAN as GB29 NWBK 6016 1331 9268 19. Additionally, he provided his website as https://johndoeportfolio.com. John also discussed some of his US-specific details. He said his bank account number is 1234567890123456 and his drivers license is Y12345678. His ITIN is 987-65-4321, and he recently renewed his passport, the number for which is 123456789. He emphasized not to share his SSN, which is 669-45-6789. Furthermore, he mentioned that he accesses his work files remotely through the IP 192.168.1.1 and has a medical license number MED-123456.\n",
++    "```\n",
++    "\n",
++    "PromptGuard will automatically detect the sensitive data and replace it with a placeholder. \n",
++    "\n",
++    "```\n",
++    "# Context after PromptGuard\n",
++    "\n",
++    "During our recent meeting on DATE_TIME_3, at DATE_TIME_2, PERSON_3 provided me with his personal details. His email is EMAIL_ADDRESS_1 and his contact number is PHONE_NUMBER_1. He lives in LOCATION_3, LOCATION_2, and belongs to the NRP_3 nationality with NRP_2 beliefs and a leaning towards the Democratic party. He mentioned that he recently made a transaction using his credit card CREDIT_CARD_1 and transferred bitcoins to the wallet address CRYPTO_1. While discussing his NRP_1 travels, he noted down his IBAN as IBAN_CODE_1. Additionally, he provided his website as URL_1. PERSON_2 also discussed some of his LOCATION_1-specific details. He said his bank account number is US_BANK_NUMBER_1 and his drivers license is US_DRIVER_LICENSE_2. His ITIN is US_ITIN_1, and he recently renewed his passport, the number for which is DATE_TIME_1. He emphasized not to share his SSN, which is US_SSN_1. Furthermore, he mentioned that he accesses his work files remotely through the IP IP_ADDRESS_1 and has a medical license number MED-US_DRIVER_LICENSE_1.\n",
++    "```\n",
++    "\n",
++    "Placeholder is used in the LLM response.\n",
++    "\n",
++    "```\n",
++    "# response returned by LLM\n",
++    "\n",
++    "Hey PERSON_1, just wanted to remind you to do a password reset for your website URL_1 through your email EMAIL_ADDRESS_1. It's important to stay secure online, so don't forget to do it!\n",
++    "```\n",
++    "\n",
++    "Response is desanitized by replacing the placeholder with the original sensitive data.\n",
++    "\n",
++    "```\n",
++    "# desanitized LLM response from PromptGuard\n",
++    "\n",
++    "Hey John, just wanted to remind you to do a password reset for your website https://johndoeportfolio.com through your email johndoe@example.com. It's important to stay secure online, so don't forget to do it!\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# Use PromptGuard in LangChain expression\n",
++    "\n",
++    "There are functions that can be used with LangChain expression as well if a drop-in replacement doesn't offer the flexibility you need. "
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import langchain.utilities.promptguard as pgf\n",
++    "from langchain.schema.runnable import RunnableMap\n",
++    "from langchain.schema.output_parser import StrOutputParser\n",
++    "\n",
++    "\n",
++    "prompt=PromptTemplate.from_template(prompt_template),    \n",
++    "llm = OpenAI()\n",
++    "pg_chain = (\n",
++    "    pgf.sanitize\n",
++    "    | RunnableMap(\n",
++    "        {\n",
++    "            \"response\": (lambda x: x[\"sanitized_input\"])\n",
++    "            | prompt\n",
++    "            | llm\n",
++    "            | StrOutputParser(),\n",
++    "            \"secure_context\": lambda x: x[\"secure_context\"],\n",
++    "        }\n",
++    "    )\n",
++    "    | (lambda x: pgf.desanitize(x[\"response\"], x[\"secure_context\"]))\n",
++    ")\n",
++    "\n",
++    "pg_chain.invoke({\"question\": \"Write a text message to remind John to do password reset for his website through his email to stay secure.\", \"history\": \"\"})"
++   ]
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "display_name": "langchain",
++   "language": "python",
++   "name": "python3"
++  },
++  "language_info": {
++   "name": "python",
++   "version": "3.10.10"
++  },
++  "orig_nbformat": 4
++ },
++ "nbformat": 4,
++ "nbformat_minor": 2
++}
+diff --git a/docs/extras/integrations/providers/clarifai.mdx b/docs/extras/integrations/providers/clarifai.mdx
+index 883e298e1fd04..7819ad9608bc2 100644
+--- a/docs/extras/integrations/providers/clarifai.mdx
++++ b/docs/extras/integrations/providers/clarifai.mdx
+@@ -37,7 +37,7 @@ There is a Clarifai Embedding model in LangChain, which you can access with:
+ from langchain.embeddings import ClarifaiEmbeddings
+ embeddings = ClarifaiEmbeddings(pat=CLARIFAI_PAT, user_id=USER_ID, app_id=APP_ID, model_id=MODEL_ID)
+ ```
+-For more details, the docs on the Clarifai Embeddings wrapper provide a [detailed walthrough](/docs/integrations/text_embedding/clarifai.html).
++For more details, the docs on the Clarifai Embeddings wrapper provide a [detailed walkthrough](/docs/integrations/text_embedding/clarifai.html).
+ 
+ ## Vectorstore
+ 
+@@ -49,4 +49,4 @@ You an also add data directly from LangChain as well, and the auto-indexing will
+ from langchain.vectorstores import Clarifai
+ clarifai_vector_db = Clarifai.from_texts(user_id=USER_ID, app_id=APP_ID, texts=texts, pat=CLARIFAI_PAT, number_of_docs=NUMBER_OF_DOCS, metadatas = metadatas)
+ ```
+-For more details, the docs on the Clarifai vector store provide a [detailed walthrough](/docs/integrations/text_embedding/clarifai.html).
++For more details, the docs on the Clarifai vector store provide a [detailed walkthrough](/docs/integrations/text_embedding/clarifai.html).
+diff --git a/docs/extras/integrations/providers/epsilla.mdx b/docs/extras/integrations/providers/epsilla.mdx
+new file mode 100644
+index 0000000000000..40e91329e456b
+--- /dev/null
++++ b/docs/extras/integrations/providers/epsilla.mdx
+@@ -0,0 +1,23 @@
++# Epsilla
++
++This page covers how to use [Epsilla](https://github.com/epsilla-cloud/vectordb) within LangChain.
++It is broken into two parts: installation and setup, and then references to specific Epsilla wrappers.
++
++## Installation and Setup
++
++- Install the Python SDK with `pip/pip3 install pyepsilla`
++
++## Wrappers
++
++### VectorStore
++
++There exists a wrapper around Epsilla vector databases, allowing you to use it as a vectorstore,
++whether for semantic search or example selection.
++
++To import this vectorstore:
++
++```python
++from langchain.vectorstores import Epsilla
++```
++
++For a more detailed walkthrough of the Epsilla wrapper, see [this notebook](/docs/integrations/vectorstores/epsilla.html)
+\ No newline at end of file
+diff --git a/docs/extras/integrations/text_embedding/clarifai.ipynb b/docs/extras/integrations/text_embedding/clarifai.ipynb
+index cbd4761c54f4d..17c7cf454a7da 100644
+--- a/docs/extras/integrations/text_embedding/clarifai.ipynb
++++ b/docs/extras/integrations/text_embedding/clarifai.ipynb
+@@ -130,9 +130,9 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "USER_ID = \"openai\"\n",
+-    "APP_ID = \"embed\"\n",
+-    "MODEL_ID = \"text-embedding-ada\"\n",
++    "USER_ID = \"salesforce\"\n",
++    "APP_ID = \"blip\"\n",
++    "MODEL_ID = \"multimodal-embedder-blip-2\"\n",
+     "\n",
+     "# You can provide a specific model version as the model_version_id arg.\n",
+     "# MODEL_VERSION_ID = \"MODEL_VERSION_ID\""
+diff --git a/docs/extras/integrations/toolkits/ainetwork.ipynb b/docs/extras/integrations/toolkits/ainetwork.ipynb
+new file mode 100644
+index 0000000000000..b3a84afd00dd5
+--- /dev/null
++++ b/docs/extras/integrations/toolkits/ainetwork.ipynb
+@@ -0,0 +1,461 @@
++{
++ "cells": [
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# AINetwork Toolkit\n",
++    "\n",
++    "The AINetwork Toolkit is a set of tools for interacting with the AINetwork Blockchain. These tools allow you to transfer AIN, read and write values, create apps, and set permissions for specific paths within the blockchain database."
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Installing dependencies\n",
++    "\n",
++    "Before using the AINetwork Toolkit, you need to install the ain-py package. You can install it with pip:\n"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "!pip install ain-py"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Set environmental variables\n",
++    "\n",
++    "You need to set the `AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY` environmental variable to your AIN Blockchain Account Private Key."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 2,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import os\n",
++    "\n",
++    "os.environ[\"AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY\"] = \"\""
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Get AIN Blockchain private key"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 4,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "address: 0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac\n",
++      "private_key: f5e2f359bb6b7836a2ac70815473d1a290c517f847d096f5effe818de8c2cf14\n",
++      "\n"
++     ]
++    }
++   ],
++   "source": [
++    "import os\n",
++    "\n",
++    "from ain.account import Account\n",
++    "\n",
++    "if os.environ.get(\"AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY\", None):\n",
++    "    account = Account(os.environ[\"AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY\"])\n",
++    "else:\n",
++    "    account = Account.create()\n",
++    "    os.environ[\"AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY\"] = account.private_key\n",
++    "    print(\n",
++    "        f\"\"\"\n",
++    "address: {account.address}\n",
++    "private_key: {account.private_key}\n",
++    "\"\"\"\n",
++    "    )\n",
++    "# IMPORTANT: If you plan to use this account in the future, make sure to save the\n",
++    "#  private key in a secure place. Losing access to your private key means losing\n",
++    "#  access to your account."
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Initialize the AINetwork Toolkit\n",
++    "\n",
++    "You can initialize the AINetwork Toolkit like this:"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 4,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.agents.agent_toolkits.ainetwork.toolkit import AINetworkToolkit\n",
++    "\n",
++    "toolkit = AINetworkToolkit()\n",
++    "tools = toolkit.get_tools()\n",
++    "address = tools[0].interface.wallet.defaultAccount.address"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Initialize the Agent with the AINetwork Toolkit\n",
++    "\n",
++    "You can initialize the agent with the AINetwork Toolkit like this:"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 5,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.chat_models import ChatOpenAI\n",
++    "from langchain.agents import initialize_agent, AgentType\n",
++    "\n",
++    "llm = ChatOpenAI(temperature=0)\n",
++    "agent = initialize_agent(\n",
++    "    tools=tools,\n",
++    "    llm=llm,\n",
++    "    verbose=True,\n",
++    "    agent=AgentType.OPENAI_FUNCTIONS,\n",
++    ")"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Example Usage\n",
++    "\n",
++    "Here are some examples of how you can use the agent with the AINetwork Toolkit:"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Define App name to test"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 6,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "appName = f\"langchain_demo_{address.lower()}\""
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Create an app in the AINetwork Blockchain database"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 7,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINappOps` with `{'type': 'SET_ADMIN', 'appName': 'langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac'}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[36;1m\u001b[1;3m{\"tx_hash\": \"0x018846d6a9fc111edb1a2246ae2484ef05573bd2c584f3d0da155fa4b4936a9e\", \"result\": {\"gas_amount_total\": {\"bandwidth\": {\"service\": 4002, \"app\": {\"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\": 2}}, \"state\": {\"service\": 1640}}, \"gas_cost_total\": 0, \"func_results\": {\"_createApp\": {\"op_results\": {\"0\": {\"path\": \"/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\", \"result\": {\"code\": 0, \"bandwidth_gas_amount\": 1}}, \"1\": {\"path\": \"/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\", \"result\": {\"code\": 0, \"bandwidth_gas_amount\": 1}}, \"2\": {\"path\": \"/manage_app/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/config/admin\", \"result\": {\"code\": 0, \"bandwidth_gas_amount\": 1}}}, \"code\": 0, \"bandwidth_gas_amount\": 2000}}, \"code\": 0, \"bandwidth_gas_amount\": 2001, \"gas_amount_charged\": 5642}}\u001b[0m\u001b[32;1m\u001b[1;3mThe app with the name \"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\" has been created in the AINetwork Blockchain database.\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The app with the name \"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\" has been created in the AINetwork Blockchain database.\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(\n",
++    "    agent.run(\n",
++    "        f\"Create an app in the AINetwork Blockchain database with the name {appName}\"\n",
++    "    )\n",
++    ")"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Set a value at a given path in the AINetwork Blockchain database"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 8,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINvalueOps` with `{'type': 'SET', 'path': '/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/object', 'value': {'1': 2, '34': 56}}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[33;1m\u001b[1;3m{\"tx_hash\": \"0x3d1a16d9808830088cdf4d37f90f4b1fa1242e2d5f6f983829064f45107b5279\", \"result\": {\"gas_amount_total\": {\"bandwidth\": {\"service\": 0, \"app\": {\"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\": 1}}, \"state\": {\"service\": 0, \"app\": {\"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\": 674}}}, \"gas_cost_total\": 0, \"code\": 0, \"bandwidth_gas_amount\": 1, \"gas_amount_charged\": 0}}\u001b[0m\u001b[32;1m\u001b[1;3mThe value {1: 2, '34': 56} has been set at the path /apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/object.\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The value {1: 2, '34': 56} has been set at the path /apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/object.\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(\n",
++    "    agent.run(f\"Set the value {{1: 2, '34': 56}} at the path /apps/{appName}/object .\")\n",
++    ")"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Set permissions for a path in the AINetwork Blockchain database"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 9,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINruleOps` with `{'type': 'SET', 'path': '/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/user/$from', 'eval': 'auth.addr===$from'}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[38;5;200m\u001b[1;3m{\"tx_hash\": \"0x37d5264e580f6a217a347059a735bfa9eb5aad85ff28a95531c6dc09252664d2\", \"result\": {\"gas_amount_total\": {\"bandwidth\": {\"service\": 0, \"app\": {\"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\": 1}}, \"state\": {\"service\": 0, \"app\": {\"langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac\": 712}}}, \"gas_cost_total\": 0, \"code\": 0, \"bandwidth_gas_amount\": 1, \"gas_amount_charged\": 0}}\u001b[0m\u001b[32;1m\u001b[1;3mThe write permissions for the path `/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/user/$from` have been set with the eval string `auth.addr===$from`.\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The write permissions for the path `/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac/user/$from` have been set with the eval string `auth.addr===$from`.\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(\n",
++    "    agent.run(\n",
++    "        f\"Set the write permissions for the path /apps/{appName}/user/$from with the\"\n",
++    "        \" eval string auth.addr===$from .\"\n",
++    "    )\n",
++    ")"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Retrieve the permissions for a path in the AINetwork Blockchain database"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 10,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINownerOps` with `{'type': 'GET', 'path': '/apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac'}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[33;1m\u001b[1;3m{\".owner\": {\"owners\": {\"0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac\": {\"branch_owner\": true, \"write_function\": true, \"write_owner\": true, \"write_rule\": true}}}}\u001b[0m\u001b[32;1m\u001b[1;3mThe permissions for the path /apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac are as follows:\n",
++      "\n",
++      "- Address: 0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac\n",
++      "  - branch_owner: true\n",
++      "  - write_function: true\n",
++      "  - write_owner: true\n",
++      "  - write_rule: true\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The permissions for the path /apps/langchain_demo_0x5beb4defa2ccc274498416fd7cb34235dbc122ac are as follows:\n",
++      "\n",
++      "- Address: 0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac\n",
++      "  - branch_owner: true\n",
++      "  - write_function: true\n",
++      "  - write_owner: true\n",
++      "  - write_rule: true\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(agent.run(f\"Retrieve the permissions for the path /apps/{appName}.\"))"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Get AIN from faucet"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 11,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "{\"result\":\"0x0eb07b67b7d0a702cb60e865d3deafff3070d8508077ef793d69d6819fd92ea3\",\"time\":1692348112376}"
++     ]
++    }
++   ],
++   "source": [
++    "!curl http://faucet.ainetwork.ai/api/test/{address}/"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Get AIN Balance"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 12,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINvalueOps` with `{'type': 'GET', 'path': '/accounts/0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac/balance'}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[33;1m\u001b[1;3m100\u001b[0m\u001b[32;1m\u001b[1;3mThe AIN balance of address 0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac is 100 AIN.\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The AIN balance of address 0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac is 100 AIN.\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(agent.run(f\"Check AIN balance of {address}\"))"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "### Transfer AIN"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 13,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\n",
++      "\n",
++      "\u001b[1m> Entering new AgentExecutor chain...\u001b[0m\n",
++      "\u001b[32;1m\u001b[1;3m\n",
++      "Invoking: `AINtransfer` with `{'address': '0x19937b227b1b13f29e7ab18676a89ea3bdea9c5b', 'amount': 100}`\n",
++      "\n",
++      "\n",
++      "\u001b[0m\u001b[36;1m\u001b[1;3m{\"tx_hash\": \"0xa59d15d23373bcc00e413ac8ba18cb016bb3bdd54058d62606aec688c6ad3d2e\", \"result\": {\"gas_amount_total\": {\"bandwidth\": {\"service\": 3}, \"state\": {\"service\": 866}}, \"gas_cost_total\": 0, \"func_results\": {\"_transfer\": {\"op_results\": {\"0\": {\"path\": \"/accounts/0x5BEB4Defa2ccc274498416Fd7Cb34235DbC122Ac/balance\", \"result\": {\"code\": 0, \"bandwidth_gas_amount\": 1}}, \"1\": {\"path\": \"/accounts/0x19937B227b1b13f29e7AB18676a89EA3BDEA9C5b/balance\", \"result\": {\"code\": 0, \"bandwidth_gas_amount\": 1}}}, \"code\": 0, \"bandwidth_gas_amount\": 0}}, \"code\": 0, \"bandwidth_gas_amount\": 1, \"gas_amount_charged\": 869}}\u001b[0m\u001b[32;1m\u001b[1;3mThe transfer of 100 AIN to the address 0x19937b227b1b13f29e7ab18676a89ea3bdea9c5b was successful. The transaction hash is 0xa59d15d23373bcc00e413ac8ba18cb016bb3bdd54058d62606aec688c6ad3d2e.\u001b[0m\n",
++      "\n",
++      "\u001b[1m> Finished chain.\u001b[0m\n",
++      "The transfer of 100 AIN to the address 0x19937b227b1b13f29e7ab18676a89ea3bdea9c5b was successful. The transaction hash is 0xa59d15d23373bcc00e413ac8ba18cb016bb3bdd54058d62606aec688c6ad3d2e.\n"
++     ]
++    }
++   ],
++   "source": [
++    "print(\n",
++    "    agent.run(\n",
++    "        \"Transfer 100 AIN to the address 0x19937b227b1b13f29e7ab18676a89ea3bdea9c5b\"\n",
++    "    )\n",
++    ")"
++   ]
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "display_name": "Python 3",
++   "language": "python",
++   "name": "python3"
++  },
++  "language_info": {
++   "codemirror_mode": {
++    "name": "ipython",
++    "version": 3
++   },
++   "file_extension": ".py",
++   "mimetype": "text/x-python",
++   "name": "python",
++   "nbconvert_exporter": "python",
++   "pygments_lexer": "ipython3",
++   "version": "3.10.12"
++  },
++  "orig_nbformat": 4
++ },
++ "nbformat": 4,
++ "nbformat_minor": 2
++}
+diff --git a/docs/extras/integrations/vectorstores/clarifai.ipynb b/docs/extras/integrations/vectorstores/clarifai.ipynb
+index 189ec7ca4edad..be9359e3ccc15 100644
+--- a/docs/extras/integrations/vectorstores/clarifai.ipynb
++++ b/docs/extras/integrations/vectorstores/clarifai.ipynb
+@@ -53,7 +53,15 @@
+    "execution_count": 1,
+    "id": "c1e38361-c1fe-4ac6-86e9-c90ebaf7ae87",
+    "metadata": {},
+-   "outputs": [],
++   "outputs": [
++    {
++     "name": "stdin",
++     "output_type": "stream",
++     "text": [
++      " ········\n"
++     ]
++    }
++   ],
+    "source": [
+     "# Please login and get your API key from  https://clarifai.com/settings/security\n",
+     "from getpass import getpass\n",
+@@ -61,18 +69,9 @@
+     "CLARIFAI_PAT = getpass()"
+    ]
+   },
+-  {
+-   "attachments": {},
+-   "cell_type": "markdown",
+-   "id": "320af802-9271-46ee-948f-d2453933d44b",
+-   "metadata": {},
+-   "source": [
+-    "We want to use `OpenAIEmbeddings` so we have to get the OpenAI API Key."
+-   ]
+-  },
+   {
+    "cell_type": "code",
+-   "execution_count": 2,
++   "execution_count": 6,
+    "id": "aac9563e",
+    "metadata": {
+     "tags": []
+@@ -99,7 +98,7 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 3,
++   "execution_count": 2,
+    "id": "4d853395",
+    "metadata": {},
+    "outputs": [],
+@@ -134,7 +133,7 @@
+     "    \"I love playing soccer with my friends\",\n",
+     "]\n",
+     "\n",
+-    "metadatas = [{\"id\": i, \"text\": text} for i, text in enumerate(texts)]"
++    "metadatas = [{\"id\": i, \"text\": text, \"source\": \"book 1\", \"category\": [\"books\", \"modern\"]} for i, text in enumerate(texts)]"
+    ]
+   },
+   {
+@@ -156,21 +155,17 @@
+   },
+   {
+    "cell_type": "code",
+-   "execution_count": 7,
++   "execution_count": null,
+    "id": "e755cdce",
+    "metadata": {},
+    "outputs": [
+     {
+      "data": {
+       "text/plain": [
+-       "[Document(page_content='I really enjoy spending time with you', metadata={'text': 'I really enjoy spending time with you', 'id': 0.0}),\n",
+-       " Document(page_content='I went to the movies yesterday', metadata={'text': 'I went to the movies yesterday', 'id': 3.0}),\n",
+-       " Document(page_content='zab', metadata={'page': '2'}),\n",
+-       " Document(page_content='zab', metadata={'page': '2'})]"
++       "[Document(page_content='I really enjoy spending time with you', metadata={'text': 'I really enjoy spending time with you', 'id': 0.0, 'source': 'book 1', 'category': ['books', 'modern']}),\n",
++       " Document(page_content='I went to the movies yesterday', metadata={'text': 'I went to the movies yesterday', 'id': 3.0, 'source': 'book 1', 'category': ['books', 'modern']})]"
+       ]
+      },
+-     "execution_count": 7,
+-     "metadata": {},
+      "output_type": "execute_result"
+     }
+    ],
+@@ -179,6 +174,21 @@
+     "docs"
+    ]
+   },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "140103ec-0936-454a-9f4a-7d5beefc138f",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# There is lots powerful filtering you can do within an app by leveraging metadata filters. \n",
++    "# This one will limit the similarity query to only the texts that have key of \"source\" matching value of \"book 1\"\n",
++    "book1_similar_docs = clarifai_vector_db.similarity_search(\"I would love to see you\", filter={\"source\": \"book 1\"})\n",
++    "\n",
++    "# you can also use lists in the input's metadata and then select things that match an item in the list. This is useful for categories like below:\n",
++    "book_category_similar_docs = clarifai_vector_db.similarity_search(\"I would love to see you\", filter={\"category\": [\"books\"]})"
++   ]
++  },
+   {
+    "attachments": {},
+    "cell_type": "markdown",
+@@ -249,7 +259,7 @@
+     "    user_id=USER_ID,\n",
+     "    app_id=APP_ID,\n",
+     "    documents=docs,\n",
+-    "    pat=CLARIFAI_PAT_KEY,\n",
++    "    pat=CLARIFAI_PAT,\n",
+     "    number_of_docs=NUMBER_OF_DOCS,\n",
+     ")"
+    ]
+@@ -278,6 +288,55 @@
+     "docs = clarifai_vector_db.similarity_search(\"Texts related to criminals and violence\")\n",
+     "docs"
+    ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "id": "7b332ca4-416b-4ea6-99da-b6949f399d72",
++   "metadata": {},
++   "source": [
++    "## From existing App\n",
++    "Within Clarifai we have great tools for adding data to applications (essentially projects) via API or UI. Most users will already have done that before interacting with LangChain so this example will use the data in an existing app to perform searches. Check out our [API docs](https://docs.clarifai.com/api-guide/data/create-get-update-delete) and [UI docs](https://docs.clarifai.com/portal-guide/data). The Clarifai Application can then be used for semantic search to find relevant documents."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 7,
++   "id": "807c1141-591b-436d-abaa-f2c325e66d39",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "USER_ID = \"USERNAME_ID\"\n",
++    "APP_ID = \"APPLICATION_ID\"\n",
++    "NUMBER_OF_DOCS = 4"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 9,
++   "id": "762d74ef-f7df-43d6-b121-4980c4059fc0",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "clarifai_vector_db = Clarifai(\n",
++    "    user_id=USER_ID,\n",
++    "    app_id=APP_ID,\n",
++    "    documents=docs,\n",
++    "    pat=CLARIFAI_PAT,\n",
++    "    number_of_docs=NUMBER_OF_DOCS,\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "f7636b0f-68ab-4b8f-ba0f-3c27061e3631",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "docs = clarifai_vector_db.similarity_search(\"Texts related to criminals and violence\")\n",
++    "docs"
++   ]
+   }
+  ],
+  "metadata": {
+diff --git a/docs/extras/integrations/vectorstores/epsilla.ipynb b/docs/extras/integrations/vectorstores/epsilla.ipynb
+new file mode 100644
+index 0000000000000..fca5294418071
+--- /dev/null
++++ b/docs/extras/integrations/vectorstores/epsilla.ipynb
+@@ -0,0 +1,160 @@
++{
++ "cells": [
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# Epsilla\n",
++    "\n",
++    ">[Epsilla](https://www.epsilla.com) is an open-source vector database that leverages the advanced parallel graph traversal techniques for vector indexing. Epsilla is licensed under GPL-3.0.\n",
++    "\n",
++    "This notebook shows how to use the functionalities related to the `Epsilla` vector database.\n",
++    "\n",
++    "As a prerequisite, you need to have a running Epsilla vector database (for example, through our docker image), and install the ``pyepsilla`` package. View full docs at [docs](https://epsilla-inc.gitbook.io/epsilladb/quick-start)."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "!pip/pip3 install pyepsilla"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "We want to use OpenAIEmbeddings so we have to get the OpenAI API Key. "
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "import os\n",
++    "import getpass\n",
++    "\n",
++    "os.environ[\"OPENAI_API_KEY\"] = getpass.getpass(\"OpenAI API Key:\")"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "OpenAI API Key: ········"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.embeddings import OpenAIEmbeddings\n",
++    "from langchain.vectorstores import Epsilla"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.document_loaders import TextLoader\n",
++    "from langchain.text_splitter import CharacterTextSplitter\n",
++    "\n",
++    "loader = TextLoader(\"../../modules/state_of_the_union.txt\")\n",
++    "documents = loader.load()\n",
++    "\n",
++    "documents = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0).split_documents(documents)\n",
++    "\n",
++    "embeddings = OpenAIEmbeddings()"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "Epsilla vectordb is running with default host \"localhost\" and port \"8888\". We have a custom db path, db name and collection name instead of the default ones."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from pyepsilla import vectordb\n",
++    "\n",
++    "client = vectordb.Client()\n",
++    "vector_store = Epsilla.from_documents(\n",
++    "    documents,\n",
++    "    embeddings,\n",
++    "    client,\n",
++    "    db_path=\"/tmp/mypath\",\n",
++    "    db_name=\"MyDB\",\n",
++    "    collection_name=\"MyCollection\"\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "query = \"What did the president say about Ketanji Brown Jackson\"\n",
++    "docs = vector_store.similarity_search(query)\n",
++    "print(docs[0].page_content)"
++   ]
++  },
++  {
++   "attachments": {},
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "In state after state, new laws have been passed, not only to suppress the vote, but to subvert entire elections.\n",
++    "\n",
++    "We cannot let this happen.\n",
++    "\n",
++    "Tonight. I call on the Senate to: Pass the Freedom to Vote Act. Pass the John Lewis Voting Rights Act. And while you’re at it, pass the Disclose Act so Americans can know who is funding our elections.\n",
++    "\n",
++    "Tonight, I’d like to honor someone who has dedicated his life to serve this country: Justice Stephen Breyer—an Army veteran, Constitutional scholar, and retiring Justice of the United States Supreme Court. Justice Breyer, thank you for your service.\n",
++    "\n",
++    "One of the most serious constitutional responsibilities a President has is nominating someone to serve on the United States Supreme Court.\n",
++    "\n",
++    "And I did that 4 days ago, when I nominated Circuit Court of Appeals Judge Ketanji Brown Jackson. One of our nation’s top legal minds, who will continue Justice Breyer’s legacy of excellence."
++   ]
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "display_name": "langchain",
++   "language": "python",
++   "name": "python3"
++  },
++  "language_info": {
++   "codemirror_mode": {
++    "name": "ipython",
++    "version": 3
++   },
++   "file_extension": ".py",
++   "mimetype": "text/x-python",
++   "name": "python",
++   "nbconvert_exporter": "python",
++   "pygments_lexer": "ipython3",
++   "version": "3.9.17"
++  },
++  "orig_nbformat": 4
++ },
++ "nbformat": 4,
++ "nbformat_minor": 2
++}
+diff --git a/docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb b/docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb
+index 784804899b491..4b166bc147370 100644
+--- a/docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb
++++ b/docs/extras/modules/data_connection/retrievers/parent_document_retriever.ipynb
+@@ -106,7 +106,7 @@
+    "metadata": {},
+    "outputs": [],
+    "source": [
+-    "retriever.add_documents(docs)"
++    "retriever.add_documents(docs, ids=None)"
+    ]
+   },
+   {
+@@ -432,7 +432,7 @@
+    "name": "python",
+    "nbconvert_exporter": "python",
+    "pygments_lexer": "ipython3",
+-   "version": "3.10.1"
++   "version": "3.10.5"
+   }
+  },
+  "nbformat": 4,
+diff --git a/docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb b/docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb
+new file mode 100644
+index 0000000000000..6a6f89c4f9e4f
+--- /dev/null
++++ b/docs/extras/use_cases/more/graph/graph_memgraph_qa.ipynb
+@@ -0,0 +1,695 @@
++{
++ "cells": [
++  {
++   "cell_type": "markdown",
++   "id": "311b3061",
++   "metadata": {},
++   "source": [
++    "# Memgraph QA chain\n",
++    "This notebook shows how to use LLMs to provide a natural language interface to a [Memgraph](https://github.com/memgraph/memgraph) database. To complete this tutorial, you will need [Docker](https://www.docker.com/get-started/) and [Python 3.x](https://www.python.org/) installed.\n",
++    "\n",
++    "To follow along with this tutorial, ensure you have a running Memgraph instance. You can download and run it in a local Docker container by executing the following script:\n",
++    "```\n",
++    "docker run \\\n",
++    "    -it \\\n",
++    "    -p 7687:7687 \\\n",
++    "    -p 7444:7444 \\\n",
++    "    -p 3000:3000 \\\n",
++    "    -e MEMGRAPH=\"--bolt-server-name-for-init=Neo4j/\" \\\n",
++    "    -v mg_lib:/var/lib/memgraph memgraph/memgraph-platform\n",
++    "```\n",
++    "\n",
++    "You will need to wait a few seconds for the database to start. If the process completes successfully, you should see something like this:\n",
++    "```\n",
++    "mgconsole X.X\n",
++    "Connected to 'memgraph://127.0.0.1:7687'\n",
++    "Type :help for shell usage\n",
++    "Quit the shell by typing Ctrl-D(eof) or :quit\n",
++    "memgraph>\n",
++    "```\n",
++    "\n",
++    "Now you can start playing with Memgraph!"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "45ee105e",
++   "metadata": {},
++   "source": [
++    "Begin by installing and importing all the necessary packages. We'll use the package manager called [pip](https://pip.pypa.io/en/stable/installation/), along with the `--user` flag, to ensure proper permissions. If you've installed Python 3.4 or a later version, pip is included by default. You can install all the required packages using the following command:"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "fd6b9672",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "pip install langchain openai neo4j gqlalchemy --user"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "ec969a02",
++   "metadata": {},
++   "source": [
++    "You can either run the provided code blocks in this notebook or use a separate Python file to experiment with Memgraph and LangChain."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "8206f90d",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "from langchain.chat_models import ChatOpenAI\n",
++    "from langchain.chains import GraphCypherQAChain\n",
++    "from langchain.graphs import MemgraphGraph\n",
++    "from langchain import PromptTemplate\n",
++    "\n",
++    "from gqlalchemy import Memgraph\n",
++    "\n",
++    "import os"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "95ba37a4",
++   "metadata": {},
++   "source": [
++    "We're utilizing the Python library [GQLAlchemy](https://github.com/memgraph/gqlalchemy) to establish a connection between our Memgraph database and Python script. To execute queries, we can set up a Memgraph instance as follows:"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "b90c9cf8",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "memgraph = Memgraph(host='127.0.0.1', port=7687)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "4c379d16",
++   "metadata": {},
++   "source": [
++    "## Populating the database\n",
++    "You can effortlessly populate your new, empty database using the Cypher query language. Don't worry if you don't grasp every line just yet, you can learn Cypher from the documentation [here](https://memgraph.com/docs/cypher-manual/). Running the following script will execute a seeding query on the database, giving us data about a video game, including details like the publisher, available platforms, and genres. This data will serve as a basis for our work."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "11922bdf",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Creating and executing the seeding query\n",
++    "query = \"\"\"\n",
++    "    MERGE (g:Game {name: \"Baldur's Gate 3\"})\n",
++    "    WITH g, [\"PlayStation 5\", \"Mac OS\", \"Windows\", \"Xbox Series X/S\"] AS platforms,\n",
++    "            [\"Adventure\", \"Role-Playing Game\", \"Strategy\"] AS genres\n",
++    "    FOREACH (platform IN platforms |\n",
++    "        MERGE (p:Platform {name: platform})\n",
++    "        MERGE (g)-[:AVAILABLE_ON]->(p)\n",
++    "    )\n",
++    "    FOREACH (genre IN genres |\n",
++    "        MERGE (gn:Genre {name: genre})\n",
++    "        MERGE (g)-[:HAS_GENRE]->(gn)\n",
++    "    )\n",
++    "    MERGE (p:Publisher {name: \"Larian Studios\"})\n",
++    "    MERGE (g)-[:PUBLISHED_BY]->(p);\n",
++    "\"\"\"\n",
++    "\n",
++    "memgraph.execute(query)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "378db965",
++   "metadata": {},
++   "source": [
++    "## Refresh graph schema"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "d6b37df3",
++   "metadata": {},
++   "source": [
++    "You're all set to instantiate the Memgraph-LangChain graph using the following script. This interface will allow us to query our database using LangChain, automatically creating the required graph schema for generating Cypher queries through LLM."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "f38bbe83",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "graph = MemgraphGraph(url=\"bolt://localhost:7687\", username=\"\", password=\"\")"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "846c32a8",
++   "metadata": {},
++   "source": [
++    "If necessary, you can manually refresh the graph schema as follows."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "b561026e",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "graph.refresh_schema()"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "c51b7948",
++   "metadata": {},
++   "source": [
++    "To familiarize yourself with the data and verify the updated graph schema, you can print it using the following statement."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "f2e0ec3e",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "print(graph.get_schema)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "a0c2a556",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "Node properties are the following:\n",
++    "Node name: 'Game', Node properties: [{'property': 'name', 'type': 'str'}]\n",
++    "Node name: 'Platform', Node properties: [{'property': 'name', 'type': 'str'}]\n",
++    "Node name: 'Genre', Node properties: [{'property': 'name', 'type': 'str'}]\n",
++    "Node name: 'Publisher', Node properties: [{'property': 'name', 'type': 'str'}]\n",
++    "\n",
++    "Relationship properties are the following:\n",
++    "\n",
++    "The relationships are the following:\n",
++    "['(:Game)-[:AVAILABLE_ON]->(:Platform)']\n",
++    "['(:Game)-[:HAS_GENRE]->(:Genre)']\n",
++    "['(:Game)-[:PUBLISHED_BY]->(:Publisher)']\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "44d3a1da",
++   "metadata": {},
++   "source": [
++    "## Querying the database"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "8aedfd63",
++   "metadata": {},
++   "source": [
++    "To interact with the OpenAI API, you must configure your API key as an environment variable using the Python [os](https://docs.python.org/3/library/os.html) package. This ensures proper authorization for your requests. You can find more information on obtaining your API key [here](https://help.openai.com/en/articles/4936850-where-do-i-find-my-secret-api-key)."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "b8385c72",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "os.environ[\"OPENAI_API_KEY\"] = \"your-key-here\""
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "5a74565a",
++   "metadata": {},
++   "source": [
++    "You should create the graph chain using the following script, which will be utilized in the question-answering process based on your graph data. While it defaults to GPT-3.5-turbo, you might also consider experimenting with other models like [GPT-4](https://help.openai.com/en/articles/7102672-how-can-i-access-gpt-4) for notably improved Cypher queries and outcomes. We'll utilize the OpenAI chat, utilizing the key you previously configured. We'll set the temperature to zero, ensuring predictable and consistent answers. Additionally, we'll use our Memgraph-LangChain graph and set the verbose parameter, which defaults to False, to True to receive more detailed messages regarding query generation."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "4a3a5f2e",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), graph=graph, verbose=True, model_name='gpt-3.5-turbo'\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "949de4f3",
++   "metadata": {},
++   "source": [
++    "Now you can start asking questions!"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "b7aea263",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"Which platforms is Baldur's Gate 3 available on?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "a06a8164",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (g:Game {name: 'Baldur\\'s Gate 3'})-[:AVAILABLE_ON]->(p:Platform)\n",
++    "RETURN p.name\n",
++    "Full Context:\n",
++    "[{'p.name': 'PlayStation 5'}, {'p.name': 'Mac OS'}, {'p.name': 'Windows'}, {'p.name': 'Xbox Series X/S'}]\n",
++    "\n",
++    "> Finished chain.\n",
++    "Baldur's Gate 3 is available on PlayStation 5, Mac OS, Windows, and Xbox Series X/S.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "59d298d5",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"Is Baldur's Gate 3 available on Windows?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "99dd783c",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (:Game {name: 'Baldur\\'s Gate 3'})-[:AVAILABLE_ON]->(:Platform {name: 'Windows'})\n",
++    "RETURN true\n",
++    "Full Context:\n",
++    "[{'true': True}]\n",
++    "\n",
++    "> Finished chain.\n",
++    "Yes, Baldur's Gate 3 is available on Windows.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "08620465",
++   "metadata": {},
++   "source": [
++    "## Chain modifiers"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "6603e6c8",
++   "metadata": {},
++   "source": [
++    "To modify the behavior of your chain and obtain more context or additional information, you can modify the chain's parameters."
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "8d187a83",
++   "metadata": {},
++   "source": [
++    "#### Return direct query results\n",
++    "The `return_direct` modifier specifies whether to return the direct results of the executed Cypher query or the processed natural language response."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "0533847d",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Return the result of querying the graph directly\n",
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), graph=graph, verbose=True, return_direct=True\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "afbe96fb",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"Which studio published Baldur's Gate 3?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "94b32b6e",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (:Game {name: 'Baldur\\'s Gate 3'})-[:PUBLISHED_BY]->(p:Publisher)\n",
++    "RETURN p.name\n",
++    "\n",
++    "> Finished chain.\n",
++    "[{'p.name': 'Larian Studios'}]\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "5c97ab3a",
++   "metadata": {},
++   "source": [
++    "#### Return query intermediate steps\n",
++    "The `return_intermediate_steps` chain modifier enhances the returned response by including the intermediate steps of the query in addition to the initial query result."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "82f673c8",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Return all the intermediate steps of query execution\n",
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), graph=graph, verbose=True, return_intermediate_steps=True\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "d87e0976",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain(\"Is Baldur's Gate 3 an Adventure game?\")\n",
++    "print(f\"Intermediate steps: {response['intermediate_steps']}\")\n",
++    "print(f\"Final response: {response['result']}\")"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "df12b3da",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (g:Game {name: 'Baldur\\'s Gate 3'})-[:HAS_GENRE]->(genre:Genre {name: 'Adventure'})\n",
++    "RETURN g, genre\n",
++    "Full Context:\n",
++    "[{'g': {'name': \"Baldur's Gate 3\"}, 'genre': {'name': 'Adventure'}}]\n",
++    "\n",
++    "> Finished chain.\n",
++    "Intermediate steps: [{'query': \"MATCH (g:Game {name: 'Baldur\\\\'s Gate 3'})-[:HAS_GENRE]->(genre:Genre {name: 'Adventure'})\\nRETURN g, genre\"}, {'context': [{'g': {'name': \"Baldur's Gate 3\"}, 'genre': {'name': 'Adventure'}}]}]\n",
++    "Final response: Yes, Baldur's Gate 3 is an Adventure game.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "41124485",
++   "metadata": {},
++   "source": [
++    "#### Limit the number of query results\n",
++    "The `top_k` modifier can be used when you want to restrict the maximum number of query results."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "7340fc87",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "# Limit the maximum number of results returned by query\n",
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), graph=graph, verbose=True, top_k=2\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "3a17cdc6",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"What genres are associated with Baldur's Gate 3?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "dcff33ed",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (:Game {name: 'Baldur\\'s Gate 3'})-[:HAS_GENRE]->(g:Genre)\n",
++    "RETURN g.name\n",
++    "Full Context:\n",
++    "[{'g.name': 'Adventure'}, {'g.name': 'Role-Playing Game'}]\n",
++    "\n",
++    "> Finished chain.\n",
++    "Baldur's Gate 3 is associated with the genres Adventure and Role-Playing Game.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "2eb524a1",
++   "metadata": {},
++   "source": [
++    "# Advanced querying"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "113be997",
++   "metadata": {},
++   "source": [
++    "As the complexity of your solution grows, you might encounter different use-cases that require careful handling. Ensuring your application's scalability is essential to maintain a smooth user flow without any hitches."
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "e0b2db17",
++   "metadata": {},
++   "source": [
++    "Let's instantiate our chain once again and attempt to ask some questions that users might potentially ask."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "fc544d0b",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), graph=graph, verbose=True, model_name='gpt-3.5-turbo'\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "e2abde2d",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"Is Baldur's Gate 3 available on PS5?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "cf22dc48",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (g:Game {name: 'Baldur\\'s Gate 3'})-[:AVAILABLE_ON]->(p:Platform {name: 'PS5'})\n",
++    "RETURN g.name, p.name\n",
++    "Full Context:\n",
++    "[]\n",
++    "\n",
++    "> Finished chain.\n",
++    "I'm sorry, but I don't have the information to answer your question.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "293aa1c9",
++   "metadata": {},
++   "source": [
++    "The generated Cypher query looks fine, but we didn't receive any information in response. This illustrates a common challenge when working with LLMs - the misalignment between how users phrase queries and how data is stored. In this case, the difference between user perception and the actual data storage can cause mismatches. Prompt refinement, the process of honing the model's prompts to better grasp these distinctions, is an efficient solution that tackles this issue. Through prompt refinement, the model gains increased proficiency in generating precise and pertinent queries, leading to the successful retrieval of the desired data."
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "a87b2f1b",
++   "metadata": {},
++   "source": [
++    "### Prompt refinement"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "8edb9976",
++   "metadata": {},
++   "source": [
++    "To address this, we can adjust the initial Cypher prompt of the QA chain. This involves adding guidance to the LLM on how users can refer to specific platforms, such as PS5 in our case. We achieve this using the LangChain [PromptTemplate](https://python.langchain.com/docs/modules/model_io/prompts/prompt_templates/), creating a modified initial prompt. This modified prompt is then supplied as an argument to our refined Memgraph-LangChain instance."
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "312dad05",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "CYPHER_GENERATION_TEMPLATE = \"\"\"\n",
++    "Task:Generate Cypher statement to query a graph database.\n",
++    "Instructions:\n",
++    "Use only the provided relationship types and properties in the schema.\n",
++    "Do not use any other relationship types or properties that are not provided.\n",
++    "Schema:\n",
++    "{schema}\n",
++    "Note: Do not include any explanations or apologies in your responses.\n",
++    "Do not respond to any questions that might ask anything else than for you to construct a Cypher statement.\n",
++    "Do not include any text except the generated Cypher statement.\n",
++    "If the user asks about PS5, Play Station 5 or PS 5, that is the platform called PlayStation 5.\n",
++    "\n",
++    "The question is:\n",
++    "{question}\n",
++    "\"\"\"\n",
++    "\n",
++    "CYPHER_GENERATION_PROMPT = PromptTemplate(\n",
++    "    input_variables=[\"schema\", \"question\"], template=CYPHER_GENERATION_TEMPLATE\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "2c297245",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "chain = GraphCypherQAChain.from_llm(\n",
++    "    ChatOpenAI(temperature=0), \n",
++    "    cypher_prompt=CYPHER_GENERATION_PROMPT,\n",
++    "    graph=graph, \n",
++    "    verbose=True, \n",
++    "    model_name='gpt-3.5-turbo'\n",
++    ")"
++   ]
++  },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "id": "7efb11a0",
++   "metadata": {},
++   "outputs": [],
++   "source": [
++    "response = chain.run(\"Is Baldur's Gate 3 available on PS5?\")\n",
++    "print(response)"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "289db07f",
++   "metadata": {},
++   "source": [
++    "```\n",
++    "> Entering new GraphCypherQAChain chain...\n",
++    "Generated Cypher:\n",
++    "MATCH (g:Game {name: 'Baldur\\'s Gate 3'})-[:AVAILABLE_ON]->(p:Platform {name: 'PlayStation 5'})\n",
++    "RETURN g.name, p.name\n",
++    "Full Context:\n",
++    "[{'g.name': \"Baldur's Gate 3\", 'p.name': 'PlayStation 5'}]\n",
++    "\n",
++    "> Finished chain.\n",
++    "Yes, Baldur's Gate 3 is available on PlayStation 5.\n",
++    "```"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "84b5f6af",
++   "metadata": {},
++   "source": [
++    "Now, with the revised initial Cypher prompt that includes guidance on platform naming, we are obtaining accurate and relevant results that align more closely with user queries. "
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "id": "a21108ad",
++   "metadata": {},
++   "source": [
++    "This approach allows for further improvement of your QA chain. You can effortlessly integrate extra prompt refinement data into your chain, thereby enhancing the overall user experience of your app."
++   ]
++  }
++ ],
++ "metadata": {
++  "kernelspec": {
++   "display_name": "Python 3 (ipykernel)",
++   "language": "python",
++   "name": "python3"
++  },
++  "language_info": {
++   "codemirror_mode": {
++    "name": "ipython",
++    "version": 3
++   },
++   "file_extension": ".py",
++   "mimetype": "text/x-python",
++   "name": "python",
++   "nbconvert_exporter": "python",
++   "pygments_lexer": "ipython3",
++   "version": "3.9.13"
++  }
++ },
++ "nbformat": 4,
++ "nbformat_minor": 5
++}
+diff --git a/docs/snippets/modules/model_io/models/llms/get_started.mdx b/docs/snippets/modules/model_io/models/llms/get_started.mdx
+index 5553a7faa21b7..54d6a96b930e0 100644
+--- a/docs/snippets/modules/model_io/models/llms/get_started.mdx
++++ b/docs/snippets/modules/model_io/models/llms/get_started.mdx
+@@ -43,7 +43,7 @@ llm("Tell me a joke")
+ </CodeOutputBlock>
+ 
+ ### `generate`: batch calls, richer outputs
+-`generate` lets you can call the model with a list of strings, getting back a more complete response than just the text. This complete response can include things like multiple top responses and other LLM provider-specific information:
++`generate` lets you call the model with a list of strings, getting back a more complete response than just the text. This complete response can include things like multiple top responses and other LLM provider-specific information:
+ 
+ ```python
+ llm_result = llm.generate(["Tell me a joke", "Tell me a poem"]*15)
+diff --git a/libs/experimental/langchain_experimental/py.typed b/libs/experimental/langchain_experimental/py.typed
+new file mode 100644
+index 0000000000000..e69de29bb2d1d
+diff --git a/libs/langchain/langchain/agents/agent_toolkits/__init__.py b/libs/langchain/langchain/agents/agent_toolkits/__init__.py
+index f914d0c1e24fb..93532981e525b 100644
+--- a/libs/langchain/langchain/agents/agent_toolkits/__init__.py
++++ b/libs/langchain/langchain/agents/agent_toolkits/__init__.py
+@@ -1,4 +1,5 @@
+ """Agent toolkits."""
++from langchain.agents.agent_toolkits.ainetwork.toolkit import AINetworkToolkit
+ from langchain.agents.agent_toolkits.amadeus.toolkit import AmadeusToolkit
+ from langchain.agents.agent_toolkits.azure_cognitive_services import (
+     AzureCognitiveServicesToolkit,
+@@ -46,6 +47,7 @@
+ from langchain.agents.agent_toolkits.zapier.toolkit import ZapierToolkit
+ 
+ __all__ = [
++    "AINetworkToolkit",
+     "AmadeusToolkit",
+     "AzureCognitiveServicesToolkit",
+     "FileManagementToolkit",
+diff --git a/libs/langchain/langchain/agents/agent_toolkits/ainetwork/__init__.py b/libs/langchain/langchain/agents/agent_toolkits/ainetwork/__init__.py
+new file mode 100644
+index 0000000000000..c4295f2ef4886
+--- /dev/null
++++ b/libs/langchain/langchain/agents/agent_toolkits/ainetwork/__init__.py
+@@ -0,0 +1,1 @@
++"""AINetwork toolkit."""
+diff --git a/libs/langchain/langchain/agents/agent_toolkits/ainetwork/toolkit.py b/libs/langchain/langchain/agents/agent_toolkits/ainetwork/toolkit.py
+new file mode 100644
+index 0000000000000..4fd790c949b06
+--- /dev/null
++++ b/libs/langchain/langchain/agents/agent_toolkits/ainetwork/toolkit.py
+@@ -0,0 +1,45 @@
++from __future__ import annotations
++
++from typing import TYPE_CHECKING, List, Literal, Optional
++
++from langchain.agents.agent_toolkits.base import BaseToolkit
++from langchain.pydantic_v1 import root_validator
++from langchain.tools import BaseTool
++from langchain.tools.ainetwork.app import AINAppOps
++from langchain.tools.ainetwork.owner import AINOwnerOps
++from langchain.tools.ainetwork.rule import AINRuleOps
++from langchain.tools.ainetwork.transfer import AINTransfer
++from langchain.tools.ainetwork.utils import authenticate
++from langchain.tools.ainetwork.value import AINValueOps
++
++if TYPE_CHECKING:
++    from ain.ain import Ain
++
++
++class AINetworkToolkit(BaseToolkit):
++    """Toolkit for interacting with AINetwork Blockchain."""
++
++    network: Optional[Literal["mainnet", "testnet"]] = "testnet"
++    interface: Optional[Ain] = None
++
++    @root_validator(pre=True)
++    def set_interface(cls, values: dict) -> dict:
++        if not values.get("interface"):
++            values["interface"] = authenticate(network=values.get("network", "testnet"))
++        return values
++
++    class Config:
++        """Pydantic config."""
++
++        validate_all = True
++        arbitrary_types_allowed = True
++
++    def get_tools(self) -> List[BaseTool]:
++        """Get the tools in the toolkit."""
++        return [
++            AINAppOps(),
++            AINOwnerOps(),
++            AINRuleOps(),
++            AINTransfer(),
++            AINValueOps(),
++        ]
+diff --git a/libs/langchain/langchain/chat_models/litellm.py b/libs/langchain/langchain/chat_models/litellm.py
+index d23549dc51c72..f429c322188f6 100644
+--- a/libs/langchain/langchain/chat_models/litellm.py
++++ b/libs/langchain/langchain/chat_models/litellm.py
+@@ -190,9 +190,6 @@ def _convert_message_to_dict(message: BaseMessage) -> dict:
+ class ChatLiteLLM(BaseChatModel):
+     """`LiteLLM` Chat models API.
+ 
+-    To use you must have the google.generativeai Python package installed and
+-    either:
+-
+         1. The ``GOOGLE_API_KEY``` environment variable set with your API key, or
+         2. Pass your API key using the google_api_key kwarg to the ChatGoogle
+            constructor.
+@@ -206,7 +203,8 @@ class ChatLiteLLM(BaseChatModel):
+     """
+ 
+     client: Any  #: :meta private:
+-    model_name: str = "gpt-3.5-turbo"
++    model: str = "gpt-3.5-turbo"
++    model_name: Optional[str] = None
+     """Model name to use."""
+     openai_api_key: Optional[str] = None
+     azure_api_key: Optional[str] = None
+@@ -217,8 +215,9 @@ class ChatLiteLLM(BaseChatModel):
+     streaming: bool = False
+     api_base: Optional[str] = None
+     organization: Optional[str] = None
++    custom_llm_provider: Optional[str] = None
+     request_timeout: Optional[Union[float, Tuple[float, float]]] = None
+-    temperature: Optional[float] = None
++    temperature: Optional[float] = 1
+     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+     """Run inference with this temperature. Must by in the closed
+        interval [0.0, 1.0]."""
+@@ -238,8 +237,11 @@ class ChatLiteLLM(BaseChatModel):
+     @property
+     def _default_params(self) -> Dict[str, Any]:
+         """Get the default parameters for calling OpenAI API."""
++        set_model_value = self.model
++        if self.model_name is not None:
++            set_model_value = self.model_name
+         return {
+-            "model": self.model_name,
++            "model": set_model_value,
+             "force_timeout": self.request_timeout,
+             "max_tokens": self.max_tokens,
+             "stream": self.streaming,
+@@ -251,10 +253,13 @@ def _default_params(self) -> Dict[str, Any]:
+     @property
+     def _client_params(self) -> Dict[str, Any]:
+         """Get the parameters used for the openai client."""
++        set_model_value = self.model
++        if self.model_name is not None:
++            set_model_value = self.model_name
+         self.client.api_base = self.api_base
+         self.client.organization = self.organization
+         creds: Dict[str, Any] = {
+-            "model": self.model_name,
++            "model": set_model_value,
+             "force_timeout": self.request_timeout,
+         }
+         return {**self._default_params, **creds}
+@@ -347,7 +352,10 @@ def _create_chat_result(self, response: Mapping[str, Any]) -> ChatResult:
+             )
+             generations.append(gen)
+         token_usage = response.get("usage", {})
+-        llm_output = {"token_usage": token_usage, "model_name": self.model_name}
++        set_model_value = self.model
++        if self.model_name is not None:
++            set_model_value = self.model_name
++        llm_output = {"token_usage": token_usage, "model": set_model_value}
+         return ChatResult(generations=generations, llm_output=llm_output)
+ 
+     def _create_message_dicts(
+@@ -437,8 +445,11 @@ async def _agenerate(
+     @property
+     def _identifying_params(self) -> Dict[str, Any]:
+         """Get the identifying parameters."""
++        set_model_value = self.model
++        if self.model_name is not None:
++            set_model_value = self.model_name
+         return {
+-            "model_name": self.model_name,
++            "model": set_model_value,
+             "temperature": self.temperature,
+             "top_p": self.top_p,
+             "top_k": self.top_k,
+diff --git a/libs/langchain/langchain/chat_models/openai.py b/libs/langchain/langchain/chat_models/openai.py
+index ea9da5131e56a..c2c7880edc65b 100644
+--- a/libs/langchain/langchain/chat_models/openai.py
++++ b/libs/langchain/langchain/chat_models/openai.py
+@@ -381,10 +381,16 @@ async def _astream(
+         ):
+             if len(chunk["choices"]) == 0:
+                 continue
+-            delta = chunk["choices"][0]["delta"]
+-            chunk = _convert_delta_to_message_chunk(delta, default_chunk_class)
++            choice = chunk["choices"][0]
++            chunk = _convert_delta_to_message_chunk(
++                choice["delta"], default_chunk_class
++            )
++            finish_reason = choice.get("finish_reason")
++            generation_info = (
++                dict(finish_reason=finish_reason) if finish_reason is not None else None
++            )
+             default_chunk_class = chunk.__class__
+-            yield ChatGenerationChunk(message=chunk)
++            yield ChatGenerationChunk(message=chunk, generation_info=generation_info)
+             if run_manager:
+                 await run_manager.on_llm_new_token(chunk.content)
+ 
+diff --git a/libs/langchain/langchain/document_loaders/__init__.py b/libs/langchain/langchain/document_loaders/__init__.py
+index 195b586ac2a9f..30f69659cee37 100644
+--- a/libs/langchain/langchain/document_loaders/__init__.py
++++ b/libs/langchain/langchain/document_loaders/__init__.py
+@@ -132,6 +132,7 @@
+     PyPDFLoader,
+     UnstructuredPDFLoader,
+ )
++from langchain.document_loaders.polars_dataframe import PolarsDataFrameLoader
+ from langchain.document_loaders.powerpoint import UnstructuredPowerPointLoader
+ from langchain.document_loaders.psychic import PsychicLoader
+ from langchain.document_loaders.pubmed import PubMedLoader
+@@ -299,6 +300,7 @@
+     "PDFPlumberLoader",
+     "PagedPDFSplitter",
+     "PlaywrightURLLoader",
++    "PolarsDataFrameLoader",
+     "PsychicLoader",
+     "PubMedLoader",
+     "PyMuPDFLoader",
+diff --git a/libs/langchain/langchain/document_loaders/confluence.py b/libs/langchain/langchain/document_loaders/confluence.py
+index 98d63cfc18c37..a1151c08e2cd4 100644
+--- a/libs/langchain/langchain/document_loaders/confluence.py
++++ b/libs/langchain/langchain/document_loaders/confluence.py
+@@ -3,6 +3,7 @@
+ from io import BytesIO
+ from typing import Any, Callable, Dict, List, Optional, Union
+ 
++import requests
+ from tenacity import (
+     before_sleep_log,
+     retry,
+@@ -68,6 +69,15 @@ class ConfluenceLoader(BaseLoader):
+             )
+             documents = loader.load(space_key="SPACE",limit=50)
+ 
++            # Server on perm
++            loader = ConfluenceLoader(
++                url="https://confluence.yoursite.com/",
++                username="me",
++                api_key="your_password",
++                cloud=False
++            )
++            documents = loader.load(space_key="SPACE",limit=50)
++
+     :param url: _description_
+     :type url: str
+     :param api_key: _description_, defaults to None
+@@ -97,6 +107,7 @@ def __init__(
+         url: str,
+         api_key: Optional[str] = None,
+         username: Optional[str] = None,
++        session: Optional[requests.Session] = None,
+         oauth2: Optional[dict] = None,
+         token: Optional[str] = None,
+         cloud: Optional[bool] = True,
+@@ -107,16 +118,15 @@ def __init__(
+     ):
+         confluence_kwargs = confluence_kwargs or {}
+         errors = ConfluenceLoader.validate_init_args(
+-            url, api_key, username, oauth2, token
++            url=url,
++            api_key=api_key,
++            username=username,
++            session=session,
++            oauth2=oauth2,
++            token=token,
+         )
+         if errors:
+             raise ValueError(f"Error(s) while validating input: {errors}")
+-
+-        self.base_url = url
+-        self.number_of_retries = number_of_retries
+-        self.min_retry_seconds = min_retry_seconds
+-        self.max_retry_seconds = max_retry_seconds
+-
+         try:
+             from atlassian import Confluence  # noqa: F401
+         except ImportError:
+@@ -125,7 +135,14 @@ def __init__(
+                 "`pip install atlassian-python-api`"
+             )
+ 
+-        if oauth2:
++        self.base_url = url
++        self.number_of_retries = number_of_retries
++        self.min_retry_seconds = min_retry_seconds
++        self.max_retry_seconds = max_retry_seconds
++
++        if session:
++            self.confluence = Confluence(url=url, session=session, **confluence_kwargs)
++        elif oauth2:
+             self.confluence = Confluence(
+                 url=url, oauth2=oauth2, cloud=cloud, **confluence_kwargs
+             )
+@@ -147,6 +164,7 @@ def validate_init_args(
+         url: Optional[str] = None,
+         api_key: Optional[str] = None,
+         username: Optional[str] = None,
++        session: Optional[requests.Session] = None,
+         oauth2: Optional[dict] = None,
+         token: Optional[str] = None,
+     ) -> Union[List, None]:
+@@ -162,33 +180,28 @@ def validate_init_args(
+                 "the other must be as well."
+             )
+ 
+-        if (api_key or username) and oauth2:
++        non_null_creds = list(
++            x is not None for x in ((api_key or username), session, oauth2, token)
++        )
++        if sum(non_null_creds) > 1:
++            all_names = ("(api_key, username)", "session", "oath2", "token")
++            provided = tuple(n for x, n in zip(non_null_creds, all_names) if x)
+             errors.append(
+-                "Cannot provide a value for `api_key` and/or "
+-                "`username` and provide a value for `oauth2`"
++                f"Cannot provide a value for more than one of: {all_names}. Received "
++                f"values for: {provided}"
+             )
+-
+-        if oauth2 and oauth2.keys() != [
++        if oauth2 and set(oauth2.keys()) != {
+             "access_token",
+             "access_token_secret",
+             "consumer_key",
+             "key_cert",
+-        ]:
++        }:
+             errors.append(
+                 "You have either omitted require keys or added extra "
+                 "keys to the oauth2 dictionary. key values should be "
+                 "`['access_token', 'access_token_secret', 'consumer_key', 'key_cert']`"
+             )
+-
+-        if token and (api_key or username or oauth2):
+-            errors.append(
+-                "Cannot provide a value for `token` and a value for `api_key`, "
+-                "`username` or `oauth2`"
+-            )
+-
+-        if errors:
+-            return errors
+-        return None
++        return errors or None
+ 
+     def load(
+         self,
+@@ -205,6 +218,7 @@ def load(
+         max_pages: Optional[int] = 1000,
+         ocr_languages: Optional[str] = None,
+         keep_markdown_format: bool = False,
++        keep_newlines: bool = False,
+     ) -> List[Document]:
+         """
+         :param space_key: Space key retrieved from a confluence URL, defaults to None
+@@ -237,6 +251,9 @@ def load(
+         :param keep_markdown_format: Whether to keep the markdown format, defaults to
+             False
+         :type keep_markdown_format: bool
++        :param keep_newlines: Whether to keep the newlines format, defaults to
++            False
++        :type keep_newlines: bool
+         :raises ValueError: _description_
+         :raises ImportError: _description_
+         :return: _description_
+@@ -265,8 +282,9 @@ def load(
+                 include_attachments,
+                 include_comments,
+                 content_format,
+-                ocr_languages,
+-                keep_markdown_format,
++                ocr_languages=ocr_languages,
++                keep_markdown_format=keep_markdown_format,
++                keep_newlines=keep_newlines,
+             )
+ 
+         if label:
+@@ -404,6 +422,7 @@ def process_pages(
+         content_format: ContentFormat,
+         ocr_languages: Optional[str] = None,
+         keep_markdown_format: Optional[bool] = False,
++        keep_newlines: bool = False,
+     ) -> List[Document]:
+         """Process a list of pages into a list of documents."""
+         docs = []
+@@ -415,8 +434,9 @@ def process_pages(
+                 include_attachments,
+                 include_comments,
+                 content_format,
+-                ocr_languages,
+-                keep_markdown_format,
++                ocr_languages=ocr_languages,
++                keep_markdown_format=keep_markdown_format,
++                keep_newlines=keep_newlines,
+             )
+             docs.append(doc)
+ 
+@@ -430,6 +450,7 @@ def process_page(
+         content_format: ContentFormat,
+         ocr_languages: Optional[str] = None,
+         keep_markdown_format: Optional[bool] = False,
++        keep_newlines: bool = False,
+     ) -> Document:
+         if keep_markdown_format:
+             try:
+@@ -439,7 +460,7 @@ def process_page(
+                     "`markdownify` package not found, please run "
+                     "`pip install markdownify`"
+                 )
+-        else:
++        if include_comments or not keep_markdown_format:
+             try:
+                 from bs4 import BeautifulSoup  # type: ignore
+             except ImportError:
+@@ -447,7 +468,6 @@ def process_page(
+                     "`beautifulsoup4` package not found, please run "
+                     "`pip install beautifulsoup4`"
+                 )
+-
+         if include_attachments:
+             attachment_texts = self.process_attachment(page["id"], ocr_languages)
+         else:
+@@ -461,9 +481,14 @@ def process_page(
+ 
+         else:
+             content = content_format.get_content(page)
+-            text = BeautifulSoup(content, "lxml").get_text(" ", strip=True) + "".join(
+-                attachment_texts
+-            )
++            if keep_newlines:
++                text = BeautifulSoup(
++                    content.replace("</p>", "\n</p>").replace("<br />", "\n"), "lxml"
++                ).get_text(" ") + "".join(attachment_texts)
++            else:
++                text = BeautifulSoup(content, "lxml").get_text(
++                    " ", strip=True
++                ) + "".join(attachment_texts)
+ 
+         if include_comments:
+             comments = self.confluence.get_page_comments(
+diff --git a/libs/langchain/langchain/document_loaders/dataframe.py b/libs/langchain/langchain/document_loaders/dataframe.py
+index 0476f6a29868c..261426a3ceb63 100644
+--- a/libs/langchain/langchain/document_loaders/dataframe.py
++++ b/libs/langchain/langchain/document_loaders/dataframe.py
+@@ -4,23 +4,15 @@
+ from langchain.document_loaders.base import BaseLoader
+ 
+ 
+-class DataFrameLoader(BaseLoader):
+-    """Load `Pandas` DataFrame."""
+-
+-    def __init__(self, data_frame: Any, page_content_column: str = "text"):
++class BaseDataFrameLoader(BaseLoader):
++    def __init__(self, data_frame: Any, *, page_content_column: str = "text"):
+         """Initialize with dataframe object.
+ 
+         Args:
+-            data_frame: Pandas DataFrame object.
++            data_frame: DataFrame object.
+             page_content_column: Name of the column containing the page content.
+               Defaults to "text".
+         """
+-        import pandas as pd
+-
+-        if not isinstance(data_frame, pd.DataFrame):
+-            raise ValueError(
+-                f"Expected data_frame to be a pd.DataFrame, got {type(data_frame)}"
+-            )
+         self.data_frame = data_frame
+         self.page_content_column = page_content_column
+ 
+@@ -36,3 +28,28 @@ def lazy_load(self) -> Iterator[Document]:
+     def load(self) -> List[Document]:
+         """Load full dataframe."""
+         return list(self.lazy_load())
++
++
++class DataFrameLoader(BaseDataFrameLoader):
++    """Load `Pandas` DataFrame."""
++
++    def __init__(self, data_frame: Any, page_content_column: str = "text"):
++        """Initialize with dataframe object.
++
++        Args:
++            data_frame: Pandas DataFrame object.
++            page_content_column: Name of the column containing the page content.
++              Defaults to "text".
++        """
++        try:
++            import pandas as pd
++        except ImportError as e:
++            raise ImportError(
++                "Unable to import pandas, please install with `pip install pandas`."
++            ) from e
++
++        if not isinstance(data_frame, pd.DataFrame):
++            raise ValueError(
++                f"Expected data_frame to be a pd.DataFrame, got {type(data_frame)}"
++            )
++        super().__init__(data_frame, page_content_column=page_content_column)
+diff --git a/libs/langchain/langchain/document_loaders/polars_dataframe.py b/libs/langchain/langchain/document_loaders/polars_dataframe.py
+new file mode 100644
+index 0000000000000..6ece942df497b
+--- /dev/null
++++ b/libs/langchain/langchain/document_loaders/polars_dataframe.py
+@@ -0,0 +1,32 @@
++from typing import Any, Iterator
++
++from langchain.docstore.document import Document
++from langchain.document_loaders.dataframe import BaseDataFrameLoader
++
++
++class PolarsDataFrameLoader(BaseDataFrameLoader):
++    """Load `Polars` DataFrame."""
++
++    def __init__(self, data_frame: Any, *, page_content_column: str = "text"):
++        """Initialize with dataframe object.
++
++        Args:
++            data_frame: Polars DataFrame object.
++            page_content_column: Name of the column containing the page content.
++              Defaults to "text".
++        """
++        import polars as pl
++
++        if not isinstance(data_frame, pl.DataFrame):
++            raise ValueError(
++                f"Expected data_frame to be a pl.DataFrame, got {type(data_frame)}"
++            )
++        super().__init__(data_frame, page_content_column=page_content_column)
++
++    def lazy_load(self) -> Iterator[Document]:
++        """Lazy load records from dataframe."""
++
++        for row in self.data_frame.iter_rows(named=True):
++            text = row[self.page_content_column]
++            row.pop(self.page_content_column)
++            yield Document(page_content=text, metadata=row)
+diff --git a/libs/langchain/langchain/document_loaders/xorbits.py b/libs/langchain/langchain/document_loaders/xorbits.py
+index bcc4e680f682f..723e9dc1b59dc 100644
+--- a/libs/langchain/langchain/document_loaders/xorbits.py
++++ b/libs/langchain/langchain/document_loaders/xorbits.py
+@@ -1,10 +1,9 @@
+-from typing import Any, Iterator, List
++from typing import Any
+ 
+-from langchain.docstore.document import Document
+-from langchain.document_loaders.base import BaseLoader
++from langchain.document_loaders.dataframe import BaseDataFrameLoader
+ 
+ 
+-class XorbitsLoader(BaseLoader):
++class XorbitsLoader(BaseDataFrameLoader):
+     """Load `Xorbits` DataFrame."""
+ 
+     def __init__(self, data_frame: Any, page_content_column: str = "text"):
+@@ -30,17 +29,4 @@ def __init__(self, data_frame: Any, page_content_column: str = "text"):
+                 f"Expected data_frame to be a xorbits.pandas.DataFrame, \
+                   got {type(data_frame)}"
+             )
+-        self.data_frame = data_frame
+-        self.page_content_column = page_content_column
+-
+-    def lazy_load(self) -> Iterator[Document]:
+-        """Lazy load records from dataframe."""
+-        for _, row in self.data_frame.iterrows():
+-            text = row[self.page_content_column]
+-            metadata = row.to_dict()
+-            metadata.pop(self.page_content_column)
+-            yield Document(page_content=text, metadata=metadata)
+-
+-    def load(self) -> List[Document]:
+-        """Load full dataframe."""
+-        return list(self.lazy_load())
++        super().__init__(data_frame, page_content_column=page_content_column)
+diff --git a/libs/langchain/langchain/embeddings/clarifai.py b/libs/langchain/langchain/embeddings/clarifai.py
+index 0e0d52356a862..31649d368b0e2 100644
+--- a/libs/langchain/langchain/embeddings/clarifai.py
++++ b/libs/langchain/langchain/embeddings/clarifai.py
+@@ -103,37 +103,44 @@ def embed_documents(self, texts: List[str]) -> List[List[float]]:
+                 "Please install it with `pip install clarifai`."
+             )
+ 
+-        post_model_outputs_request = service_pb2.PostModelOutputsRequest(
+-            user_app_id=self.userDataObject,
+-            model_id=self.model_id,
+-            version_id=self.model_version_id,
+-            inputs=[
+-                resources_pb2.Input(
+-                    data=resources_pb2.Data(text=resources_pb2.Text(raw=t))
+-                )
+-                for t in texts
+-            ],
+-        )
+-        post_model_outputs_response = self.stub.PostModelOutputs(
+-            post_model_outputs_request
+-        )
+-
+-        if post_model_outputs_response.status.code != status_code_pb2.SUCCESS:
+-            logger.error(post_model_outputs_response.status)
+-            first_output_failure = (
+-                post_model_outputs_response.outputs[0].status
+-                if len(post_model_outputs_response.outputs[0])
+-                else None
++        batch_size = 32
++        embeddings = []
++        for i in range(0, len(texts), batch_size):
++            batch = texts[i : i + batch_size]
++
++            post_model_outputs_request = service_pb2.PostModelOutputsRequest(
++                user_app_id=self.userDataObject,
++                model_id=self.model_id,
++                version_id=self.model_version_id,
++                inputs=[
++                    resources_pb2.Input(
++                        data=resources_pb2.Data(text=resources_pb2.Text(raw=t))
++                    )
++                    for t in batch
++                ],
+             )
+-            raise Exception(
+-                f"Post model outputs failed, status: "
+-                f"{post_model_outputs_response.status}, first output failure: "
+-                f"{first_output_failure}"
++            post_model_outputs_response = self.stub.PostModelOutputs(
++                post_model_outputs_request
++            )
++
++            if post_model_outputs_response.status.code != status_code_pb2.SUCCESS:
++                logger.error(post_model_outputs_response.status)
++                first_output_failure = (
++                    post_model_outputs_response.outputs[0].status
++                    if len(post_model_outputs_response.outputs)
++                    else None
++                )
++                raise Exception(
++                    f"Post model outputs failed, status: "
++                    f"{post_model_outputs_response.status}, first output failure: "
++                    f"{first_output_failure}"
++                )
++            embeddings.extend(
++                [
++                    list(o.data.embeddings[0].vector)
++                    for o in post_model_outputs_response.outputs
++                ]
+             )
+-        embeddings = [
+-            list(o.data.embeddings[0].vector)
+-            for o in post_model_outputs_response.outputs
+-        ]
+         return embeddings
+ 
+     def embed_query(self, text: str) -> List[float]:
+diff --git a/libs/langchain/langchain/graphs/arangodb_graph.py b/libs/langchain/langchain/graphs/arangodb_graph.py
+index 69b78dea399b0..aedcd95601e9c 100644
+--- a/libs/langchain/langchain/graphs/arangodb_graph.py
++++ b/libs/langchain/langchain/graphs/arangodb_graph.py
+@@ -66,6 +66,10 @@ def generate_schema(
+             col_type: str = collection["type"]
+             col_size: int = self.db.collection(col_name).count()
+ 
++            # Skip collection if empty
++            if col_size == 0:
++                continue
++
+             # Set number of ArangoDB documents/edges to retrieve
+             limit_amount = ceil(sample_ratio * col_size) or 1
+ 
+diff --git a/libs/langchain/langchain/llms/__init__.py b/libs/langchain/langchain/llms/__init__.py
+index b2728535a6364..d46ce1ab0c733 100644
+--- a/libs/langchain/langchain/llms/__init__.py
++++ b/libs/langchain/langchain/llms/__init__.py
+@@ -69,6 +69,7 @@
+ from langchain.llms.pipelineai import PipelineAI
+ from langchain.llms.predibase import Predibase
+ from langchain.llms.predictionguard import PredictionGuard
++from langchain.llms.promptguard import PromptGuard
+ from langchain.llms.promptlayer_openai import PromptLayerOpenAI, PromptLayerOpenAIChat
+ from langchain.llms.replicate import Replicate
+ from langchain.llms.rwkv import RWKV
+@@ -141,6 +142,7 @@
+     "PredictionGuard",
+     "PromptLayerOpenAI",
+     "PromptLayerOpenAIChat",
++    "PromptGuard",
+     "RWKV",
+     "Replicate",
+     "SagemakerEndpoint",
+@@ -205,6 +207,7 @@
+     "petals": Petals,
+     "pipelineai": PipelineAI,
+     "predibase": Predibase,
++    "promptguard": PromptGuard,
+     "replicate": Replicate,
+     "rwkv": RWKV,
+     "sagemaker_endpoint": SagemakerEndpoint,
+diff --git a/libs/langchain/langchain/llms/clarifai.py b/libs/langchain/langchain/llms/clarifai.py
+index 33396bfa4e839..0b1dea4393901 100644
+--- a/libs/langchain/langchain/llms/clarifai.py
++++ b/libs/langchain/langchain/llms/clarifai.py
+@@ -5,6 +5,7 @@
+ from langchain.llms.base import LLM
+ from langchain.llms.utils import enforce_stop_tokens
+ from langchain.pydantic_v1 import Extra, root_validator
++from langchain.schema import Generation, LLMResult
+ from langchain.utils import get_from_dict_or_env
+ 
+ logger = logging.getLogger(__name__)
+@@ -163,7 +164,7 @@ def _call(
+             logger.error(post_model_outputs_response.status)
+             first_model_failure = (
+                 post_model_outputs_response.outputs[0].status
+-                if len(post_model_outputs_response.outputs[0])
++                if len(post_model_outputs_response.outputs)
+                 else None
+             )
+             raise Exception(
+@@ -178,3 +179,67 @@ def _call(
+         if stop is not None:
+             text = enforce_stop_tokens(text, stop)
+         return text
++
++    def _generate(
++        self,
++        prompts: List[str],
++        stop: Optional[List[str]] = None,
++        run_manager: Optional[CallbackManagerForLLMRun] = None,
++        **kwargs: Any,
++    ) -> LLMResult:
++        """Run the LLM on the given prompt and input."""
++
++        try:
++            from clarifai_grpc.grpc.api import (
++                resources_pb2,
++                service_pb2,
++            )
++            from clarifai_grpc.grpc.api.status import status_code_pb2
++        except ImportError:
++            raise ImportError(
++                "Could not import clarifai python package. "
++                "Please install it with `pip install clarifai`."
++            )
++
++        # TODO: add caching here.
++        generations = []
++        batch_size = 32
++        for i in range(0, len(prompts), batch_size):
++            batch = prompts[i : i + batch_size]
++            post_model_outputs_request = service_pb2.PostModelOutputsRequest(
++                user_app_id=self.userDataObject,
++                model_id=self.model_id,
++                version_id=self.model_version_id,
++                inputs=[
++                    resources_pb2.Input(
++                        data=resources_pb2.Data(text=resources_pb2.Text(raw=prompt))
++                    )
++                    for prompt in batch
++                ],
++            )
++            post_model_outputs_response = self.stub.PostModelOutputs(
++                post_model_outputs_request
++            )
++
++            if post_model_outputs_response.status.code != status_code_pb2.SUCCESS:
++                logger.error(post_model_outputs_response.status)
++                first_model_failure = (
++                    post_model_outputs_response.outputs[0].status
++                    if len(post_model_outputs_response.outputs)
++                    else None
++                )
++                raise Exception(
++                    f"Post model outputs failed, status: "
++                    f"{post_model_outputs_response.status}, first output failure: "
++                    f"{first_model_failure}"
++                )
++
++            for output in post_model_outputs_response.outputs:
++                if stop is not None:
++                    text = enforce_stop_tokens(output.data.text.raw, stop)
++                else:
++                    text = output.data.text.raw
++
++                generations.append([Generation(text=text)])
++
++        return LLMResult(generations=generations)
+diff --git a/libs/langchain/langchain/llms/promptguard.py b/libs/langchain/langchain/llms/promptguard.py
+new file mode 100644
+index 0000000000000..a6e85974657a2
+--- /dev/null
++++ b/libs/langchain/langchain/llms/promptguard.py
+@@ -0,0 +1,116 @@
++import logging
++from typing import Any, Dict, List, Optional
++
++from langchain.callbacks.manager import CallbackManagerForLLMRun
++from langchain.llms.base import LLM
++from langchain.pydantic_v1 import Extra, root_validator
++from langchain.schema.language_model import BaseLanguageModel
++from langchain.utils import get_from_dict_or_env
++
++logger = logging.getLogger(__name__)
++
++
++class PromptGuard(LLM):
++    """An LLM wrapper that uses PromptGuard to sanitize prompts.
++
++    Wraps another LLM and sanitizes prompts before passing it to the LLM, then
++        de-sanitizes the response.
++
++    To use, you should have the ``promptguard`` python package installed,
++    and the environment variable ``PROMPTGUARD_API_KEY`` set with
++    your API key, or pass it as a named parameter to the constructor.
++
++    Example:
++        .. code-block:: python
++
++            from langchain.llms import PromptGuardLLM
++            from langchain.chat_models import ChatOpenAI
++
++            prompt_guard_llm = PromptGuardLLM(base_llm=ChatOpenAI())
++    """
++
++    base_llm: BaseLanguageModel
++    """The base LLM to use."""
++
++    class Config:
++        """Configuration for this pydantic object."""
++
++        extra = Extra.forbid
++
++    @root_validator()
++    def validate_environment(cls, values: Dict) -> Dict:
++        """Validates that the PromptGuard API key and the Python package exist."""
++        try:
++            import promptguard as pg
++        except ImportError:
++            raise ImportError(
++                "Could not import the `promptguard` Python package, "
++                "please install it with `pip install promptguard`."
++            )
++        if pg.__package__ is None:
++            raise ValueError(
++                "Could not properly import `promptguard`, "
++                "promptguard.__package__ is None."
++            )
++
++        api_key = get_from_dict_or_env(
++            values, "promptguard_api_key", "PROMPTGUARD_API_KEY", default=""
++        )
++        if not api_key:
++            raise ValueError(
++                "Could not find PROMPTGUARD_API_KEY in the environment. "
++                "Please set it to your PromptGuard API key."
++                "You can get it by creating an account on the PromptGuard website: "
++                "https://promptguard.opaque.co/ ."
++            )
++        return values
++
++    def _call(
++        self,
++        prompt: str,
++        stop: Optional[List[str]] = None,
++        run_manager: Optional[CallbackManagerForLLMRun] = None,
++        **kwargs: Any,
++    ) -> str:
++        """Call base LLM with sanitization before and de-sanitization after.
++
++        Args:
++            prompt: The prompt to pass into the model.
++
++        Returns:
++            The string generated by the model.
++
++        Example:
++            .. code-block:: python
++
++                response = prompt_guard_llm("Tell me a joke.")
++        """
++        import promptguard as pg
++
++        _run_manager = run_manager or CallbackManagerForLLMRun.get_noop_manager()
++
++        # sanitize the prompt by replacing the sensitive information with a placeholder
++        sanitize_response: pg.SanitizeResponse = pg.sanitize(prompt)
++        sanitized_prompt_value_str = sanitize_response.sanitized_text
++
++        # TODO: Add in callbacks once child runs for LLMs are supported by LangSmith.
++        # call the LLM with the sanitized prompt and get the response
++        llm_response = self.base_llm.predict(
++            sanitized_prompt_value_str,
++            stop=stop,
++        )
++
++        # desanitize the response by restoring the original sensitive information
++        desanitize_response: pg.DesanitizeResponse = pg.desanitize(
++            llm_response,
++            secure_context=sanitize_response.secure_context,
++        )
++        return desanitize_response.desanitized_text
++
++    @property
++    def _llm_type(self) -> str:
++        """Return type of LLM.
++
++        This is an override of the base class method.
++        """
++        return "promptguard"
+diff --git a/libs/langchain/langchain/memory/chat_message_histories/in_memory.py b/libs/langchain/langchain/memory/chat_message_histories/in_memory.py
+index d8db3f424b56f..53fbbb201ea0b 100644
+--- a/libs/langchain/langchain/memory/chat_message_histories/in_memory.py
++++ b/libs/langchain/langchain/memory/chat_message_histories/in_memory.py
+@@ -1,6 +1,6 @@
+ from typing import List
+ 
+-from langchain.pydantic_v1 import BaseModel
++from langchain.pydantic_v1 import BaseModel, Field
+ from langchain.schema import (
+     BaseChatMessageHistory,
+ )
+@@ -13,7 +13,7 @@ class ChatMessageHistory(BaseChatMessageHistory, BaseModel):
+     Stores messages in an in memory list.
+     """
+ 
+-    messages: List[BaseMessage] = []
++    messages: List[BaseMessage] = Field(default_factory=list)
+ 
+     def add_message(self, message: BaseMessage) -> None:
+         """Add a self-created message to the store"""
+diff --git a/libs/langchain/langchain/tools/__init__.py b/libs/langchain/langchain/tools/__init__.py
+index ad4ae9635a85d..14e34d732007d 100644
+--- a/libs/langchain/langchain/tools/__init__.py
++++ b/libs/langchain/langchain/tools/__init__.py
+@@ -17,6 +17,11 @@
+     CallbackManagerForToolRun, AsyncCallbackManagerForToolRun
+ """
+ 
++from langchain.tools.ainetwork.app import AINAppOps
++from langchain.tools.ainetwork.owner import AINOwnerOps
++from langchain.tools.ainetwork.rule import AINRuleOps
++from langchain.tools.ainetwork.transfer import AINTransfer
++from langchain.tools.ainetwork.value import AINValueOps
+ from langchain.tools.arxiv.tool import ArxivQueryRun
+ from langchain.tools.azure_cognitive_services import (
+     AzureCogsFormRecognizerTool,
+@@ -118,6 +123,11 @@
+ from langchain.tools.zapier.tool import ZapierNLAListActions, ZapierNLARunAction
+ 
+ __all__ = [
++    "AINAppOps",
++    "AINOwnerOps",
++    "AINRuleOps",
++    "AINTransfer",
++    "AINValueOps",
+     "AIPluginTool",
+     "APIOperation",
+     "ArxivQueryRun",
+diff --git a/libs/langchain/langchain/tools/ainetwork/app.py b/libs/langchain/langchain/tools/ainetwork/app.py
+new file mode 100644
+index 0000000000000..26599d75d7e45
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/app.py
+@@ -0,0 +1,95 @@
++import builtins
++import json
++from enum import Enum
++from typing import List, Optional, Type, Union
++
++from langchain.callbacks.manager import AsyncCallbackManagerForToolRun
++from langchain.pydantic_v1 import BaseModel, Field
++from langchain.tools.ainetwork.base import AINBaseTool
++
++
++class AppOperationType(str, Enum):
++    SET_ADMIN = "SET_ADMIN"
++    GET_CONFIG = "GET_CONFIG"
++
++
++class AppSchema(BaseModel):
++    type: AppOperationType = Field(...)
++    appName: str = Field(..., description="Name of the application on the blockchain")
++    address: Optional[Union[str, List[str]]] = Field(
++        None,
++        description=(
++            "A single address or a list of addresses. Default: current session's "
++            "address"
++        ),
++    )
++
++
++class AINAppOps(AINBaseTool):
++    name: str = "AINappOps"
++    description: str = """
++Create an app in the AINetwork Blockchain database by creating the /apps/<appName> path.
++An address set as `admin` can grant `owner` rights to other addresses (refer to `AINownerOps` for more details).
++Also, `admin` is initialized to have all `owner` permissions and `rule` allowed for that path.
++
++## appName Rule
++- [a-z_0-9]+
++
++## address Rules
++- 0x[0-9a-fA-F]{40}
++- Defaults to the current session's address
++- Multiple addresses can be specified if needed
++
++## SET_ADMIN Example 1
++- type: SET_ADMIN
++- appName: ain_project
++
++### Result:
++1. Path /apps/ain_project created.
++2. Current session's address registered as admin.
++
++## SET_ADMIN Example 2
++- type: SET_ADMIN
++- appName: test_project
++- address: [<address1>, <address2>]
++
++### Result:
++1. Path /apps/test_project created.
++2. <address1> and <address2> registered as admin.
++
++"""  # noqa: E501
++    args_schema: Type[BaseModel] = AppSchema
++
++    async def _arun(
++        self,
++        type: AppOperationType,
++        appName: str,
++        address: Optional[Union[str, List[str]]] = None,
++        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
++    ) -> str:
++        from ain.types import ValueOnlyTransactionInput
++        from ain.utils import getTimestamp
++
++        try:
++            if type is AppOperationType.SET_ADMIN:
++                if address is None:
++                    address = self.interface.wallet.defaultAccount.address
++                if isinstance(address, str):
++                    address = [address]
++
++                res = await self.interface.db.ref(
++                    f"/manage_app/{appName}/create/{getTimestamp()}"
++                ).setValue(
++                    transactionInput=ValueOnlyTransactionInput(
++                        value={"admin": {address: True for address in address}}
++                    )
++                )
++            elif type is AppOperationType.GET_CONFIG:
++                res = await self.interface.db.ref(
++                    f"/manage_app/{appName}/config"
++                ).getValue()
++            else:
++                raise ValueError(f"Unsupported 'type': {type}.")
++            return json.dumps(res, ensure_ascii=False)
++        except Exception as e:
++            return f"{builtins.type(e).__name__}: {str(e)}"
+diff --git a/libs/langchain/langchain/tools/ainetwork/base.py b/libs/langchain/langchain/tools/ainetwork/base.py
+new file mode 100644
+index 0000000000000..7899761302b13
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/base.py
+@@ -0,0 +1,71 @@
++"""Base class for AINetwork tools."""
++from __future__ import annotations
++
++import asyncio
++import threading
++from enum import Enum
++from typing import TYPE_CHECKING, Any, Optional
++
++from langchain.callbacks.manager import CallbackManagerForToolRun
++from langchain.pydantic_v1 import Field
++from langchain.tools.ainetwork.utils import authenticate
++from langchain.tools.base import BaseTool
++
++if TYPE_CHECKING:
++    from ain.ain import Ain
++
++
++class OperationType(str, Enum):
++    SET = "SET"
++    GET = "GET"
++
++
++class AINBaseTool(BaseTool):
++    """Base class for the AINetwork tools."""
++
++    interface: Ain = Field(default_factory=authenticate)
++    """The interface object for the AINetwork Blockchain."""
++
++    def _run(
++        self,
++        *args: Any,
++        run_manager: Optional[CallbackManagerForToolRun] = None,
++        **kwargs: Any,
++    ) -> str:
++        try:
++            loop = asyncio.get_event_loop()
++        except RuntimeError:
++            loop = asyncio.new_event_loop()
++            asyncio.set_event_loop(loop)
++        if loop.is_closed():
++            loop = asyncio.new_event_loop()
++            asyncio.set_event_loop(loop)
++
++        if loop.is_running():
++            result_container = []
++
++            def thread_target() -> None:
++                nonlocal result_container
++                new_loop = asyncio.new_event_loop()
++                asyncio.set_event_loop(new_loop)
++                try:
++                    result_container.append(
++                        new_loop.run_until_complete(self._arun(*args, **kwargs))
++                    )
++                except Exception as e:
++                    result_container.append(e)
++                finally:
++                    new_loop.close()
++
++            thread = threading.Thread(target=thread_target)
++            thread.start()
++            thread.join()
++            result = result_container[0]
++            if isinstance(result, Exception):
++                raise result
++            return result
++
++        else:
++            result = loop.run_until_complete(self._arun(*args, **kwargs))
++            loop.close()
++            return result
+diff --git a/libs/langchain/langchain/tools/ainetwork/owner.py b/libs/langchain/langchain/tools/ainetwork/owner.py
+new file mode 100644
+index 0000000000000..42a2b18d8613e
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/owner.py
+@@ -0,0 +1,110 @@
++import builtins
++import json
++from typing import List, Optional, Type, Union
++
++from langchain.callbacks.manager import AsyncCallbackManagerForToolRun
++from langchain.pydantic_v1 import BaseModel, Field
++from langchain.tools.ainetwork.base import AINBaseTool, OperationType
++
++
++class RuleSchema(BaseModel):
++    type: OperationType = Field(...)
++    path: str = Field(..., description="Blockchain reference path")
++    address: Optional[Union[str, List[str]]] = Field(
++        None, description="A single address or a list of addresses"
++    )
++    write_owner: Optional[bool] = Field(
++        False, description="Authority to edit the `owner` property of the path"
++    )
++    write_rule: Optional[bool] = Field(
++        False, description="Authority to edit `write rule` for the path"
++    )
++    write_function: Optional[bool] = Field(
++        False, description="Authority to `set function` for the path"
++    )
++    branch_owner: Optional[bool] = Field(
++        False, description="Authority to initialize `owner` of sub-paths"
++    )
++
++
++class AINOwnerOps(AINBaseTool):
++    name: str = "AINownerOps"
++    description: str = """
++Rules for `owner` in AINetwork Blockchain database.
++An address set as `owner` can modify permissions according to its granted authorities
++
++## Path Rule
++- (/[a-zA-Z_0-9]+)+
++- Permission checks ascend from the most specific (child) path to broader (parent) paths until an `owner` is located.
++
++## Address Rules
++- 0x[0-9a-fA-F]{40}: 40-digit hexadecimal address
++- *: All addresses permitted
++- Defaults to the current session's address
++
++## SET
++- `SET` alters permissions for specific addresses, while other addresses remain unaffected.
++- When removing an address of `owner`, set all authorities for that address to false.
++- message `write_owner permission evaluated false` if fail
++
++### Example
++- type: SET
++- path: /apps/langchain
++- address: [<address 1>, <address 2>]
++- write_owner: True
++- write_rule: True
++- write_function: True
++- branch_owner: True
++
++## GET
++- Provides all addresses with `owner` permissions and their authorities in the path.
++
++### Example
++- type: GET
++- path: /apps/langchain
++"""  # noqa: E501
++    args_schema: Type[BaseModel] = RuleSchema
++
++    async def _arun(
++        self,
++        type: OperationType,
++        path: str,
++        address: Optional[Union[str, List[str]]] = None,
++        write_owner: Optional[bool] = None,
++        write_rule: Optional[bool] = None,
++        write_function: Optional[bool] = None,
++        branch_owner: Optional[bool] = None,
++        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
++    ) -> str:
++        from ain.types import ValueOnlyTransactionInput
++
++        try:
++            if type is OperationType.SET:
++                if address is None:
++                    address = self.interface.wallet.defaultAccount.address
++                if isinstance(address, str):
++                    address = [address]
++                res = await self.interface.db.ref(path).setOwner(
++                    transactionInput=ValueOnlyTransactionInput(
++                        value={
++                            ".owner": {
++                                "owners": {
++                                    address: {
++                                        "write_owner": write_owner or False,
++                                        "write_rule": write_rule or False,
++                                        "write_function": write_function or False,
++                                        "branch_owner": branch_owner or False,
++                                    }
++                                    for address in address
++                                }
++                            }
++                        }
++                    )
++                )
++            elif type is OperationType.GET:
++                res = await self.interface.db.ref(path).getOwner()
++            else:
++                raise ValueError(f"Unsupported 'type': {type}.")
++            return json.dumps(res, ensure_ascii=False)
++        except Exception as e:
++            return f"{builtins.type(e).__name__}: {str(e)}"
+diff --git a/libs/langchain/langchain/tools/ainetwork/rule.py b/libs/langchain/langchain/tools/ainetwork/rule.py
+new file mode 100644
+index 0000000000000..d66fd20205be1
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/rule.py
+@@ -0,0 +1,77 @@
++import builtins
++import json
++from typing import Optional, Type
++
++from langchain.callbacks.manager import AsyncCallbackManagerForToolRun
++from langchain.pydantic_v1 import BaseModel, Field
++from langchain.tools.ainetwork.base import AINBaseTool, OperationType
++
++
++class RuleSchema(BaseModel):
++    type: OperationType = Field(...)
++    path: str = Field(..., description="Path on the blockchain where the rule applies")
++    eval: Optional[str] = Field(None, description="eval string to determine permission")
++
++
++class AINRuleOps(AINBaseTool):
++    name: str = "AINruleOps"
++    description: str = """
++Covers the write `rule` for the AINetwork Blockchain database. The SET type specifies write permissions using the `eval` variable as a JavaScript eval string.
++In order to AINvalueOps with SET at the path, the execution result of the `eval` string must be true.
++
++## Path Rules
++1. Allowed characters for directory: `[a-zA-Z_0-9]`
++2. Use `$<key>` for template variables as directory.
++
++## Eval String Special Variables
++- auth.addr: Address of the writer for the path
++- newData: New data for the path
++- data: Current data for the path
++- currentTime: Time in seconds
++- lastBlockNumber: Latest processed block number
++
++## Eval String Functions
++- getValue(<path>)
++- getRule(<path>)
++- getOwner(<path>)
++- getFunction(<path>)
++- evalRule(<path>, <value to set>, auth, currentTime)
++- evalOwner(<path>, 'write_owner', auth)
++
++## SET Example
++- type: SET
++- path: /apps/langchain_project_1/$from/$to/$img
++- eval: auth.addr===$from&&!getValue('/apps/image_db/'+$img)
++
++## GET Example
++- type: GET
++- path: /apps/langchain_project_1
++"""  # noqa: E501
++    args_schema: Type[BaseModel] = RuleSchema
++
++    async def _arun(
++        self,
++        type: OperationType,
++        path: str,
++        eval: Optional[str] = None,
++        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
++    ) -> str:
++        from ain.types import ValueOnlyTransactionInput
++
++        try:
++            if type is OperationType.SET:
++                if eval is None:
++                    raise ValueError("'eval' is required for SET operation.")
++
++                res = await self.interface.db.ref(path).setRule(
++                    transactionInput=ValueOnlyTransactionInput(
++                        value={".rule": {"write": eval}}
++                    )
++                )
++            elif type is OperationType.GET:
++                res = await self.interface.db.ref(path).getRule()
++            else:
++                raise ValueError(f"Unsupported 'type': {type}.")
++            return json.dumps(res, ensure_ascii=False)
++        except Exception as e:
++            return f"{builtins.type(e).__name__}: {str(e)}"
+diff --git a/libs/langchain/langchain/tools/ainetwork/transfer.py b/libs/langchain/langchain/tools/ainetwork/transfer.py
+new file mode 100644
+index 0000000000000..b267f724a3231
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/transfer.py
+@@ -0,0 +1,29 @@
++import json
++from typing import Optional, Type
++
++from langchain.callbacks.manager import AsyncCallbackManagerForToolRun
++from langchain.pydantic_v1 import BaseModel, Field
++from langchain.tools.ainetwork.base import AINBaseTool
++
++
++class TransferSchema(BaseModel):
++    address: str = Field(..., description="Address to transfer AIN to")
++    amount: int = Field(..., description="Amount of AIN to transfer")
++
++
++class AINTransfer(AINBaseTool):
++    name: str = "AINtransfer"
++    description: str = "Transfers AIN to a specified address"
++    args_schema: Type[TransferSchema] = TransferSchema
++
++    async def _arun(
++        self,
++        address: str,
++        amount: int,
++        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
++    ) -> str:
++        try:
++            res = await self.interface.wallet.transfer(address, amount, nonce=-1)
++            return json.dumps(res, ensure_ascii=False)
++        except Exception as e:
++            return f"{type(e).__name__}: {str(e)}"
+diff --git a/libs/langchain/langchain/tools/ainetwork/utils.py b/libs/langchain/langchain/tools/ainetwork/utils.py
+new file mode 100644
+index 0000000000000..0f8179a607525
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/utils.py
+@@ -0,0 +1,62 @@
++"""AINetwork Blockchain tool utils."""
++from __future__ import annotations
++
++import os
++from typing import TYPE_CHECKING, Literal, Optional
++
++if TYPE_CHECKING:
++    from ain.ain import Ain
++
++
++def authenticate(network: Optional[Literal["mainnet", "testnet"]] = "testnet") -> Ain:
++    """Authenticate using the AIN Blockchain"""
++
++    try:
++        from ain.ain import Ain
++    except ImportError as e:
++        raise ImportError(
++            "Cannot import ain-py related modules. Please install the package with "
++            "`pip install ain-py`."
++        ) from e
++
++    if network == "mainnet":
++        provider_url = "https://mainnet-api.ainetwork.ai/"
++        chain_id = 1
++        if "AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY" in os.environ:
++            private_key = os.environ["AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY"]
++        else:
++            raise EnvironmentError(
++                "Error: The AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY environmental variable "
++                "has not been set."
++            )
++    elif network == "testnet":
++        provider_url = "https://testnet-api.ainetwork.ai/"
++        chain_id = 0
++        if "AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY" in os.environ:
++            private_key = os.environ["AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY"]
++        else:
++            raise EnvironmentError(
++                "Error: The AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY environmental variable "
++                "has not been set."
++            )
++    elif network is None:
++        if (
++            "AIN_BLOCKCHAIN_PROVIDER_URL" in os.environ
++            and "AIN_BLOCKCHAIN_CHAIN_ID" in os.environ
++            and "AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY" in os.environ
++        ):
++            provider_url = os.environ["AIN_BLOCKCHAIN_PROVIDER_URL"]
++            chain_id = int(os.environ["AIN_BLOCKCHAIN_CHAIN_ID"])
++            private_key = os.environ["AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY"]
++        else:
++            raise EnvironmentError(
++                "Error: The AIN_BLOCKCHAIN_PROVIDER_URL and "
++                "AIN_BLOCKCHAIN_ACCOUNT_PRIVATE_KEY and AIN_BLOCKCHAIN_CHAIN_ID "
++                "environmental variable has not been set."
++            )
++    else:
++        raise ValueError(f"Unsupported 'network': {network}")
++
++    ain = Ain(provider_url, chain_id)
++    ain.wallet.addAndSetDefaultAccount(private_key)
++    return ain
+diff --git a/libs/langchain/langchain/tools/ainetwork/value.py b/libs/langchain/langchain/tools/ainetwork/value.py
+new file mode 100644
+index 0000000000000..2e6c92c685dc9
+--- /dev/null
++++ b/libs/langchain/langchain/tools/ainetwork/value.py
+@@ -0,0 +1,80 @@
++import builtins
++import json
++from typing import Optional, Type, Union
++
++from langchain.callbacks.manager import AsyncCallbackManagerForToolRun
++from langchain.pydantic_v1 import BaseModel, Field
++from langchain.tools.ainetwork.base import AINBaseTool, OperationType
++
++
++class ValueSchema(BaseModel):
++    type: OperationType = Field(...)
++    path: str = Field(..., description="Blockchain reference path")
++    value: Optional[Union[int, str, float, dict]] = Field(
++        None, description="Value to be set at the path"
++    )
++
++
++class AINValueOps(AINBaseTool):
++    name: str = "AINvalueOps"
++    description: str = """
++Covers the read and write value for the AINetwork Blockchain database.
++
++## SET
++- Set a value at a given path
++
++### Example
++- type: SET
++- path: /apps/langchain_test_1/object
++- value: {1: 2, "34": 56}
++
++## GET
++- Retrieve a value at a given path
++
++### Example
++- type: GET
++- path: /apps/langchain_test_1/DB
++
++## Special paths
++- `/accounts/<address>/balance`: Account balance
++- `/accounts/<address>/nonce`: Account nonce
++- `/apps`: Applications
++- `/consensus`: Consensus
++- `/checkin`: Check-in
++- `/deposit/<service id>/<address>/<deposit id>`: Deposit
++- `/deposit_accounts/<service id>/<address>/<account id>`: Deposit accounts
++- `/escrow`: Escrow
++- `/payments`: Payment
++- `/sharding`: Sharding
++- `/token/name`: Token name
++- `/token/symbol`: Token symbol
++- `/token/total_supply`: Token total supply
++- `/transfer/<address from>/<address to>/<key>/value`: Transfer
++- `/withdraw/<service id>/<address>/<withdraw id>`: Withdraw
++"""
++    args_schema: Type[BaseModel] = ValueSchema
++
++    async def _arun(
++        self,
++        type: OperationType,
++        path: str,
++        value: Optional[Union[int, str, float, dict]] = None,
++        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
++    ) -> str:
++        from ain.types import ValueOnlyTransactionInput
++
++        try:
++            if type is OperationType.SET:
++                if value is None:
++                    raise ValueError("'value' is required for SET operation.")
++
++                res = await self.interface.db.ref(path).setValue(
++                    transactionInput=ValueOnlyTransactionInput(value=value)
++                )
++            elif type is OperationType.GET:
++                res = await self.interface.db.ref(path).getValue()
++            else:
++                raise ValueError(f"Unsupported 'type': {type}.")
++            return json.dumps(res, ensure_ascii=False)
++        except Exception as e:
++            return f"{builtins.type(e).__name__}: {str(e)}"
+diff --git a/libs/langchain/langchain/utilities/promptguard.py b/libs/langchain/langchain/utilities/promptguard.py
+new file mode 100644
+index 0000000000000..e89d3b690ece8
+--- /dev/null
++++ b/libs/langchain/langchain/utilities/promptguard.py
+@@ -0,0 +1,99 @@
++import json
++from typing import Dict, Union
++
++
++def sanitize(
++    input: Union[str, Dict[str, str]]
++) -> Dict[str, Union[str, Dict[str, str]]]:
++    """
++    Sanitize input string or dict of strings by replacing sensitive data with
++    placeholders.
++    It returns the sanitized input string or dict of strings and the secure
++    context as a dict following the format:
++    {
++        "sanitized_input": <sanitized input string or dict of strings>,
++        "secure_context": <secure context>
++    }
++
++    The secure context is a bytes object that is needed to de-sanitize the response
++    from the LLM.
++
++    Args:
++        input: Input string or dict of strings.
++
++    Returns:
++        Sanitized input string or dict of strings and the secure context
++        as a dict following the format:
++        {
++            "sanitized_input": <sanitized input string or dict of strings>,
++            "secure_context": <secure context>
++        }
++
++        The `secure_context` needs to be passed to the `desanitize` function.
++    """
++    try:
++        import promptguard as pg
++    except ImportError:
++        raise ImportError(
++            "Could not import the `promptguard` Python package, "
++            "please install it with `pip install promptguard`."
++        )
++
++    if isinstance(input, str):
++        # the input could be a string, so we sanitize the string
++        sanitize_response: pg.SanitizeResponse = pg.sanitize(input)
++        return {
++            "sanitized_input": sanitize_response.sanitized_text,
++            "secure_context": sanitize_response.secure_context,
++        }
++
++    if isinstance(input, dict):
++        # the input could be a dict[string, string], so we sanitize the values
++        values = list()
++
++        # get the values from the dict
++        for key in input:
++            values.append(input[key])
++        input_value_str = json.dumps(values)
++
++        # sanitize the values
++        sanitize_values_response: pg.SanitizeResponse = pg.sanitize(input_value_str)
++
++        # reconstruct the dict with the sanitized values
++        sanitized_input_values = json.loads(sanitize_values_response.sanitized_text)
++        idx = 0
++        sanitized_input = dict()
++        for key in input:
++            sanitized_input[key] = sanitized_input_values[idx]
++            idx += 1
++
++        return {
++            "sanitized_input": sanitized_input,
++            "secure_context": sanitize_values_response.secure_context,
++        }
++
++    raise ValueError(f"Unexpected input type {type(input)}")
++
++
++def desanitize(sanitized_text: str, secure_context: bytes) -> str:
++    """
++    Restore the original sensitive data from the sanitized text.
++
++    Args:
++        sanitized_text: Sanitized text.
++        secure_context: Secure context returned by the `sanitize` function.
++
++    Returns:
++        De-sanitized text.
++    """
++    try:
++        import promptguard as pg
++    except ImportError:
++        raise ImportError(
++            "Could not import the `promptguard` Python package, "
++            "please install it with `pip install promptguard`."
++        )
++    desanitize_response: pg.DesanitizeResponse = pg.desanitize(
++        sanitized_text, secure_context
++    )
++    return desanitize_response.desanitized_text
+diff --git a/libs/langchain/langchain/vectorstores/__init__.py b/libs/langchain/langchain/vectorstores/__init__.py
+index f79ca1d77f9c0..d815c5a655111 100644
+--- a/libs/langchain/langchain/vectorstores/__init__.py
++++ b/libs/langchain/langchain/vectorstores/__init__.py
+@@ -42,6 +42,7 @@
+     ElasticVectorSearch,
+ )
+ from langchain.vectorstores.elasticsearch import ElasticsearchStore
++from langchain.vectorstores.epsilla import Epsilla
+ from langchain.vectorstores.faiss import FAISS
+ from langchain.vectorstores.hologres import Hologres
+ from langchain.vectorstores.lancedb import LanceDB
+@@ -93,6 +94,7 @@
+     "ElasticVectorSearch",
+     "ElasticKnnSearch",
+     "ElasticsearchStore",
++    "Epsilla",
+     "FAISS",
+     "PGEmbedding",
+     "Hologres",
+diff --git a/libs/langchain/langchain/vectorstores/clarifai.py b/libs/langchain/langchain/vectorstores/clarifai.py
+index 0e0fd843151a8..9db4408b2a9dd 100644
+--- a/libs/langchain/langchain/vectorstores/clarifai.py
++++ b/libs/langchain/langchain/vectorstores/clarifai.py
+@@ -3,6 +3,7 @@
+ import logging
+ import os
+ import traceback
++from concurrent.futures import ThreadPoolExecutor
+ from typing import Any, Iterable, List, Optional, Tuple
+ 
+ import requests
+@@ -84,7 +85,9 @@ def __init__(
+         self._userDataObject = self._auth.get_user_app_id_proto()
+         self._number_of_docs = number_of_docs
+ 
+-    def _post_text_input(self, text: str, metadata: dict) -> str:
++    def _post_texts_as_inputs(
++        self, texts: List[str], metadatas: Optional[List[dict]] = None
++    ) -> List[str]:
+         """Post text to Clarifai and return the ID of the input.
+ 
+         Args:
+@@ -104,20 +107,29 @@ def _post_text_input(self, text: str, metadata: dict) -> str:
+                 "Please install it with `pip install clarifai`."
+             ) from e
+ 
+-        input_metadata = Struct()
+-        input_metadata.update(metadata)
++        if metadatas is not None:
++            assert len(list(texts)) == len(
++                metadatas
++            ), "Number of texts and metadatas should be the same."
++
++        inputs = []
++        for idx, text in enumerate(texts):
++            if metadatas is not None:
++                input_metadata = Struct()
++                input_metadata.update(metadatas[idx])
++            inputs.append(
++                resources_pb2.Input(
++                    data=resources_pb2.Data(
++                        text=resources_pb2.Text(raw=text),
++                        metadata=input_metadata,
++                    )
++                )
++            )
+ 
+         post_inputs_response = self._stub.PostInputs(
+             service_pb2.PostInputsRequest(
+                 user_app_id=self._userDataObject,
+-                inputs=[
+-                    resources_pb2.Input(
+-                        data=resources_pb2.Data(
+-                            text=resources_pb2.Text(raw=text),
+-                            metadata=input_metadata,
+-                        )
+-                    )
+-                ],
++                inputs=inputs,
+             )
+         )
+ 
+@@ -127,9 +139,11 @@ def _post_text_input(self, text: str, metadata: dict) -> str:
+                 "Post inputs failed, status: " + post_inputs_response.status.description
+             )
+ 
+-        input_id = post_inputs_response.inputs[0].id
++        input_ids = []
++        for input in post_inputs_response.inputs:
++            input_ids.append(input.id)
+ 
+-        return input_id
++        return input_ids
+ 
+     def add_texts(
+         self,
+@@ -140,7 +154,7 @@ def add_texts(
+     ) -> List[str]:
+         """Add texts to the Clarifai vectorstore. This will push the text
+         to a Clarifai application.
+-        Application use base workflow that create and store embedding for each text.
++        Application use a base workflow that create and store embedding for each text.
+         Make sure you are using a base workflow that is compatible with text
+         (such as Language Understanding).
+ 
+@@ -153,20 +167,26 @@ def add_texts(
+             List[str]: List of IDs of the added texts.
+         """
+ 
+-        assert len(list(texts)) > 0, "No texts provided to add to the vectorstore."
++        ltexts = list(texts)
++        length = len(ltexts)
++        assert length > 0, "No texts provided to add to the vectorstore."
+ 
+         if metadatas is not None:
+-            assert len(list(texts)) == len(
++            assert length == len(
+                 metadatas
+             ), "Number of texts and metadatas should be the same."
+ 
++        batch_size = 32
+         input_ids = []
+-        for idx, text in enumerate(texts):
++        for idx in range(0, length, batch_size):
+             try:
+-                metadata = metadatas[idx] if metadatas else {}
+-                input_id = self._post_text_input(text, metadata)
+-                input_ids.append(input_id)
+-                logger.debug(f"Input {input_id} posted successfully.")
++                batch_texts = ltexts[idx : idx + batch_size]
++                batch_metadatas = (
++                    metadatas[idx : idx + batch_size] if metadatas else None
++                )
++                result_ids = self._post_texts_as_inputs(batch_texts, batch_metadatas)
++                input_ids.extend(result_ids)
++                logger.debug(f"Input {result_ids} posted successfully.")
+             except Exception as error:
+                 logger.warning(f"Post inputs failed: {error}")
+                 traceback.print_exc()
+@@ -196,6 +216,7 @@ def similarity_search_with_score(
+             from clarifai_grpc.grpc.api import resources_pb2, service_pb2
+             from clarifai_grpc.grpc.api.status import status_code_pb2
+             from google.protobuf import json_format  # type: ignore
++            from google.protobuf.struct_pb2 import Struct  # type: ignore
+         except ImportError as e:
+             raise ImportError(
+                 "Could not import clarifai python package. "
+@@ -206,28 +227,35 @@ def similarity_search_with_score(
+         if self._number_of_docs is not None:
+             k = self._number_of_docs
+ 
+-        post_annotations_searches_response = self._stub.PostAnnotationsSearches(
+-            service_pb2.PostAnnotationsSearchesRequest(
+-                user_app_id=self._userDataObject,
+-                searches=[
+-                    resources_pb2.Search(
+-                        query=resources_pb2.Query(
+-                            ranks=[
+-                                resources_pb2.Rank(
+-                                    annotation=resources_pb2.Annotation(
+-                                        data=resources_pb2.Data(
+-                                            text=resources_pb2.Text(raw=query),
+-                                        )
++        req = service_pb2.PostAnnotationsSearchesRequest(
++            user_app_id=self._userDataObject,
++            searches=[
++                resources_pb2.Search(
++                    query=resources_pb2.Query(
++                        ranks=[
++                            resources_pb2.Rank(
++                                annotation=resources_pb2.Annotation(
++                                    data=resources_pb2.Data(
++                                        text=resources_pb2.Text(raw=query),
+                                     )
+                                 )
+-                            ]
+-                        )
++                            )
++                        ]
+                     )
+-                ],
+-                pagination=service_pb2.Pagination(page=1, per_page=k),
+-            )
++                )
++            ],
++            pagination=service_pb2.Pagination(page=1, per_page=k),
+         )
+ 
++        # Add filter by metadata if provided.
++        if filter is not None:
++            search_metadata = Struct()
++            search_metadata.update(filter)
++            f = req.searches[0].query.filters.add()
++            f.annotation.data.metadata.update(search_metadata)
++
++        post_annotations_searches_response = self._stub.PostAnnotationsSearches(req)
++
+         # Check if search was successful
+         if post_annotations_searches_response.status.code != status_code_pb2.SUCCESS:
+             raise Exception(
+@@ -238,11 +266,12 @@ def similarity_search_with_score(
+         # Retrieve hits
+         hits = post_annotations_searches_response.hits
+ 
+-        docs_and_scores = []
+-        # Iterate over hits and retrieve metadata and text
+-        for hit in hits:
++        executor = ThreadPoolExecutor(max_workers=10)
++
++        def hit_to_document(hit: resources_pb2.Hit) -> Tuple[Document, float]:
+             metadata = json_format.MessageToDict(hit.input.data.metadata)
+-            request = requests.get(hit.input.data.text.url)
++            h = {"Authorization": f"Key {self._auth.pat}"}
++            request = requests.get(hit.input.data.text.url, headers=h)
+ 
+             # override encoding by real educated guess as provided by chardet
+             request.encoding = request.apparent_encoding
+@@ -252,10 +281,11 @@ def similarity_search_with_score(
+                 f"\tScore {hit.score:.2f} for annotation: {hit.annotation.id}\
+                 off input: {hit.input.id}, text: {requested_text[:125]}"
+             )
++            return (Document(page_content=requested_text, metadata=metadata), hit.score)
+ 
+-            docs_and_scores.append(
+-                (Document(page_content=requested_text, metadata=metadata), hit.score)
+-            )
++        # Iterate over hits and retrieve metadata and text
++        futures = [executor.submit(hit_to_document, hit) for hit in hits]
++        docs_and_scores = [future.result() for future in futures]
+ 
+         return docs_and_scores
+ 
+diff --git a/libs/langchain/langchain/vectorstores/epsilla.py b/libs/langchain/langchain/vectorstores/epsilla.py
+new file mode 100644
+index 0000000000000..11609735bb212
+--- /dev/null
++++ b/libs/langchain/langchain/vectorstores/epsilla.py
+@@ -0,0 +1,375 @@
++"""Wrapper around Epsilla vector database."""
++from __future__ import annotations
++
++import logging
++import uuid
++from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Type
++
++from langchain.docstore.document import Document
++from langchain.embeddings.base import Embeddings
++from langchain.vectorstores.base import VectorStore
++
++if TYPE_CHECKING:
++    from pyepsilla import vectordb
++
++logger = logging.getLogger()
++
++
++class Epsilla(VectorStore):
++    """
++    Wrapper around Epsilla vector database.
++
++    As a prerequisite, you need to install ``pyepsilla`` package
++    and have a running Epsilla vector database (for example, through our docker image)
++    See the following documentation for how to run an Epsilla vector database:
++    https://epsilla-inc.gitbook.io/epsilladb/quick-start
++
++    Args:
++        client (Any): Epsilla client to connect to.
++        embeddings (Embeddings): Function used to embed the texts.
++        db_path (Optional[str]): The path where the database will be persisted.
++                                 Defaults to "/tmp/langchain-epsilla".
++        db_name (Optional[str]): Give a name to the loaded database.
++                                 Defaults to "langchain_store".
++    Example:
++        .. code-block:: python
++
++            from langchain.vectorstores import Epsilla
++            from pyepsilla import vectordb
++
++            client = vectordb.Client()
++            embeddings = OpenAIEmbeddings()
++            db_path = "/tmp/vectorstore"
++            db_name = "langchain_store"
++            epsilla = Epsilla(client, embeddings, db_path, db_name)
++    """
++
++    _LANGCHAIN_DEFAULT_DB_NAME = "langchain_store"
++    _LANGCHAIN_DEFAULT_DB_PATH = "/tmp/langchain-epsilla"
++    _LANGCHAIN_DEFAULT_TABLE_NAME = "langchain_collection"
++
++    def __init__(
++        self,
++        client: Any,
++        embeddings: Embeddings,
++        db_path: Optional[str] = _LANGCHAIN_DEFAULT_DB_PATH,
++        db_name: Optional[str] = _LANGCHAIN_DEFAULT_DB_NAME,
++    ):
++        """Initialize with necessary components."""
++        try:
++            import pyepsilla
++        except ImportError as e:
++            raise ImportError(
++                "Could not import pyepsilla python package. "
++                "Please install pyepsilla package with `pip install pyepsilla`."
++            ) from e
++
++        if not isinstance(client, pyepsilla.vectordb.Client):
++            raise TypeError(
++                f"client should be an instance of pyepsilla.vectordb.Client, "
++                f"got {type(client)}"
++            )
++
++        self._client: vectordb.Client = client
++        self._db_name = db_name
++        self._embeddings = embeddings
++        self._collection_name = Epsilla._LANGCHAIN_DEFAULT_TABLE_NAME
++        self._client.load_db(db_name=db_name, db_path=db_path)
++        self._client.use_db(db_name=db_name)
++
++    @property
++    def embeddings(self) -> Optional[Embeddings]:
++        return self._embeddings
++
++    def use_collection(self, collection_name: str) -> None:
++        """
++        Set default collection to use.
++
++        Args:
++            collection_name (str): The name of the collection.
++        """
++        self._collection_name = collection_name
++
++    def clear_data(self, collection_name: str = "") -> None:
++        """
++        Clear data in a collection.
++
++        Args:
++            collection_name (Optional[str]): The name of the collection.
++                If not provided, the default collection will be used.
++        """
++        if not collection_name:
++            collection_name = self._collection_name
++        self._client.drop_table(collection_name)
++
++    def get(
++        self, collection_name: str = "", response_fields: Optional[List[str]] = None
++    ) -> List[dict]:
++        """Get the collection.
++
++        Args:
++            collection_name (Optional[str]): The name of the collection
++                to retrieve data from.
++                If not provided, the default collection will be used.
++            response_fields (Optional[List[str]]): List of field names in the result.
++                If not specified, all available fields will be responded.
++
++        Returns:
++            A list of the retrieved data.
++        """
++        if not collection_name:
++            collection_name = self._collection_name
++        status_code, response = self._client.get(
++            table_name=collection_name, response_fields=response_fields
++        )
++        if status_code != 200:
++            logger.error(f"Failed to get records: {response['message']}")
++            raise Exception("Error: {}.".format(response["message"]))
++        return response["result"]
++
++    def _create_collection(
++        self, table_name: str, embeddings: list, metadatas: Optional[list[dict]] = None
++    ) -> None:
++        if not embeddings:
++            raise ValueError("Embeddings list is empty.")
++
++        dim = len(embeddings[0])
++        fields: List[dict] = [
++            {"name": "id", "dataType": "INT"},
++            {"name": "text", "dataType": "STRING"},
++            {"name": "embeddings", "dataType": "VECTOR_FLOAT", "dimensions": dim},
++        ]
++        if metadatas is not None:
++            field_names = [field["name"] for field in fields]
++            for metadata in metadatas:
++                for key, value in metadata.items():
++                    if key in field_names:
++                        continue
++                    d_type: str
++                    if isinstance(value, str):
++                        d_type = "STRING"
++                    elif isinstance(value, int):
++                        d_type = "INT"
++                    elif isinstance(value, float):
++                        d_type = "FLOAT"
++                    elif isinstance(value, bool):
++                        d_type = "BOOL"
++                    else:
++                        raise ValueError(f"Unsupported data type for {key}.")
++                    fields.append({"name": key, "dataType": d_type})
++                    field_names.append(key)
++
++        status_code, response = self._client.create_table(
++            table_name, table_fields=fields
++        )
++        if status_code != 200:
++            if status_code == 409:
++                logger.info(f"Continuing with the existing table {table_name}.")
++            else:
++                logger.error(
++                    f"Failed to create collection {table_name}: {response['message']}"
++                )
++                raise Exception("Error: {}.".format(response["message"]))
++
++    def add_texts(
++        self,
++        texts: Iterable[str],
++        metadatas: Optional[List[dict]] = None,
++        collection_name: Optional[str] = "",
++        drop_old: Optional[bool] = False,
++        **kwargs: Any,
++    ) -> List[str]:
++        """
++        Embed texts and add them to the database.
++
++        Args:
++            texts (Iterable[str]): The texts to embed.
++            metadatas (Optional[List[dict]]): Metadata dicts
++                        attached to each of the texts. Defaults to None.
++            collection_name (Optional[str]): Which collection to use.
++                        Defaults to "langchain_collection".
++                        If provided, default collection name will be set as well.
++            drop_old (Optional[bool]): Whether to drop the previous collection
++                        and create a new one. Defaults to False.
++
++        Returns:
++            List of ids of the added texts.
++        """
++        if not collection_name:
++            collection_name = self._collection_name
++        else:
++            self._collection_name = collection_name
++
++        if drop_old:
++            self._client.drop_db(db_name=collection_name)
++
++        texts = list(texts)
++        try:
++            embeddings = self._embeddings.embed_documents(texts)
++        except NotImplementedError:
++            embeddings = [self._embeddings.embed_query(x) for x in texts]
++
++        if len(embeddings) == 0:
++            logger.debug("Nothing to insert, skipping.")
++            return []
++
++        self._create_collection(
++            table_name=collection_name, embeddings=embeddings, metadatas=metadatas
++        )
++
++        ids = [hash(uuid.uuid4()) for _ in texts]
++        records = []
++        for index, id in enumerate(ids):
++            record = {
++                "id": id,
++                "text": texts[index],
++                "embeddings": embeddings[index],
++            }
++            if metadatas is not None:
++                metadata = metadatas[index].items()
++                for key, value in metadata:
++                    record[key] = value
++            records.append(record)
++
++        status_code, response = self._client.insert(
++            table_name=collection_name, records=records
++        )
++        if status_code != 200:
++            logger.error(
++                f"Failed to add records to {collection_name}: {response['message']}"
++            )
++            raise Exception("Error: {}.".format(response["message"]))
++        return [str(id) for id in ids]
++
++    def similarity_search(
++        self, query: str, k: int = 4, collection_name: str = "", **kwargs: Any
++    ) -> List[Document]:
++        """
++        Return the documents that are semantically most relevant to the query.
++
++        Args:
++            query (str): String to query the vectorstore with.
++            k (Optional[int]): Number of documents to return. Defaults to 4.
++            collection_name (Optional[str]): Collection to use.
++                Defaults to "langchain_store" or the one provided before.
++        Returns:
++            List of documents that are semantically most relevant to the query
++        """
++        if not collection_name:
++            collection_name = self._collection_name
++        query_vector = self._embeddings.embed_query(query)
++        status_code, response = self._client.query(
++            table_name=collection_name,
++            query_field="embeddings",
++            query_vector=query_vector,
++            limit=k,
++        )
++        if status_code != 200:
++            logger.error(f"Search failed: {response['message']}.")
++            raise Exception("Error: {}.".format(response["message"]))
++
++        exclude_keys = ["id", "text", "embeddings"]
++        return list(
++            map(
++                lambda item: Document(
++                    page_content=item["text"],
++                    metadata={
++                        key: item[key] for key in item if key not in exclude_keys
++                    },
++                ),
++                response["result"],
++            )
++        )
++
++    @classmethod
++    def from_texts(
++        cls: Type[Epsilla],
++        texts: List[str],
++        embedding: Embeddings,
++        metadatas: Optional[List[dict]] = None,
++        client: Any = None,
++        db_path: Optional[str] = _LANGCHAIN_DEFAULT_DB_PATH,
++        db_name: Optional[str] = _LANGCHAIN_DEFAULT_DB_NAME,
++        collection_name: Optional[str] = _LANGCHAIN_DEFAULT_TABLE_NAME,
++        drop_old: Optional[bool] = False,
++        **kwargs: Any,
++    ) -> Epsilla:
++        """Create an Epsilla vectorstore from raw documents.
++
++        Args:
++            texts (List[str]): List of text data to be inserted.
++            embeddings (Embeddings): Embedding function.
++            client (pyepsilla.vectordb.Client): Epsilla client to connect to.
++            metadatas (Optional[List[dict]]): Metadata for each text.
++                    Defaults to None.
++            db_path (Optional[str]): The path where the database will be persisted.
++                    Defaults to "/tmp/langchain-epsilla".
++            db_name (Optional[str]): Give a name to the loaded database.
++                    Defaults to "langchain_store".
++            collection_name (Optional[str]): Which collection to use.
++                    Defaults to "langchain_collection".
++                    If provided, default collection name will be set as well.
++            drop_old (Optional[bool]): Whether to drop the previous collection
++                    and create a new one. Defaults to False.
++
++        Returns:
++            Epsilla: Epsilla vector store.
++        """
++        instance = Epsilla(client, embedding, db_path=db_path, db_name=db_name)
++        instance.add_texts(
++            texts,
++            metadatas=metadatas,
++            collection_name=collection_name,
++            drop_old=drop_old,
++            **kwargs,
++        )
++
++        return instance
++
++    @classmethod
++    def from_documents(
++        cls: Type[Epsilla],
++        documents: List[Document],
++        embedding: Embeddings,
++        client: Any = None,
++        db_path: Optional[str] = _LANGCHAIN_DEFAULT_DB_PATH,
++        db_name: Optional[str] = _LANGCHAIN_DEFAULT_DB_NAME,
++        collection_name: Optional[str] = _LANGCHAIN_DEFAULT_TABLE_NAME,
++        drop_old: Optional[bool] = False,
++        **kwargs: Any,
++    ) -> Epsilla:
++        """Create an Epsilla vectorstore from a list of documents.
++
++        Args:
++            texts (List[str]): List of text data to be inserted.
++            embeddings (Embeddings): Embedding function.
++            client (pyepsilla.vectordb.Client): Epsilla client to connect to.
++            metadatas (Optional[List[dict]]): Metadata for each text.
++                    Defaults to None.
++            db_path (Optional[str]): The path where the database will be persisted.
++                    Defaults to "/tmp/langchain-epsilla".
++            db_name (Optional[str]): Give a name to the loaded database.
++                    Defaults to "langchain_store".
++            collection_name (Optional[str]): Which collection to use.
++                    Defaults to "langchain_collection".
++                    If provided, default collection name will be set as well.
++            drop_old (Optional[bool]): Whether to drop the previous collection
++                    and create a new one. Defaults to False.
++
++        Returns:
++            Epsilla: Epsilla vector store.
++        """
++        texts = [doc.page_content for doc in documents]
++        metadatas = [doc.metadata for doc in documents]
++
++        return cls.from_texts(
++            texts,
++            embedding,
++            metadatas=metadatas,
++            client=client,
++            db_path=db_path,
++            db_name=db_name,
++            collection_name=collection_name,
++            drop_old=drop_old,
++            **kwargs,
++        )
+diff --git a/libs/langchain/langchain/vectorstores/marqo.py b/libs/langchain/langchain/vectorstores/marqo.py
+index e3873e4e15bd9..0d1dfe0489edc 100644
+--- a/libs/langchain/langchain/vectorstores/marqo.py
++++ b/libs/langchain/langchain/vectorstores/marqo.py
+@@ -78,7 +78,7 @@ def __init__(
+         self._searchable_attributes = searchable_attributes
+         self.page_content_builder = page_content_builder
+ 
+-        self._non_tensor_fields = ["metadata"]
++        self.tensor_fields = ["text"]
+ 
+         self._document_batch_size = 1024
+ 
+@@ -132,7 +132,7 @@ def add_texts(
+         for i in range(0, num_docs, self._document_batch_size):
+             response = self._client.index(self._index_name).add_documents(
+                 documents[i : i + self._document_batch_size],
+-                non_tensor_fields=self._non_tensor_fields,
++                tensor_fields=self.tensor_fields,
+                 **self._add_documents_settings,
+             )
+             if response["errors"]:
+@@ -330,17 +330,15 @@ def marqo_bulk_similarity_search(
+             Dict[str, Dict[List[Dict[str, Dict[str, Any]]]]]: A bulk search results
+             object
+         """
+-        bulk_results = self._client.bulk_search(
+-            [
+-                {
+-                    "index": self._index_name,
+-                    "q": query,
+-                    "searchableAttributes": self._searchable_attributes,
+-                    "limit": k,
+-                }
++        bulk_results = {
++            "result": [
++                self._client.index(self._index_name).search(
++                    q=query, searchable_attributes=self._searchable_attributes, limit=k
++                )
+                 for query in queries
+             ]
+-        )
++        }
++
+         return bulk_results
+ 
+     @classmethod
+diff --git a/libs/langchain/langchain/vectorstores/meilisearch.py b/libs/langchain/langchain/vectorstores/meilisearch.py
+index cb9f5d9841015..313ae681631ef 100644
+--- a/libs/langchain/langchain/vectorstores/meilisearch.py
++++ b/libs/langchain/langchain/vectorstores/meilisearch.py
+@@ -21,7 +21,7 @@ def _create_client(
+     try:
+         import meilisearch
+     except ImportError:
+-        raise ValueError(
++        raise ImportError(
+             "Could not import meilisearch python package. "
+             "Please install it with `pip install meilisearch`."
+         )
+diff --git a/libs/langchain/langchain/vectorstores/milvus.py b/libs/langchain/langchain/vectorstores/milvus.py
+index 05ce1b085010b..c6a5301ff9241 100644
+--- a/libs/langchain/langchain/vectorstores/milvus.py
++++ b/libs/langchain/langchain/vectorstores/milvus.py
+@@ -52,6 +52,9 @@ class Milvus(VectorStore):
+             default of index.
+         drop_old (Optional[bool]): Whether to drop the current collection. Defaults
+             to False.
++        primary_field (str): Name of the primary key field. Defaults to "pk".
++        text_field (str): Name of the text field. Defaults to "text".
++        vector_field (str): Name of the vector field. Defaults to "vector".
+ 
+     The connection args used for this class comes in the form of a dict,
+     here are a few of the options:
+@@ -107,6 +110,10 @@ def __init__(
+         index_params: Optional[dict] = None,
+         search_params: Optional[dict] = None,
+         drop_old: Optional[bool] = False,
++        *,
++        primary_field: str = "pk",
++        text_field: str = "text",
++        vector_field: str = "vector",
+     ):
+         """Initialize the Milvus vector store."""
+         try:
+@@ -138,11 +145,11 @@ def __init__(
+         self.consistency_level = consistency_level
+ 
+         # In order for a collection to be compatible, pk needs to be auto'id and int
+-        self._primary_field = "pk"
+-        # In order for compatiblility, the text field will need to be called "text"
+-        self._text_field = "text"
++        self._primary_field = primary_field
++        # In order for compatibility, the text field will need to be called "text"
++        self._text_field = text_field
+         # In order for compatibility, the vector field needs to be called "vector"
+-        self._vector_field = "vector"
++        self._vector_field = vector_field
+         self.fields: list[str] = []
+         # Create the connection to the server
+         if connection_args is None:
+diff --git a/libs/langchain/poetry.lock b/libs/langchain/poetry.lock
+index 9305a0838f878..a0a76d0979922 100644
+--- a/libs/langchain/poetry.lock
++++ b/libs/langchain/poetry.lock
+@@ -4407,19 +4407,21 @@ files = [
+ 
+ [[package]]
+ name = "marqo"
+-version = "0.11.0"
++version = "1.2.4"
+ description = "Tensor search for humans"
+ category = "main"
+ optional = true
+ python-versions = ">=3"
+ files = [
+-    {file = "marqo-0.11.0-py3-none-any.whl", hash = "sha256:e1a5409beeb02dcec725566cfbc5fd88a84ce65ca7bce08a1120f8082badeab4"},
+-    {file = "marqo-0.11.0.tar.gz", hash = "sha256:808e691cf06f5f7d67d422dc7f5f6fcc53b9acc6a4bc000abbcae8a817fd765d"},
++    {file = "marqo-1.2.4-py3-none-any.whl", hash = "sha256:aaf59ca35214febaa893e102828a50ab9e53fe57201cd43714ab7c0515166068"},
++    {file = "marqo-1.2.4.tar.gz", hash = "sha256:3fe0eb8e1ed73883fd8e6001582d18dab6e149d79e41b92a1403b2ff52d18c43"},
+ ]
+ 
+ [package.dependencies]
+-pydantic = "*"
++packaging = "*"
++pydantic = "<2.0.0"
+ requests = "*"
++typing-extensions = ">=4.5.0"
+ urllib3 = "*"
+ 
+ [[package]]
+@@ -10487,4 +10489,4 @@ text-helpers = ["chardet"]
+ [metadata]
+ lock-version = "2.0"
+ python-versions = ">=3.8.1,<4.0"
+-content-hash = "a5e3458dd0cabcefd83caec6eb33b6fb593c2c347ca1d33c1f182341e852a9c8"
++content-hash = "0247674f3f274fd2249ceb02c23a468f911a7c482796ea67252b203d1ab938ae"
+diff --git a/libs/langchain/pyproject.toml b/libs/langchain/pyproject.toml
+index d74fda8f2f074..9f7ab96907a33 100644
+--- a/libs/langchain/pyproject.toml
++++ b/libs/langchain/pyproject.toml
+@@ -1,6 +1,6 @@
+ [tool.poetry]
+ name = "langchain"
+-version = "0.0.270"
++version = "0.0.271"
+ description = "Building applications with LLMs through composability"
+ authors = []
+ license = "MIT"
+@@ -37,7 +37,7 @@ pinecone-text = {version = "^0.4.2", optional = true}
+ pymongo = {version = "^4.3.3", optional = true}
+ clickhouse-connect = {version="^0.5.14", optional=true}
+ weaviate-client = {version = "^3", optional = true}
+-marqo = {version = "^0.11.0", optional=true}
++marqo = {version = "^1.2.4", optional=true}
+ google-api-python-client = {version = "2.70.0", optional = true}
+ google-auth = {version = "^2.18.1", optional = true}
+ wolframalpha = {version = "5.0.0", optional = true}

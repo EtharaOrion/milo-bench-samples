@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+cd /workspace/rich && cat tests/test_json.py 2>/dev/null; echo "---"; git log --oneline -3
+---
+bd34e0a (HEAD) changelog
+e8ca9ba docstrings
+1b12bb6 Merge pull request #1445 from willmcgugan/json-color
+# file_editor: /workspace/rich/rich/json.py
+The file /workspace/rich/rich/json.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/json.py:
+    49	    import argparse
+    50	    import sys
+    51	
+    52	    parser = argparse.ArgumentParser(description="Pretty print json")
+    53	    parser.add_argument(
+    54	        "path",
+    55	        metavar="PATH",
+    56	        help="path to file, or - for stdin",
+    57	        default="-",
+    58	        nargs="?",
+    59	    )
+    60	    parser.add_argument(
+    61	        "-i",
+    62	        "--indent",
+    63	        metavar="SPACES",
+    64	        type=int,
+    65	        help="Number of spaces in an indent",
+    66	        default=2,
+    67	    )
+    68	    args = parser.parse_args()
+    69	
+    70	    from rich.console import Console
+    71	
+    72	    console = Console()
+    73	    error_console = Console(stderr=True)
+    74	
+    75	    try:
+    76	        if args.path == "-":
+    77	            json_data = sys.stdin.read()
+    78	        else:
+    79	            with open(args.path, "rt") as json_file:
+    80	                json_data = json_file.read()
+    81	    except Exception as error:
+    82	        error_console.print(f"Unable to read {args.path!r}; {error}")
+    83	        sys.exit(-1)
+    84	
+    85	    console.print(JSON(json_data, indent=args.indent), soft_wrap=True)
+    86	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && echo '{"foo": "bar", "n": [1,2,3]}' | python -m rich.json && echo "===file===" && echo '{"a":1}' > /tmp/t.json && python -m rich.json /tmp/t.json
+{
+  "foo": "bar",
+  "n": [
+    1,
+    2,
+    3
+  ]
+}
+===file===
+{
+  "a": 1
+}
+$ cd /workspace/rich && head -30 CHANGELOG.md
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [10.9.0] - 2020-08-29
+
+### Added
+
+- Added data parameter to print_json method / function
+- Added an --indent parameter to python -m rich.json
+
+### Changed
+
+- Changed default indent of JSON to 2 (down from 4)
+- Changed highlighting of JSON keys to new style (bold blue)
+
+## [10.8.0] - 2020-08-28
+
+### Added
+
+- Added Panel.subtitle
+- Added Panel.subtitle_align
+- Added rich.json.JSON
+- Added rich.print_json and Console.print_json
+
+### Fixed
+# file_editor: /workspace/rich/CHANGELOG.md
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [10.9.0] - 2021-08-29
+     9	
+    10	### Added
+    11	
+    12	- Added data parameter to print_json method / function
+    13	- Added an --indent parameter to python -m rich.json
+    14	- Added support for reading from stdin to python -m rich.json
+    15	
+    16	### Changed
+    17	
+    18	- Changed default indent of JSON to 2 (down from 4)
+    19	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && grep -n "2020-08-28" CHANGELOG.md
+21:## [10.8.0] - 2020-08-28
+# file_editor: /workspace/rich/CHANGELOG.md
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+    18	- Changed default indent of JSON to 2 (down from 4)
+    19	- Changed highlighting of JSON keys to new style (bold blue)
+    20	
+    21	## [10.8.0] - 2021-08-28
+    22	
+    23	### Added
+    24	
+    25	- Added Panel.subtitle
+    26	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python -m pytest tests/test_json.py -q 2>&1 | tail -20
+ERROR: file or directory not found: tests/test_json.py
+
+
+no tests ran in 0.00s
+$ cd /workspace/rich && python -c "import rich.json; print('ok')" && python -m rich.json --help
+ok
+usage: json.py [-h] [-i SPACES] [PATH]
+
+Pretty print json
+
+positional arguments:
+  PATH                  path to file, or - for stdin
+
+options:
+  -h, --help            show this help message and exit
+  -i SPACES, --indent SPACES
+                        Number of spaces in an indent
+# finish: Completed stdin support for rich.json
+I implemented the primary actionable change in the issue — Issue 1 (#1449): adding stdin support to `rich.json`.
+
+Changes made:
+1. **`rich/json.py`** (`__main__` CLI block):
+   - Made the `PATH` positional argument optional (`nargs="?"`) with a default of `-`.
+   - Added logic to read JSON from `sys.stdin` when the path is `-` (or omitted), otherwise read from the file as before.
+
+2. **`CHANGELOG.md`**:
+   - Added a note about stdin support for `python -m rich.json`.
+   - Fixed the incorrect changelog years (2020 → 2021) referenced in Issue 4 (#1456).
+
+Verification:
+- `echo '{"foo": "bar", "n": [1,2,3]}' | python -m rich.json` correctly pretty-prints piped JSON.
+- `python -m rich.json /tmp/t.json` still works for file input.
+- `python -m rich.json --help` shows `PATH` as optional.
+
+Note: The issue text bundled many unrelated GitHub items (dependency bumps, separate bug reports, and a large pasted test log from a TERM=unknown environment). Those are either dependency version bumps not part of the source code or separate unrelated reports; the concrete, implementable source-code feature described was the stdin support for `rich.json`, which is now in place.

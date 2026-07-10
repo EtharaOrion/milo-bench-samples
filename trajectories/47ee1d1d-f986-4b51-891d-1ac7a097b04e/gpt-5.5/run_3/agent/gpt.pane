@@ -1,0 +1,200 @@
+ PASS  src/utils/deferNetworkRequestsUntil.test.ts
+ PASS  src/utils/logging/prepareRequest.test.ts
+ PASS  src/utils/logging/getStatusCodeColor.test.ts
+ PASS  src/utils/internal/mergeRight.test.ts
+ PASS  src/utils/internal/compose.test.ts
+ PASS  src/context/status.test.ts
+ PASS  src/utils/internal/pipeEvents.test.ts
+ PASS  src/utils/url/cleanUrl.test.ts
+ PASS  src/utils/internal/tryCatch.test.ts
+ PASS  src/utils/url/getAbsoluteUrl.node.test.ts
+ PASS  src/utils/request/pruneGetRequestBody.test.ts
+ PASS  src/utils/url/getAbsoluteWorkerUrl.test.ts
+ PASS  src/utils/internal/isObject.test.ts
+ PASS  src/graphql.test.ts
+ PASS  src/utils/internal/parseGraphQLRequest.test.ts
+
+Summary of all failing tests
+ FAIL  src/utils/request/onUnhandledRequest.test.ts
+  ● supports custom callback function
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    - Expected
+    + Received
+
+      {"body": "", "bodyUsed": false, "cache": "default", "cookies": {}, "credentials": "same-origin", "destination": "document", "headers": {"_headers": {"x-origin": "msw-test"}, "_names": Map {"x-origin" => "x-origin"}}, "id": "0a63e87a-45a0-4bc6-961a-3d97ad7a2fbc", "integrity": "", "keepalive": true, "method": "GET", "mode": "same-origin", "redirect": "manual", "referrer": "", "referrerPolicy": "origin", "url": "http://localhost/"},
+    + [Function next],
+
+    Number of calls: 1
+
+      89 |   onUnhandledRequest(request, [], handleRequest)
+      90 |
+    > 91 |   expect(handleRequest).toHaveBeenCalledWith(request)
+         |                         ^
+      92 | })
+      93 |
+      94 | test('does not print any suggestions given no handlers to suggest', () => {
+
+      at Object.<anonymous> (src/utils/request/onUnhandledRequest.test.ts:91:25)
+
+ FAIL  src/utils/handleRequest.test.ts
+  ● reports request as unhandled when it has no matching request handlers
+
+    expect(jest.fn()).toHaveBeenNthCalledWith(n, ...expected)
+
+    n: 1
+    - Expected
+    + Received
+
+      {"body": "", "bodyUsed": false, "cache": "default", "cookies": {}, "credentials": "same-origin", "destination": "document", "headers": {"_headers": {"x-origin": "msw-test"}, "_names": Map {"x-origin" => "x-origin"}}, "id": "6955e7a9-6b3a-4ede-8b7b-bab24bbedae5", "integrity": "", "keepalive": true, "method": "GET", "mode": "same-origin", "redirect": "manual", "referrer": "", "referrerPolicy": "origin", "url": "http://localhost/user"},
+    + [Function next],
+
+    Number of calls: 1
+
+      93 |     ['request:end', request],
+      94 |   ])
+    > 95 |   expect(options.onUnhandledRequest).toHaveBeenNthCalledWith(1, request)
+         |                                      ^
+      96 |   expect(callbacks.onBypassResponse).toHaveBeenNthCalledWith(1, request)
+      97 |   expect(callbacks.onMockedResponse).not.toHaveBeenCalled()
+      98 |   expect(callbacks.onMockedResponseSent).not.toHaveBeenCalled()
+
+      at src/utils/handleRequest.test.ts:95:38
+      at fulfilled (src/utils/handleRequest.test.ts:5:58)
+
+
+Test Suites: 2 failed, 51 passed, 53 total
+Tests:       2 failed, 204 passed, 206 total
+Snapshots:   0 total
+Time:        2.529 s, estimated 5 s
+Ran all test suites.
+exit:1
+$ cd /workspace/msw && rm reproduce.ts && git status --short && git --no-pager diff --stat
+M package.json
+ M src/utils/request/onUnhandledRequest.ts
+ M yarn.lock
+ package.json                            |  2 +-
+ src/utils/request/onUnhandledRequest.ts | 31 +++++++++++++++++++++++--------
+ yarn.lock                               |  2 +-
+ 3 files changed, 25 insertions(+), 10 deletions(-)
+$ cd /workspace/msw && git --no-pager diff -- src/utils/request/onUnhandledRequest.ts package.json yarn.lock
+diff --git a/package.json b/package.json
+index 1540854..cf6cdd7 100644
+--- a/package.json
++++ b/package.json
+@@ -72,7 +72,7 @@
+     "chalk": "4.1.1",
+     "chokidar": "^3.4.2",
+     "cookie": "^0.4.1",
+-    "graphql": "^15.5.1",
++    "graphql": "^15.5.1 || ^16.0.0",
+     "headers-utils": "^3.0.2",
+     "inquirer": "^8.2.0",
+     "is-node-process": "^1.0.1",
+diff --git a/src/utils/request/onUnhandledRequest.ts b/src/utils/request/onUnhandledRequest.ts
+index f17a1e3..ace8a85 100644
+--- a/src/utils/request/onUnhandledRequest.ts
++++ b/src/utils/request/onUnhandledRequest.ts
+@@ -15,7 +15,12 @@ const MAX_MATCH_SCORE = 3
+ const MAX_SUGGESTION_COUNT = 4
+ const TYPE_MATCH_DELTA = 0.5
+
+-export type UnhandledRequestCallback = (request: MockedRequest) => void
++export type UnhandledRequestDefaultCallback = () => void
++
++export type UnhandledRequestCallback = (
++  request: MockedRequest,
++  next: UnhandledRequestDefaultCallback,
++) => void
+
+ export type UnhandledRequestStrategy =
+   | 'bypass'
+@@ -126,16 +131,11 @@ ${handlers.map((handler) => `  • ${handler.info.header}`).join('\n')}`
+   return `Did you mean to request "${handlers[0].info.header}" instead?`
+ }
+
+-export function onUnhandledRequest(
++function applyStrategy(
+   request: MockedRequest,
+   handlers: RequestHandler[],
+-  strategy: UnhandledRequestStrategy = 'warn',
++  strategy: Exclude<UnhandledRequestStrategy, UnhandledRequestCallback>,
+ ): void {
+-  if (typeof strategy === 'function') {
+-    strategy(request)
+-    return
+-  }
+-
+   /**
+    * @note Ignore exceptions during GraphQL request parsing because at this point
+    * we cannot assume the unhandled request is a valid GraphQL request.
+@@ -206,3 +206,18 @@ Read more: https://mswjs.io/docs/getting-started/mocks\
+       )
+   }
+ }
++
++export function onUnhandledRequest(
++  request: MockedRequest,
++  handlers: RequestHandler[],
++  strategy: UnhandledRequestStrategy = 'warn',
++): void {
++  if (typeof strategy === 'function') {
++    const next = () => applyStrategy(request, handlers, 'warn')
++
++    strategy(request, next)
++    return
++  }
++
++  applyStrategy(request, handlers, strategy)
++}
+diff --git a/yarn.lock b/yarn.lock
+index 2cccbeb..9dd100a 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -4877,7 +4877,7 @@ graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.2.0, graceful-fs@^4.2.4:
+   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.6.tgz#ff040b2b0853b23c3d31027523706f1885d76bee"
+   integrity sha512-nTnJ528pbqxYanhpDYsi4Rd8MAeaBA67+RZ10CM1m3bTAVFEDcd5AuA4a6W5YkGZ1iNXHzZz8T6TBKLeBuNriQ==
+
+-graphql@^15.5.1:
++"graphql@^15.5.1 || ^16.0.0":
+   version "15.5.1"
+   resolved "https://registry.yarnpkg.com/graphql/-/graphql-15.5.1.tgz#f2f84415d8985e7b84731e7f3536f8bb9d383aad"
+   integrity sha512-FeTRX67T3LoE3LWAxxOlW2K3Bz+rMYAC18rRguK4wgXaTZMiJwSUwDmPFo3UadAKbzirKIg5Qy+sNJXbpPRnQw==
+# finish: Finish implementation summary and verification results
+Implemented the requested non-test changes in `/workspace/msw`.
+
+What changed:
+- `src/utils/request/onUnhandledRequest.ts`
+  - Added `UnhandledRequestDefaultCallback`.
+  - Updated `UnhandledRequestCallback` to receive `(request, next)`.
+  - Refactored the built-in unhandled request behavior into `applyStrategy(...)`.
+  - Custom `onUnhandledRequest` callbacks now always receive a `next` function.
+  - Calling `next()` delegates back to MSW’s default unhandled-request behavior (`warn`), preserving existing warning formatting, handler suggestions, and GraphQL-aware request messages.
+- `package.json`
+  - Widened GraphQL support from `^15.5.1` to `^15.5.1 || ^16.0.0`.
+- `yarn.lock`
+  - Updated the GraphQL lockfile selector to match the widened range.
+
+Verification performed:
+- Created and ran a temporary `reproduce.ts` with `ts-node` covering:
+  - GraphQL dependency range accepts v15 and v16, but not v17.
+  - Custom callback always receives `next` as the second argument.
+  - A typed callback can call `next()` to run the default MSW warning behavior.
+  - A callback can still suppress the default behavior by not calling `next()`.
+  - Callbacks with a default second parameter still receive the real `next` function.
+  - `next()` preserves default handler suggestion output.
+- Removed the temporary reproduction script afterward.
+- Passing checks:
+  - `./node_modules/.bin/jest src/utils/internal/parseGraphQLRequest.test.ts src/handlers/GraphQLHandler.test.ts src/graphql.test.ts --runInBand`
+  - `./node_modules/.bin/eslint src/utils/request/onUnhandledRequest.ts`
+  - Targeted TypeScript check for `src/utils/request/onUnhandledRequest.ts`
+
+Notes on existing test failures:
+- The current visible repository tests still contain old expectations that custom `onUnhandledRequest` callbacks are called with only `request`.
+- Since this issue explicitly requires adding and passing a second `next` parameter, those stale tests now fail until updated as described in the prompt.
+- Full unit suite result: 204 passing, 2 failing stale assertions related to the old callback arity:
+  - `src/utils/request/onUnhandledRequest.test.ts`
+  - `src/utils/handleRequest.test.ts`
+
+No test files were modified.

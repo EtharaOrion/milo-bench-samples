@@ -1,0 +1,200 @@
+        appsv1 "k8s.io/api/apps/v1"
+        coordinationv1 "k8s.io/api/coordination/v1"
+@@ -50,7 +52,7 @@ var cli struct {
+ // an error value in return from Hook methods but in our case
+ // there are no error introducing steps.
+ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       zl := zap.New(zap.UseDevMode(true)).WithName("crossplane")
++       zl := newLogrLogger(zap.UseDevMode(true)).WithName("crossplane")
+        // BindTo uses reflect.TypeOf to get reflection type of used interface
+        // A *logging.Logger value here is used to find the reflection type here.
+        // Please refer: https://golang.org/pkg/reflect/#TypeOf
+@@ -62,8 +64,12 @@ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+        return nil
+ }
+
++func newLogrLogger(opts ...zap.Opts) logr.Logger {
++       return zapr.NewLoggerWithOptions(zap.NewRaw(opts...), zapr.DPanicOnBugs(false))
++}
++
+ func main() {
+-       zl := zap.New().WithName("crossplane")
++       zl := newLogrLogger().WithName("crossplane")
+
+        // Note that the controller managers scheme must be a superset of the
+        // package manager's object scheme; it must contain all object types that
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..1e846c15 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+
+
+--- suspicious Debug calls ---
+262:            log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+$ cd /workspace/crossplane && git --no-pager diff f60d10f28905082fe8e5537f17ed74d0117de532 -- go.mod | sed -n '1,160p'
+diff --git a/go.mod b/go.mod
+index b356dd9c..3df61506 100644
+--- a/go.mod
++++ b/go.mod
+@@ -28,6 +28,11 @@ require (
+        sigs.k8s.io/yaml v1.3.0
+ )
+
++require (
++       github.com/go-logr/logr v1.2.2
++       github.com/go-logr/zapr v1.2.0
++)
++
+ require (
+        cloud.google.com/go/compute v1.1.0 // indirect
+        github.com/Azure/azure-sdk-for-go v61.4.0+incompatible // indirect
+@@ -72,8 +77,6 @@ require (
+        github.com/evanphx/json-patch v4.12.0+incompatible // indirect
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+-       github.com/go-logr/logr v1.2.2 // indirect
+-       github.com/go-logr/zapr v1.2.0 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+$ cd /workspace/crossplane && sed -n '1,95p' go.mod
+module github.com/crossplane/crossplane
+
+go 1.17
+
+require (
+        github.com/Masterminds/semver v1.5.0
+        github.com/alecthomas/kong v0.2.17
+        github.com/crossplane/crossplane-runtime v0.15.1-0.20220315141414-988c9ba9c255
+        github.com/google/go-cmp v0.5.7
+        // TODO(hasheddan): we prefer to consume release versions of
+        // go-containerregistry. An incremental version is currently being used to
+        // consume the new k8schain implementation, which fixes an issue with
+        // reconcile timeouts when pulling packages in some environments.
+        github.com/google/go-containerregistry v0.8.1-0.20220302183023-329563766ce8
+        github.com/google/go-containerregistry/pkg/authn/k8schain v0.0.0-20220302183023-329563766ce8
+        github.com/imdario/mergo v0.3.12
+        github.com/pkg/errors v0.9.1
+        github.com/sirupsen/logrus v1.8.1
+        github.com/spf13/afero v1.8.0
+        k8s.io/api v0.23.3
+        k8s.io/apiextensions-apiserver v0.23.0
+        k8s.io/apimachinery v0.23.3
+        k8s.io/client-go v0.23.3
+        k8s.io/code-generator v0.23.0
+        k8s.io/utils v0.0.0-20220127004650-9b3446523e65
+        sigs.k8s.io/controller-runtime v0.11.0
+        sigs.k8s.io/controller-tools v0.8.0
+        sigs.k8s.io/yaml v1.3.0
+)
+
+require (
+        github.com/go-logr/logr v1.2.2
+        github.com/go-logr/zapr v1.2.0
+)
+
+require (
+        cloud.google.com/go/compute v1.1.0 // indirect
+        github.com/Azure/azure-sdk-for-go v61.4.0+incompatible // indirect
+        github.com/Azure/go-autorest v14.2.0+incompatible // indirect
+        github.com/Azure/go-autorest/autorest v0.11.24 // indirect
+        github.com/Azure/go-autorest/autorest/adal v0.9.18 // indirect
+        github.com/Azure/go-autorest/autorest/azure/auth v0.5.11 // indirect
+        github.com/Azure/go-autorest/autorest/azure/cli v0.4.5 // indirect
+        github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
+        github.com/Azure/go-autorest/logger v0.2.1 // indirect
+        github.com/Azure/go-autorest/tracing v0.6.0 // indirect
+        github.com/PuerkitoBio/purell v1.1.1 // indirect
+        github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
+        github.com/armon/go-metrics v0.3.10 // indirect
+        github.com/armon/go-radix v1.0.0 // indirect
+        github.com/aws/aws-sdk-go-v2 v1.13.0 // indirect
+        github.com/aws/aws-sdk-go-v2/config v1.13.1 // indirect
+        github.com/aws/aws-sdk-go-v2/credentials v1.8.0 // indirect
+        github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.10.0 // indirect
+        github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.4 // indirect
+        github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.2.0 // indirect
+        github.com/aws/aws-sdk-go-v2/internal/ini v1.3.5 // indirect
+        github.com/aws/aws-sdk-go-v2/service/ecr v1.14.0 // indirect
+        github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.11.0 // indirect
+        github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.7.0 // indirect
+        github.com/aws/aws-sdk-go-v2/service/sso v1.9.0 // indirect
+        github.com/aws/aws-sdk-go-v2/service/sts v1.14.0 // indirect
+        github.com/aws/smithy-go v1.10.0 // indirect
+        github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20220216180153-3d7835abdf40 // indirect
+        github.com/beorn7/perks v1.0.1 // indirect
+        github.com/cenkalti/backoff/v3 v3.0.0 // indirect
+        github.com/cespare/xxhash/v2 v2.1.2 // indirect
+        github.com/chrismellard/docker-credential-acr-env v0.0.0-20220119192733-fe33c00cee21 // indirect
+        github.com/containerd/stargz-snapshotter/estargz v0.11.0 // indirect
+        github.com/davecgh/go-spew v1.1.1 // indirect
+        github.com/dimchansky/utfbom v1.1.1 // indirect
+        github.com/docker/cli v20.10.12+incompatible // indirect
+        github.com/docker/distribution v2.7.1+incompatible // indirect
+        github.com/docker/docker v20.10.12+incompatible // indirect
+        github.com/docker/docker-credential-helpers v0.6.4 // indirect
+        github.com/emicklei/go-restful v2.9.5+incompatible // indirect
+        github.com/evanphx/json-patch v4.12.0+incompatible // indirect
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+        github.com/gobuffalo/flect v0.2.3 // indirect
+        github.com/gogo/protobuf v1.3.2 // indirect
+        github.com/golang-jwt/jwt/v4 v4.2.0 // indirect
+        github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+        github.com/golang/protobuf v1.5.2 // indirect
+        github.com/golang/snappy v0.0.4 // indirect
+        github.com/google/go-containerregistry/pkg/authn/kubernetes v0.0.0-20220302183023-329563766ce8 // indirect
+        github.com/google/gofuzz v1.2.0 // indirect
+        github.com/google/uuid v1.3.0 // indirect
+        github.com/googleapis/gnostic v0.5.5 // indirect
+        github.com/hashicorp/errwrap v1.1.0 // indirect
+        github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+        github.com/hashicorp/go-hclog v1.0.0 // indirect
+# task_tracker: Mark all implementation and verification tasks complete
+Task list has been updated with 6 item(s).
+$ cd /workspace/crossplane && git status --short && git --no-pager diff --name-only f60d10f28905082fe8e5537f17ed74d0117de532
+M cmd/crank/main.go
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+cmd/crank/main.go
+cmd/crossplane/main.go
+go.mod
+internal/controller/pkg/resolver/reconciler.go
+# finish: Summarize completed logger panic fix and tests
+Implemented the logger panic fix and guardrails in `/workspace/crossplane`.
+
+What changed:
+- Fixed the malformed dependency resolver log call in `internal/controller/pkg/resolver/reconciler.go` by adding the missing structured logging key (`"error"`). This resolves the panic in the no-valid-version dependency resolution path.
+- Updated Crossplane and crank logger construction in:
+  - `cmd/crossplane/main.go`
+  - `cmd/crank/main.go`
+- The loggers now use `zapr.NewLoggerWithOptions(..., zapr.DPanicOnBugs(false))`, preventing future malformed structured log calls from panicking the process.
+- Updated `go.mod` to reflect the now-direct use of `github.com/go-logr/logr` and `github.com/go-logr/zapr`.
+
+Validation performed:
+- Created and ran a temporary `go run` reproduction script that confirmed the original panic.
+- Re-ran the script after the fix and confirmed the no-valid-version dependency path no longer panics.
+- Expanded the temporary script to cover edge cases:
+  - no valid dependency version
+  - valid dependency creation
+  - dependency creation error logging
+  - malformed logger call guarded by `DPanicOnBugs(false)`
+- Removed the temporary reproduction script afterward.
+
+Tests run:
+- `go test ./internal/controller/pkg/resolver ./internal/controller/pkg/revision ./internal/controller/pkg/manager ./cmd/crossplane ./cmd/crank`
+- `go test ./...`
+
+All tests passed. No test files were modified.

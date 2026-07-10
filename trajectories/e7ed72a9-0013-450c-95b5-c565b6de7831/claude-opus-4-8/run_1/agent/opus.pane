@@ -1,0 +1,200 @@
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# task_tracker: Update task progress
+Task list has been updated with 8 item(s).
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python -m pytest tests/unit_tests/test_dependencies.py tests/unit_tests/document_loaders/test_imports.py -q 2>&1 | tail -15
+ERROR: file or directory not found: tests/unit_tests/document_loaders/test_imports.py
+
+
+--------------------------- snapshot report summary ----------------------------
+
+no tests ran in 0.00s
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python -m pytest tests/unit_tests/ -q -p no:cacheprovider 2>&1 | tail -25
+/workspace/langchain/libs/langchain/langchain/memory/combined.py:38: UserWarning: When using CombinedMemory, input keys should be so the input is known.  Was not set on chat_memory=ChatMessageHistory(messages=[]) output_key=None input_key=None return_messages=False human_prefix='Human' ai_prefix='AI' memory_key='foo'
+    warnings.warn(
+
+tests/unit_tests/memory/test_combined_memory.py::test_basic_functionality
+  /workspace/langchain/libs/langchain/langchain/memory/combined.py:38: UserWarning: When using CombinedMemory, input keys should be so the input is known.  Was not set on chat_memory=ChatMessageHistory(messages=[]) output_key=None input_key=None return_messages=False human_prefix='Human' ai_prefix='AI' memory_key='bar'
+    warnings.warn(
+
+tests/unit_tests/tools/shell/test_shell.py::test_shell_input_validation
+  /workspace/langchain/libs/langchain/langchain/tools/shell/tool.py:33: UserWarning: The shell tool has no safeguards by default. Use at your own risk.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+--------------------------- snapshot report summary ----------------------------
+18 snapshots passed. 4 snapshots unused.
+
+Re-run pytest with --snapshot-update to delete unused snapshots.
+============================= slowest 5 durations ==============================
+0.31s call     tests/unit_tests/test_sql_database_schema.py::test_table_info
+0.11s call     tests/unit_tests/test_sql_database_schema.py::test_sql_database_run
+0.07s call     tests/unit_tests/smith/evaluation/test_runner_utils.py::test_run_llm_all_formats[inputs8]
+0.07s call     tests/unit_tests/test_pytest_config.py::test_socket_disabled
+0.05s call     tests/unit_tests/callbacks/tracers/test_base_tracer.py::test_tracer_llm_run
+=========================== short test summary info ============================
+FAILED tests/unit_tests/test_pytest_config.py::test_socket_disabled - Failed:...
+1 failed, 927 passed, 212 skipped, 15 warnings in 4.17s
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python -m pytest tests/unit_tests/test_pytest_config.py::test_socket_disabled -q 2>&1 | grep -A15 "def test_socket_disabled\|Error\|assert"| head -25
+def test_socket_disabled() -> None:
+        """This test should fail."""
+>       with pytest.raises(pytest_socket.SocketBlockedError):
+E       Failed: DID NOT RAISE <class 'pytest_socket.SocketBlockedError'>
+
+tests/unit_tests/test_pytest_config.py:8: Failed
+--------------------------- snapshot report summary ----------------------------
+
+============================= slowest 5 durations ==============================
+0.05s call     tests/unit_tests/test_pytest_config.py::test_socket_disabled
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED tests/unit_tests/test_pytest_config.py::test_socket_disabled - Failed:...
+1 failed in 0.10s
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python - <<'EOF'
+$ from typing import List
+$ from langchain.schema import Document
+$ from langchain.vectorstores import VectorStore
+$ from langchain.text_splitter import CharacterTextSplitter
+$ from langchain.storage import InMemoryStore
+$ from langchain.retrievers import ParentDocumentRetriever
+$ 
+$ class FakeVS(VectorStore):
+$     def __init__(self):
+$         self.docs: List[Document] = []
+$     def add_texts(self, texts, metadatas=None, **kwargs):
+$         return []
+$     def add_documents(self, documents, **kwargs):
+$         self.docs.extend(documents)
+$         return []
+$     def similarity_search(self, query, k=4, **kwargs):
+$         return [d for d in self.docs if query in d.page_content]
+$     @classmethod
+$     def from_texts(cls, texts, embedding, metadatas=None, **kwargs):
+$         return cls()
+$ 
+$ vs = FakeVS()
+$ store = InMemoryStore()
+$ child = CharacterTextSplitter(chunk_size=20, chunk_overlap=0, separator=" ")
+$ r = ParentDocumentRetriever(vectorstore=vs, docstore=store, child_splitter=child)
+$ parent = Document(page_content="hello world this is a test of parent doc retriever foo bar")
+$ r.add_documents([parent])
+$ # children added to vs with id metadata
+$ assert all("doc_id" in d.metadata for d in vs.docs)
+$ # parent stored
+$ assert len(list(store.yield_keys())) == 1
+$ res = r.get_relevant_documents("foo")
+$ assert len(res) == 1 and res[0].page_content == parent.page_content
+$ print("parent retriever ok")
+$ 
+$ # uneven ids error
+$ try:
+$     r.add_documents([parent], ids=["a","b"])
+$     print("FAIL")
+$ except ValueError:
+$     print("uneven ids ok")
+$ EOF
+cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python - <<'EOF'
+from typing import List
+from langchain.schema import Document
+from langchain.vectorstores import VectorStore
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.storage import InMemoryStore
+from langchain.retrievers import ParentDocumentRetriever
+class FakeVS(VectorStore):
+    def __init__(self):
+        self.docs: List[Document] = []
+    def add_texts(self, texts, metadatas=None, **kwargs):
+        return []
+    def add_documents(self, documents, **kwargs):
+        self.docs.extend(documents)
+        return []
+    def similarity_search(self, query, k=4, **kwargs):
+        return [d for d in self.docs if query in d.page_content]
+    @classmethod
+    def from_texts(cls, texts, embedding, metadatas=None, **kwargs):
+        return cls()
+vs = FakeVS()
+store = InMemoryStore()
+child = CharacterTextSplitter(chunk_size=20, chunk_overlap=0, separator=" ")
+r = ParentDocumentRetriever(vectorstore=vs, docstore=store, child_splitter=child)
+parent = Document(page_content="hello world this is a test of parent doc retriever foo bar")
+r.add_documents([parent])
+# children added to vs with id metadata
+assert all("doc_id" in d.metadata for d in vs.docs)
+# parent stored
+assert len(list(store.yield_keys())) == 1
+res = r.get_relevant_documents("foo")
+assert len(res) == 1 and res[0].page_content == parent.page_content
+print("parent retriever ok")
+# uneven ids error
+try:
+    r.add_documents([parent], ids=["a","b"])
+    print("FAIL")
+except ValueError:
+    print("uneven ids ok")
+EOF
+parent retriever ok
+uneven ids ok
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && grep -n "run found to be traced for\|Run found to be traced for" langchain/callbacks/tracers/base.py
+134:            raise TracerException(f"No LLM Run found to be traced for {run_id}")
+155:            raise TracerException(f"No Run found to be traced for {run_id} on_retry")
+186:            raise TracerException(f"No LLM Run found to be traced for {run_id}")
+214:            raise TracerException(f"No LLM Run found to be traced for {run_id}")
+264:            raise TracerException(f"No chain Run found to be traced for {run_id}")
+284:            raise TracerException(f"No chain Run found to be traced for {run_id}")
+332:            raise TracerException(f"No tool Run found to be traced for {run_id}")
+352:            raise TracerException(f"No tool Run found to be traced for {run_id}")
+407:            raise TracerException(f"No retriever Run found to be traced for {run_id}")
+423:            raise TracerException(f"No retriever Run found to be traced for {run_id}")
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && python -m pytest tests/unit_tests/document_loaders tests/unit_tests/memory tests/unit_tests/retrievers tests/unit_tests/callbacks -q 2>&1 | tail -8
+============================= slowest 5 durations ==============================
+0.04s call     tests/unit_tests/callbacks/tracers/test_base_tracer.py::test_tracer_llm_run
+0.04s call     tests/unit_tests/document_loaders/blob_loaders/test_filesystem_blob_loader.py::test_file_names_exist[**/*-suffixes5-relative_filenames5]
+0.02s call     tests/unit_tests/callbacks/tracers/test_langchain.py::test_example_id_assignment_threadsafe
+0.02s call     tests/unit_tests/memory/chat_message_histories/test_sql.py::test_multiple_sessions[SQLite]
+0.02s call     tests/unit_tests/memory/chat_message_histories/test_sql.py::test_clear_messages[SQLite]
+143 passed, 85 skipped, 2 warnings in 1.64s
+$ cd /workspace/langchain && git status --short
+M libs/langchain/langchain/callbacks/tracers/base.py
+ M libs/langchain/langchain/document_loaders/__init__.py
+ M libs/langchain/langchain/memory/__init__.py
+ M libs/langchain/langchain/memory/chat_message_histories/__init__.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/langchain/schema/__init__.py
+ M libs/langchain/pyproject.toml
+?? libs/langchain/langchain/document_loaders/airbyte.py
+?? libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+?? libs/langchain/langchain/retrievers/parent_document_retriever.py
+?? libs/langchain/langchain/schema/storage.py
+?? libs/langchain/langchain/storage/
+# finish: Summarize implemented changes
+I implemented the code changes required by the testable/code-bearing items in the issue (the remaining items are documentation/notebook/CI-only). Summary of changes in `libs/langchain`:
+
+**Issue 4 (#8895) — Base storage interface + implementations + encoder utility**
+- `langchain/schema/storage.py`: new abstract `BaseStore[K, V]` interface (`mget`, `mset`, `mdelete`, `yield_keys`), exported from `langchain.schema`.
+- `langchain/storage/` package:
+  - `in_memory.py` → `InMemoryStore`
+  - `file_system.py` → `LocalFileStore` (with key-validation)
+  - `encoder_backed.py` → `EncoderBackedStore` (key/value (de)serialization utility)
+  - `exceptions.py` → `InvalidKeyException`
+  - `__init__.py` exporting the three stores.
+
+**Issue 8 (#8941) — Parent document retriever**
+- `langchain/retrievers/parent_document_retriever.py` → `ParentDocumentRetriever` (stores small child chunks in a vectorstore, parents in a `BaseStore`; supports optional parent splitter and custom ids). Registered in `langchain/retrievers/__init__.py`.
+
+**Issue 2 (#8586) — Airbyte loaders**
+- `langchain/document_loaders/airbyte.py` → `AirbyteCDKLoader` plus `AirbyteGongLoader`, `AirbyteHubspotLoader`, `AirbyteSalesforceLoader`, `AirbyteShopifyLoader`, `AirbyteStripeLoader`, `AirbyteTypeformLoader`, `AirbyteZendeskSupportLoader`. Registered in `langchain/document_loaders/__init__.py`.
+
+**Issue 7 (#8940) — Rockset chat history**
+- `langchain/memory/chat_message_histories/rocksetdb.py` → `RocksetChatMessageHistory`. Registered in the chat-message-histories and `langchain.memory` `__init__.py`.
+
+**Issue 10 (#8944) — Add id in error in tracer**
+- `langchain/callbacks/tracers/base.py`: all "No … Run found to be traced" `TracerException`s now include the offending `run_id`.
+
+**Issue 3 (#8879) & Issue 11 (#8951)**
+- Registered the `scheduled` pytest marker in `pyproject.toml`.
+- Bumped version to `0.0.259`.
+
+Issues 1, 5, 6, 9 are documentation/notebook-only and require no source changes.
+
+**Verification**: All new modules import cleanly; I ran an end-to-end functional check of the storage classes and `ParentDocumentRetriever` (add/split/retrieve, error paths). The full unit-test suite passes (927 passed, 212 skipped) with the single exception of `tests/unit_tests/test_pytest_config.py::test_socket_disabled`, which is a pre-existing, environment-related failure (pytest-socket not blocking sockets in this sandbox) unrelated to my changes.

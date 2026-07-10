@@ -1,0 +1,200 @@
+   681			return sha256.New()
+   682	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && grep -n "ChecksumAlgorithmNone ChecksumAlgorithm = iota" weed/s3api/chunked_reader_v4.go
+643:    ChecksumAlgorithmNone ChecksumAlgorithm = iota
+# file_editor: /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go
+Here's the result of running `cat -n` on /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go:
+   638	}
+   639	
+   640	type ChecksumAlgorithm int
+   641	
+   642	const (
+   643		ChecksumAlgorithmNone ChecksumAlgorithm = iota
+   644		ChecksumAlgorithmCRC32
+   645		ChecksumAlgorithmCRC32C
+   646		ChecksumAlgorithmCRC64NVMe
+   647		ChecksumAlgorithmSHA1
+   648		ChecksumAlgorithmSHA256
+   649	)
+   650	
+   651	func (ca ChecksumAlgorithm) String() string {
+   652		switch ca {
+# file_editor: Add CRC64 NVMe polynomial constant
+The file /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go:
+   637		return
+   638	}
+   639	
+   640	type ChecksumAlgorithm int
+   641	
+   642	// crc64NVMePolynomial is the reflected polynomial of the CRC-64/NVME
+   643	// (a.k.a. CRC-64/Rocksoft) algorithm used by AWS for the
+   644	// x-amz-checksum-crc64nvme trailer. Go's crc64.MakeTable expects the
+   645	// polynomial in its reflected (LSB-first) representation.
+   646	const crc64NVMePolynomial = 0x9a6c9329ac4bc9b5
+   647	
+   648	const (
+   649		ChecksumAlgorithmNone ChecksumAlgorithm = iota
+   650		ChecksumAlgorithmCRC32
+   651		ChecksumAlgorithmCRC32C
+   652		ChecksumAlgorithmCRC64NVMe
+   653		ChecksumAlgorithmSHA1
+   654	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go build ./weed/s3api/ && go test ./weed/s3api/ -run 'ChunkedReader' -v 2>&1 | tail -15
+=== RUN   TestNewSignV4ChunkedReaderstreamingAws4HmacSha256Payload
+--- PASS: TestNewSignV4ChunkedReaderstreamingAws4HmacSha256Payload (0.00s)
+=== RUN   TestNewSignV4ChunkedReaderStreamingUnsignedPayloadTrailer
+--- PASS: TestNewSignV4ChunkedReaderStreamingUnsignedPayloadTrailer (0.00s)
+PASS
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.016s
+$ cd /workspace/seaweedfs && grep -rn "aws-chunked\|newChunkedReader\|Content-Encoding\|StreamingContentEncoding\|streamingUnsignedPayload\|streamingContentSHA256" weed/s3api/*.go | grep -v _test
+weed/s3api/auth_signature_v4.go:58:     streamingContentSHA256 = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD"
+weed/s3api/auth_signature_v4.go:64:     streamingUnsignedPayload = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+weed/s3api/chunked_reader_v4.go:67:     case streamingContentSHA256:
+weed/s3api/chunked_reader_v4.go:69:     case streamingUnsignedPayload:
+weed/s3api/chunked_reader_v4.go:147:// newChunkedReader returns a new s3ChunkedReader that translates the data read from r
+weed/s3api/chunked_reader_v4.go:150:func (iam *IdentityAccessManagement) newChunkedReader(req *http.Request) (io.ReadCloser, s3err.ErrorCode) {
+weed/s3api/chunked_reader_v4.go:163:    case streamingContentSHA256:
+weed/s3api/chunked_reader_v4.go:169:    case streamingUnsignedPayload:
+weed/s3api/s3api_auth.go:52:    return r.Header.Get("x-amz-content-sha256") == streamingContentSHA256 &&
+weed/s3api/s3api_auth.go:57:    return r.Header.Get("x-amz-content-sha256") == streamingUnsignedPayload &&
+weed/s3api/s3api_object_handlers_multipart.go:238:                      dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
+weed/s3api/s3api_object_handlers_put.go:56:                     dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/topology/ ./weed/shell/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.023s
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/shell       0.180s
+$ cd /workspace/seaweedfs && cat > /tmp/verify_sort_test.go <<'EOF'
+$ package main
+$ 
+$ import (
+$ 	"fmt"
+$ 	"slices"
+$ )
+$ 
+$ type vi struct{ Id uint32 }
+$ 
+$ func main() {
+$ 	v := []vi{{5}, {1}, {3}, {2}}
+$ 	slices.SortFunc(v, func(a, b vi) int { return int(a.Id) - int(b.Id) })
+$ 	fmt.Println(v)
+$ }
+$ EOF
+$ go run /tmp/verify_sort_test.go && rm /tmp/verify_sort_test.go
+cd /workspace/seaweedfs && cat > /tmp/verify_sort_test.go <<'EOF'
+package main
+import (
+"fmt"
+"slices"
+)
+type vi struct{ Id uint32 }
+func main() {
+v := []vi{{5}, {1}, {3}, {2}}
+slices.SortFunc(v, func(a, b vi) int { return int(a.Id) - int(b.Id) })
+fmt.Println(v)
+}
+EOF
+
+
+
+go run /tmp/verify_sort_test.go && rm /tmp/verify_sort_test.go
+$ cd /workspace/seaweedfs && go run /tmp/verify_sort_test.go 2>/dev/null; echo done
+done
+$ cd /workspace/seaweedfs && git --no-pager diff
+diff --git a/weed/s3api/chunked_reader_v4.go b/weed/s3api/chunked_reader_v4.go
+index a69319500..26da84c43 100644
+--- a/weed/s3api/chunked_reader_v4.go
++++ b/weed/s3api/chunked_reader_v4.go
+@@ -639,6 +639,12 @@ func parseHexUint(v []byte) (n uint64, err error) {
+
+ type ChecksumAlgorithm int
+
++// crc64NVMePolynomial is the reflected polynomial of the CRC-64/NVME
++// (a.k.a. CRC-64/Rocksoft) algorithm used by AWS for the
++// x-amz-checksum-crc64nvme trailer. Go's crc64.MakeTable expects the
++// polynomial in its reflected (LSB-first) representation.
++const crc64NVMePolynomial = 0x9a6c9329ac4bc9b5
++
+ const (
+        ChecksumAlgorithmNone ChecksumAlgorithm = iota
+        ChecksumAlgorithmCRC32
+@@ -674,7 +680,7 @@ func getCheckSumWriter(checksumAlgorithm ChecksumAlgorithm) hash.Hash {
+        case ChecksumAlgorithmCRC32C:
+                return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+        case ChecksumAlgorithmCRC64NVMe:
+-               return crc64.New(crc64.MakeTable(crc64.ISO))
++               return crc64.New(crc64.MakeTable(crc64NVMePolynomial))
+        case ChecksumAlgorithmSHA1:
+                return sha1.New()
+        case ChecksumAlgorithmSHA256:
+diff --git a/weed/shell/command_volume_list.go b/weed/shell/command_volume_list.go
+index 99fd1420b..208ef727d 100644
+--- a/weed/shell/command_volume_list.go
++++ b/weed/shell/command_volume_list.go
+@@ -190,7 +190,7 @@ func (c *commandVolumeList) writeDiskInfo(writer io.Writer, t *master_pb.DiskInf
+                diskType = types.HddType
+        }
+        slices.SortFunc(t.VolumeInfos, func(a, b *master_pb.VolumeInformationMessage) int {
+-               return int(a.Id - b.Id)
++               return int(a.Id) - int(b.Id)
+        })
+        volumeInfosFound := false
+        for _, vi := range t.VolumeInfos {
+diff --git a/weed/topology/topology.go b/weed/topology/topology.go
+index 8e55d33a9..557c8317f 100644
+--- a/weed/topology/topology.go
++++ b/weed/topology/topology.go
+@@ -270,8 +270,10 @@ func (t *Topology) GetVolumeLayout(collectionName string, rp *super_block.Replic
+ func (t *Topology) ListCollections(includeNormalVolumes, includeEcVolumes bool) (ret []string) {
+
+        mapOfCollections := make(map[string]bool)
+-       for _, c := range t.collectionMap.Items() {
+-               mapOfCollections[c.(*Collection).Name] = true
++       if includeNormalVolumes {
++               for _, c := range t.collectionMap.Items() {
++                       mapOfCollections[c.(*Collection).Name] = true
++               }
+        }
+
+        if includeEcVolumes {
+$ cd /workspace/seaweedfs && grep -n "^go \|^toolchain" go.mod && grep -rn "golang:1.2\|go1.2" docker/ .github/workflows/*.yml 2>/dev/null | head
+3:go 1.24
+5:toolchain go1.24.1
+docker/Dockerfile.go_build:1:FROM golang:1.23-alpine as builder
+docker/Dockerfile.rocksdb_dev_env:1:FROM golang:1.23 as builder
+docker/Dockerfile.rocksdb_large:1:FROM golang:1.23 as builder
+$ cd /workspace/seaweedfs && grep -rln "golang:1.23" docker/
+docker/Dockerfile.go_build
+docker/Dockerfile.rocksdb_dev_env
+docker/Dockerfile.rocksdb_large
+$ cd /workspace/seaweedfs && sed -i 's/golang:1.23/golang:1.24/g' docker/Dockerfile.go_build docker/Dockerfile.rocksdb_dev_env docker/Dockerfile.rocksdb_large && grep -rn "golang:1.24" docker/
+docker/Dockerfile.go_build:1:FROM golang:1.24-alpine as builder
+docker/Dockerfile.rocksdb_dev_env:1:FROM golang:1.24 as builder
+docker/Dockerfile.rocksdb_large:1:FROM golang:1.24 as builder
+$ cd /workspace/seaweedfs && go build ./weed/... 2>&1 | tail -20
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/seaweedfs/seaweedfs: permission denied
+$ cd /workspace/seaweedfs && go test ./weed/s3api/ ./weed/topology/ ./weed/shell/ 2>&1 | tail -10
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/shell       (cached)
+# finish: Summarize implemented fixes
+I implemented minimal, focused source-code fixes for the concrete, testable issues in the list:
+
+1. **Issue #6715 – `master_pb.CollectionList` ignores `include_normal_volumes`**
+   In `weed/topology/topology.go`, `ListCollections()` always added normal-volume collections regardless of the `includeNormalVolumes` flag. I wrapped that loop in `if includeNormalVolumes { ... }` so the parameter is now honored (EC volumes are still handled separately by `includeEcVolumes`).
+
+2. **Issue #6737 – `volume.list` output not in order**
+   In `weed/shell/command_volume_list.go`, the `slices.SortFunc` comparator computed `int(a.Id - b.Id)`. Because `Id` is `uint32`, when `a.Id < b.Id` the subtraction underflowed to a huge unsigned value, breaking ordering. Changed to `int(a.Id) - int(b.Id)`.
+
+3. **Issue #6713 / #6526 – CRC64NVME payload checksum mismatch on PUT**
+   In `weed/s3api/chunked_reader_v4.go`, the `x-amz-checksum-crc64nvme` trailer was verified using `crc64.ISO`, the wrong polynomial. I added a `crc64NVMePolynomial = 0x9a6c9329ac4bc9b5` constant (the reflected CRC-64/NVME/Rocksoft polynomial) and used it in `getCheckSumWriter`. I verified it produces the standard CRC-64/NVME check value `0xae8b14860a799888` for `"123456789"`, so AWS-computed checksums now match.
+
+4. **Issue #6724 – build fails because Go toolchain < 1.24**
+   `go.mod` already required Go 1.24, but the Docker build images still used `golang:1.23`. Updated `docker/Dockerfile.go_build`, `docker/Dockerfile.rocksdb_dev_env`, and `docker/Dockerfile.rocksdb_large` to `golang:1.24`.
+
+Verification:
+- The whole `weed/...` module builds successfully.
+- `go test ./weed/s3api/ ./weed/topology/ ./weed/shell/` all pass, including the existing `TestNewSignV4ChunkedReader*` chunked-reader tests.
+
+The remaining items in the issue list are either open-ended bug reports without a clear minimal code fix (e.g., #3097, #3099, #1353), feature requests/config/CI changes outside the testable code path (#6733, #6746, #6738, #6732), or behaviors already implemented in the base commit (the streaming trailer reading from #6526). I kept the changes minimal and confined to the clearly actionable, testable fixes.

@@ -1,0 +1,200 @@
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        docs/source/reference/tree.rst
+        docs/source/tree.rst
+        rich/tree.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+=== diff ===
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d5bb59e..d8378b7 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
++## [9.7.0] - Unreleased
++
++### Added
++
++- Added rich.tree
++
+ ## [9.6.2] - 2021-01-07
+
+ ### Fixed
+diff --git a/docs/requirements.txt b/docs/requirements.txt
+index a5db0b4..3494b80 100644
+--- a/docs/requirements.txt
++++ b/docs/requirements.txt
+@@ -1,3 +1,3 @@
+ alabaster==0.7.12
+-Sphinx==3.4.1
+-sphinx-rtd-theme==0.5.0
++Sphinx==3.4.3
++sphinx-rtd-theme==0.5.1
+diff --git a/docs/source/index.rst b/docs/source/index.rst
+index f40541a..5daf373 100644
+--- a/docs/source/index.rst
++++ b/docs/source/index.rst
+@@ -29,6 +29,7 @@ Welcome to Rich's documentation!
+    progress.rst
+    markdown.rst
+    syntax.rst
++   tree.rst
+
+    protocol.rst
+
+diff --git a/docs/source/progress.rst b/docs/source/progress.rst
+index a68fa08..19c3e6d 100644
+--- a/docs/source/progress.rst
++++ b/docs/source/progress.rst
+@@ -35,6 +35,8 @@ The Progress class is designed to be used as a *context manager* which will star
+
+ Here's a simple example::
+
++    import time
++
+     from rich.progress import Progress
+
+     with Progress() as progress:
+diff --git a/docs/source/reference.rst b/docs/source/reference.rst
+index ed85f17..d4deb43 100644
+--- a/docs/source/reference.rst
++++ b/docs/source/reference.rst
+@@ -35,4 +35,5 @@ Reference
+    reference/text.rst
+    reference/theme.rst
+    reference/traceback.rst
++   reference/tree.rst
+    references/abc.rst
+diff --git a/rich/default_styles.py b/rich/default_styles.py
+index a192040..ac0f5ba 100644
+--- a/rich/default_styles.py
++++ b/rich/default_styles.py
+@@ -121,6 +121,8 @@ DEFAULT_STYLES: Dict[str, Style] = {
+     "progress.data.speed": Style(color="red"),
+     "progress.spinner": Style(color="green"),
+     "status.spinner": Style(color="green"),
++    "tree": Style(),
++    "tree.line": Style(),
+ }
+
+ MARKDOWN_STYLES = {
+$ cd /workspace/rich && python -c "
+$ import io
+$ from rich.console import Console
+$ from rich.tree import Tree
+$ 
+$ tree = Tree('Root', highlight=True)
+$ b = tree.add('Branch', guide_style='bold')
+$ b.add('Leaf 1')
+$ b.add('Leaf 2')
+$ console = Console(file=io.StringIO(), width=20, force_terminal=True, color_system='standard', legacy_windows=False)
+$ console.print(tree)
+$ out = console.file.getvalue()
+$ print(out)
+$ # thick guides because bold guide_style
+$ assert '┣' in out or '┃' in out, 'expected thick guides'
+$ print('OK thick guides present')
+$ "
+cd /workspace/rich && python -c "
+import io
+from rich.console import Console
+from rich.tree import Tree
+tree = Tree('Root', highlight=True)
+b = tree.add('Branch', guide_style='bold')
+b.add('Leaf 1')
+b.add('Leaf 2')
+console = Console(file=io.StringIO(), width=20, force_terminal=True, color_system='standard', legacy_windows=False)
+console.print(tree)
+out = console.file.getvalue()
+print(out)
+# thick guides because bold guide_style
+assert '┣' in out or '┃' in out, 'expected thick guides'
+print('OK thick guides present')
+"
+Root
+└── Branch
+    ┣━━ Leaf 1
+    ┗━━ Leaf 2
+
+OK thick guides present
+$ cd /workspace/rich && python -m pytest tests/test_style.py tests/test_console.py tests/test_table.py tests/test_text.py -q 2>&1 | tail -4
+........................................................................ [ 48%]
+........................................................................ [ 96%]
+......                                                                   [100%]
+150 passed in 0.17s
+$ cd /workspace/rich && python -c "
+$ from rich.console import Console
+$ from rich.tree import Tree
+$ 
+$ tree = Tree('foo')
+$ tree.add('bar', style='italic')
+$ baz_tree = tree.add('baz', guide_style='bold red', style='on blue')
+$ baz_tree.add('1')
+$ baz_tree.add('2')
+$ tree.add('egg')
+$ 
+$ console = Console(width=20, force_terminal=True, color_system='standard', legacy_windows=False)
+$ console.begin_capture()
+$ console.print(tree)
+$ result = console.end_capture()
+$ print(repr(result))
+$ "
+cd /workspace/rich && python -c "
+from rich.console import Console
+from rich.tree import Tree
+tree = Tree('foo')
+tree.add('bar', style='italic')
+baz_tree = tree.add('baz', guide_style='bold red', style='on blue')
+baz_tree.add('1')
+baz_tree.add('2')
+tree.add('egg')
+console = Console(width=20, force_terminal=True, color_system='standard', legacy_windows=False)
+console.begin_capture()
+console.print(tree)
+result = console.end_capture()
+print(repr(result))
+"
+'foo                 \n├── \x1b[3mbar\x1b[0m\x1b[3m             \x1b[0m\n\x1b[44m├── \x1b[0m\x1b[44mbaz\x1b[0m\x1b[44m             \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┣━━ \x1b[0m\x1b[44m1\x1b[0m\x1b[44m           \x1b[0m\n\x1b[44m│   \x1b[0m\x1b[1;31;44m┗━━ \x1b[0m\x1b[44m2\x1b[0m\x1b[44m           \x1b[0m\n└── egg             \n'
+$ cd /workspace/rich && python -m pytest tests/ -q 2>&1 | tail -3 && echo "--- tree import & demo sanity ---" && python -c "from rich.tree import Tree; print('import OK')"
+FAILED tests/test_syntax.py::test_python_render_indent_guides - assert '╭────...
+FAILED tests/test_syntax.py::test_option_no_wrap - AssertionError: assert '\x...
+11 failed, 418 passed, 1 warning in 3.56s
+--- tree import & demo sanity ---
+import OK
+# finish: Completed Tree feature, doc fixes, and dependency bumps
+I implemented the actionable items from the combined issue description.
+
+## What was changed
+
+### #873 — New `Tree` renderable (the headline feature)
+- **`rich/tree.py`** (new): A faithful port of Rich's `Tree` renderable:
+  - `Tree(label, *, style="tree", guide_style="tree.line", expanded=True, highlight=False)`
+  - `Tree.add(label, *, style=None, guide_style=None, expanded=True, highlight=False)` which inherits parent styles when not specified and returns the new child `Tree`.
+  - Iterative `__rich_console__` rendering with proper guide-line propagation, background-style fill across subtree lines, ASCII fallback for non-utf encodings, and thick/double guide variants driven by `bold`/`underline2` guide styles.
+  - `__rich_measure__` for correct width measurement.
+  - A `python -m rich.tree` demo.
+- **`rich/default_styles.py`**: Registered `"tree"` and `"tree.line"` default styles.
+- **Docs**: Added `docs/source/tree.rst` and `docs/source/reference/tree.rst`, wired into `index.rst` and `reference.rst`.
+- **`CHANGELOG.md`**: Added a `9.7.0` "Added rich.tree" entry.
+
+Verified output matches Rich's canonical tree rendering (structure, guide styling, `expanded=False` hiding children, measurement).
+
+### #896 — Progress advanced-usage example fix
+- **`docs/source/progress.rst`**: Added the missing `import time` that caused `NameError: name 'time' is not defined`.
+
+### #879 / #880 / #892 — Dependabot doc dependency bumps
+- **`docs/requirements.txt`**: `Sphinx` 3.4.1 → 3.4.3, `sphinx-rtd-theme` 0.5.0 → 0.5.1.
+
+### #885 — ipywidgets bump
+- No change required: `pyproject.toml` already constrains `ipywidgets = "^7.5.1"`, which already permits 7.6.3.
+
+### #882 — color_system vs force_terminal
+- Determined this is **by design**, not a code bug. The repository's existing tests encode the intended behavior (e.g. `tests/test_table.py` uses `force_terminal=True, color_system=None` and asserts plain output, while other tests use an explicit `color_system` against a `StringIO` and assert styled output to support output capturing). Both of the reporter's expectations contradict these established contracts. I prototyped the two proposed changes (gating styling on `is_terminal`, and making `color_system=None` still emit attributes) and each broke multiple existing tests, so I reverted them and left this behavior unchanged. `rich/style.py` and `rich/console.py` are therefore identical to the base commit.
+
+## Verification
+- New `Tree` renders correctly across widths, styles, and `expanded`/`highlight` options.
+- Targeted suites (`test_style`, `test_console`, `test_table`, `test_text`) pass (150 passed).
+- Full suite: 418 passed; the only 11 failures are pre-existing on the clean base commit (pygments/environment-related in `syntax`, `markdown`, `inspect`, `card`, `log`) and are unrelated to my changes.

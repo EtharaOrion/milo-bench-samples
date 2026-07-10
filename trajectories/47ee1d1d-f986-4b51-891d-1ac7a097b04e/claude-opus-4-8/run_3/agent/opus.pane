@@ -1,0 +1,200 @@
++  function applyStrategy(strategy: UnhandledRequestStrategy) {
++    switch (strategy) {
++      case 'error': {
++        // Print a developer-friendly error.
++        devUtils.error('Error: %s', message)
++
++        // Throw an exception to halt request processing and not perform the original request.
++        throw new Error(
++          devUtils.formatMessage(
++            'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
++          ),
++        )
++      }
+
+-    case 'warn': {
+-      devUtils.warn('Warning: %s', message)
+-      break
+-    }
++      case 'warn': {
++        devUtils.warn('Warning: %s', message)
++        break
++      }
+
+-    case 'bypass':
+-      break
++      case 'bypass':
++        break
++
++      default:
++        throw new Error(
++          devUtils.formatMessage(
++            'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
++            strategy,
++          ),
++        )
++    }
++  }
+
+-    default:
+-      throw new Error(
+-        devUtils.formatMessage(
+-          'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
+-          strategy,
+-        ),
+-      )
++  // Allow the custom "onUnhandledRequest" callback function
++  // to access the default unhandled request strategies.
++  // This way you can perform additional logic on the unhandled request
++  // while still falling back to the default strategy if necessary.
++  if (typeof strategy === 'function') {
++    strategy(request, {
++      warning: applyStrategy.bind(null, 'warn'),
++      error: applyStrategy.bind(null, 'error'),
++    })
++    return
+   }
++
++  applyStrategy(strategy)
+ }
+$ cd /workspace/msw && grep -n "onUnhandledRequest\|UnhandledRequest\|sharedOptions" src/index.ts
+29:export type { SharedOptions } from './sharedOptions'
+# file_editor: /workspace/msw/src/utils/request/onUnhandledRequest.ts
+Here's the result of running `cat -n` on /workspace/msw/src/utils/request/onUnhandledRequest.ts:
+   137	export function onUnhandledRequest(
+   138	  request: MockedRequest,
+   139	  handlers: RequestHandler[],
+   140	  strategy: UnhandledRequestStrategy = 'warn',
+   141	): void {
+   142	  /**
+   143	   * @note Ignore exceptions during GraphQL request parsing because at this point
+   144	   * we cannot assume the unhandled request is a valid GraphQL request.
+   145	   * If the GraphQL parsing fails, just don't treat it as a GraphQL request.
+   146	   */
+   147	  const parsedGraphQLQuery = tryCatch(() => parseGraphQLRequest(request))
+   148	  const handlerGroups = groupHandlersByType(handlers)
+   149	  const relevantHandlers = parsedGraphQLQuery
+   150	    ? handlerGroups.graphql
+   151	    : handlerGroups.rest
+   152	
+   153	  const suggestedHandlers = getSuggestedHandler(
+   154	    request,
+   155	    relevantHandlers,
+   156	    parsedGraphQLQuery
+   157	      ? getGraphQLHandlerScore(parsedGraphQLQuery)
+   158	      : getRestHandlerScore(),
+   159	  )
+   160	
+   161	  const handlerSuggestion =
+   162	    suggestedHandlers.length > 0
+   163	      ? getSuggestedHandlersMessage(suggestedHandlers)
+   164	      : ''
+   165	
+   166	  const publicUrl = getPublicUrlFromRequest(request)
+   167	  const requestHeader = parsedGraphQLQuery
+   168	    ? `${parsedGraphQLQuery.operationType} ${parsedGraphQLQuery.operationName} (${request.method} ${publicUrl})`
+   169	    : `${request.method} ${publicUrl}`
+   170	
+   171	  const messageTemplate = [
+   172	    `captured a request without a matching request handler:`,
+   173	    `  \u2022 ${requestHeader}`,
+   174	    handlerSuggestion,
+   175	    `\
+   176	If you still wish to intercept this unhandled request, please create a request handler for it.
+   177	Read more: https://mswjs.io/docs/getting-started/mocks\
+   178	`,
+   179	  ].filter(Boolean)
+   180	  const message = messageTemplate.join('\n\n')
+   181	
+   182	  function applyStrategy(strategy: UnhandledRequestStrategy) {
+   183	    switch (strategy) {
+   184	      case 'error': {
+   185	        // Print a developer-friendly error.
+   186	        devUtils.error('Error: %s', message)
+   187	
+   188	        // Throw an exception to halt request processing and not perform the original request.
+   189	        throw new Error(
+   190	          devUtils.formatMessage(
+   191	            'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
+   192	          ),
+   193	        )
+   194	      }
+   195	
+   196	      case 'warn': {
+   197	        devUtils.warn('Warning: %s', message)
+   198	        break
+   199	      }
+   200	
+   201	      case 'bypass':
+   202	        break
+   203	
+   204	      default:
+   205	        throw new Error(
+   206	          devUtils.formatMessage(
+   207	            'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
+   208	            strategy,
+   209	          ),
+   210	        )
+   211	    }
+   212	  }
+   213	
+   214	  // Allow the custom "onUnhandledRequest" callback function
+   215	  // to access the default unhandled request strategies.
+   216	  // This way you can perform additional logic on the unhandled request
+   217	  // while still falling back to the default strategy if necessary.
+   218	  if (typeof strategy === 'function') {
+   219	    strategy(request, {
+   220	      warning: applyStrategy.bind(null, 'warn'),
+   221	      error: applyStrategy.bind(null, 'error'),
+   222	    })
+   223	    return
+   224	  }
+   225	
+   226	  applyStrategy(strategy)
+   227	}
+$ cd /workspace/msw && grep -n "onUnhandledRequest" src/node/createSetupServer.ts src/setupWorker/start/utils/prepareStartHandler.ts
+src/node/createSetupServer.ts:21:  onUnhandledRequest: 'warn',
+src/setupWorker/start/utils/prepareStartHandler.ts:17:  onUnhandledRequest: 'warn',
+$ cd /workspace/msw && npx cross-env BABEL_ENV=test jest src/handlers src/utils/internal/parseGraphQLRequest 2>&1 | grep -E "Tests:|Test Suites:|FAIL"
+Test Suites: 3 passed, 3 total
+Tests:       40 passed, 40 total
+# task_tracker: Mark tasks complete
+Task list has been updated with 2 item(s).
+$ cd /workspace/msw && cat node_modules/typescript/package.json | grep '"version"' && grep '"typescript"' package.json
+"version": "4.3.5",
+    "typescript": "^4.3.5",
+$ cd /workspace/msw && cat node_modules/@types/node/package.json | grep '"version"' && grep -n "@types/node" yarn.lock | head
+"version": "14.14.31",
+1458:    "@types/node" "*"
+1474:    "@types/node" "*"
+1505:    "@types/node" "*"
+1515:    "@types/node" "*"
+1619:    "@types/node" "*"
+1841:    "@types/node" "*"
+1848:    "@types/node" "*"
+1903:    "@types/node" "*"
+1932:    "@types/node" "*"
+1940:    "@types/node" "*"
+$ cd /workspace/msw && GIT_PAGER=cat git --no-pager diff --stat -- src package.json
+package.json                            |  2 +-
+ src/handlers/GraphQLHandler.ts          | 10 +++++++++-
+ src/utils/request/onUnhandledRequest.ts | 81 ++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------
+ 3 files changed, 60 insertions(+), 33 deletions(-)
+# finish: Finalize with summary of implemented changes
+I implemented both features described in the issue.
+
+## Issue 1 (#1080): Run the default behaviour from inside the `onUnhandledRequest` callback
+File: `src/utils/request/onUnhandledRequest.ts`
+- Extended `UnhandledRequestCallback` to receive a second argument `print` of a new exported type `UnhandledRequestPrint` (`{ warning(): void; error(): void }`).
+- Refactored the `warn`/`error`/`bypass`/unknown-strategy `switch` into an internal `applyStrategy()` helper so the built‑in behaviour can be reused.
+- Custom callbacks are now called as `strategy(request, { warning, error })`. Calling `print.warning()` runs MSW's default warn behaviour and `print.error()` runs the default error behaviour (logs + throws). This hands control back to MSW (express‑style `next()`), so users can add custom logic (e.g. ignore specific URLs) while still falling back to the default strategy without re‑implementing it.
+
+## Issue 2 (#995): Support GraphQL v16
+- `package.json`: widened the dependency range to `"graphql": "^15.5.1 || ^16.0.0"` (installed v16 locally to validate).
+- `src/handlers/GraphQLHandler.ts`: In graphql v16 `OperationTypeNode` changed from a string-literal union into an enum, which broke passing plain strings like `'query'`. I broadened `ExpectedOperationTypeNode` to `OperationTypeNode | \`${OperationTypeNode}\` | 'all'`, so it accepts the new enum values (v16), still accepts plain string literals for backward compatibility (and graphql v15), and keeps both the public `graphql.query/mutation` API and direct `GraphQLHandler` construction working unchanged at runtime on both versions.
+
+## Verification
+- Source code type-checks cleanly (no errors originating from the modified files); the only `tsc` diagnostics are pre-existing environmental `lib.dom`/`lib.webworker` conflicts unrelated to these changes.
+- All GraphQL handler and parsing unit tests pass under graphql v16 (40/40), and the full `src` unit suite passes apart from the two tests that assert the *old* single-argument callback signature (`onUnhandledRequest.test.ts` and `handleRequest.test.ts`) — these correspond to the test changes described in the issue and are expected to be provided/updated separately; per instructions I did not modify any test files.
+
+No test files were edited, and the temporary reproduction script was removed after validation.

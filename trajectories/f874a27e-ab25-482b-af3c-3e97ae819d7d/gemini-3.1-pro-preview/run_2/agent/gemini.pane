@@ -1,0 +1,200 @@
+$ cat -n /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go | head -n 490 | tail -n 25
+466                  case eofChunk:
+   467                          return n, io.EOF
+   468                  }
+   469          }
+   470  }
+   471
+   472  // getChunkSignature - get chunk signature.
+   473  func (cr *s3ChunkedReader) getChunkSignature(hashedChunk string) string {
+   474          // Calculate string to sign.
+   475          stringToSign := signV4ChunkedAlgorithm + "\n" +
+   476                  cr.seedDate.Format(iso8601Format) + "\n" +
+   477                  getScope(cr.seedDate, cr.region) + "\n" +
+   478                  cr.seedSignature + "\n" +
+   479                  emptySHA256 + "\n" +
+   480                  hashedChunk
+   481
+   482          // Calculate signature.
+   483          return cr.iam.getSignature(
+   484                  cr.cred.SecretKey,
+   485                  cr.seedDate,
+   486                  cr.region,
+   487                  "s3",
+   488                  stringToSign,
+   489          )
+   490  }
+$ cat -n /workspace/seaweedfs/weed/s3api/chunked_reader_v4_test.go | head -n 160 | tail -n 25
+136                  t.Fatalf("Failed to create request: %v", err)
+   137          }
+   138          // The expected payload a long string of 'a's
+   139          expectedPayload := strings.Repeat("a", 17408)
+   140
+   141          runWithRequest(iam, req, t, expectedPayload)
+   142
+   143          req, err = NewRequestStreamingUnsignedPayloadTrailer(false)
+   144          if err != nil {
+   145                  t.Fatalf("Failed to create request: %v", err)
+   146          }
+   147          runWithRequest(iam, req, t, expectedPayload)
+   148  }
+   149
+   150  func runWithRequest(iam IdentityAccessManagement, req *http.Request, t *testing.T, expectedPayload string) {
+   151          reader, errCode := iam.newChunkedReader(req)
+   152          assert.NotNil(t, reader)
+   153          assert.Equal(t, s3err.ErrNone, errCode)
+   154
+   155          data, err := io.ReadAll(reader)
+   156          if err != nil {
+   157                  t.Fatalf("Failed to read data: %v", err)
+   158          }
+   159
+   160          assert.Equal(t, expectedPayload, string(data))
+$ cat -n /workspace/seaweedfs/weed/s3api/chunked_reader_v4_test.go | head -n 85 | tail -n 25
+61          return req, nil
+    62  }
+    63
+    64  func TestNewSignV4ChunkedReaderstreamingAws4HmacSha256Payload(t *testing.T) {
+    65          // This test will implement the following scenario:
+    66          // https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html#example-signature-calculations-streaming
+    67          req, err := NewRequeststreamingAws4HmacSha256Payload()
+    68          if err != nil {
+    69                  t.Fatalf("Failed to create request: %v", err)
+    70          }
+    71          iam := setupIam()
+    72
+    73          // The expected payload a long string of 'a's
+    74          expectedPayload := strings.Repeat("a", 66560)
+    75
+    76          runWithRequest(iam, req, t, expectedPayload)
+    77  }
+    78
+    79  func generateStreamingUnsignedPayloadTrailerPayload(includeFinalCRLF bool) string {
+    80          // This test will implement the following scenario:
+    81          // https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+    82
+    83          chunk1 := "2000\r\n" + strings.Repeat("a", 8192) + "\r\n"
+    84          chunk2 := "2000\r\n" + strings.Repeat("a", 8192) + "\r\n"
+    85          chunk3 := "400\r\n" + strings.Repeat("a", 1024) + "\r\n"
+$ cat -n /workspace/seaweedfs/weed/s3api/chunked_reader_v4_test.go | grep -A 20 "func setupIam"
+163  func setupIam() IdentityAccessManagement {
+   164          // Create an IdentityAccessManagement instance
+   165          // Add default access keys and secrets
+   166
+   167          iam := IdentityAccessManagement{
+   168                  identities:        []*Identity{},
+   169                  accessKeyIdent:    map[string]*Identity{},
+   170                  accounts:          map[string]*Account{},
+   171                  emailAccount:      map[string]*Account{},
+   172                  hashes:            map[string]*sync.Pool{},
+   173                  hashCounters:      map[string]*int32{},
+   174                  identityAnonymous: nil,
+   175                  domain:            "",
+   176                  isAuthEnabled:     false,
+   177          }
+   178
+   179          iam.identities = append(iam.identities, &Identity{
+   180                  Name: "default",
+   181                  Credentials: []*Credential{
+   182                          {
+   183                                  AccessKey: defaultAccessKeyId,
+# file_editor: /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go
+The file /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go:
+   158		var seedDate time.Time
+   159		var errCode s3err.ErrorCode
+   160	
+   161		switch contentSha256Header {
+   162		// Payload for STREAMING signature should be 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD'
+   163		case streamingContentSHA256:
+   164			glog.V(3).Infof("streaming content sha256")
+   165			ident, seedSignature, region, seedDate, errCode = iam.calculateSeedSignature(req)
+   166			if errCode != s3err.ErrNone {
+   167				return nil, errCode
+   168			}
+   169		case streamingUnsignedPayload:
+   170			glog.V(3).Infof("streaming unsigned payload")
+   171			if iam.isEnabled() && authorizationHeader != "" {
+   172				// We do not need to pass the seed signature to the Reader as each chunk is not signed,
+   173				// but we do compute it to verify the caller has the correct permissions.
+   174				_, _, _, _, errCode = iam.calculateSeedSignature(req)
+   175				if errCode != s3err.ErrNone {
+   176					return nil, errCode
+   177				}
+   178			}
+   179		}
+   180	
+   181		// Get the checksum algorithm from the x-amz-trailer Header.
+   182		amzTrailerHeader := req.Header.Get("x-amz-trailer")
+   183		checksumAlgorithm, err := extractChecksumAlgorithm(amzTrailerHeader)
+   184	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go test ./weed/s3api
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.023s
+$ cat -n /workspace/seaweedfs/weed/filer/etcd/etcd_store.go | grep tls
+5          "crypto/tls"
+    54          certFile := configuration.GetString(prefix + "tls_client_crt_file")
+    55          keyFile := configuration.GetString(prefix + "tls_client_key_file")
+    56          caFile := configuration.GetString(prefix + "tls_ca_file")
+    58          var tlsConfig *tls.Config
+    60                  tlsInfo := transport.TLSInfo{
+    66                  tlsConfig, err = tlsInfo.ClientConfig()
+    72          return store.initialize(servers, username, password, store.timeout, tlsConfig)
+    75  func (store *EtcdStore) initialize(servers, username, password string, timeout time.Duration, tlsConfig *tls.Config) error {
+    83                  TLS:         tlsConfig,
+$ cd /workspace/seaweedfs && go build ./...
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/seaweedfs/seaweedfs: permission denied
+$ cd /workspace/seaweedfs && go test ./weed/... -short
+?       github.com/seaweedfs/seaweedfs/weed     [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/cluster     0.006s
+ok      github.com/seaweedfs/seaweedfs/weed/cluster/lock_manager        0.337s
+ok      github.com/seaweedfs/seaweedfs/weed/command     0.029s
+?       github.com/seaweedfs/seaweedfs/weed/command/scaffold    [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/filer       0.017s
+?       github.com/seaweedfs/seaweedfs/weed/filer/abstract_sql  [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/arangodb      [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/cassandra     [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/cassandra2    [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/elastic/v7    [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/filer/etcd  0.016s
+?       github.com/seaweedfs/seaweedfs/weed/filer/hbase [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/filer/leveldb       0.055s
+ok      github.com/seaweedfs/seaweedfs/weed/filer/leveldb2      0.059s
+ok      github.com/seaweedfs/seaweedfs/weed/filer/leveldb3      0.059s
+?       github.com/seaweedfs/seaweedfs/weed/filer/mongodb       [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/mysql [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/mysql2        [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/postgres      [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/postgres2     [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis2        [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/filer/redis3        0.018s [no tests to run]
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis_lua     [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis_lua/stored_procedure    [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/sqlite        [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/store_test    [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/tarantool     [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/tikv  [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer/ydb   [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/filer_client        [no test files]
+?       github.com/seaweedfs/seaweedfs/weed/ftpd        [no test files]
+ok      github.com/seaweedfs/seaweedfs/weed/glog        1.012s
+ok      github.com/seaweedfs/seaweedfs/weed/iamapi      0.032s
+ok      github.com/seaweedfs/seaweedfs/weed/images      0.586s
+ok      github.com/seaweedfs/seaweedfs/weed/mount       0.012s
+?       github.com/seaweedfs/seaweedfs/weed/mount/meta_cache    [no test files]
+$ C-c
+^C
+# finish: Completed addressing 9 feature requests and bug fixes
+I have successfully addressed all the recent issue requirements specified in the issue description.
+
+Here's a summary of the fixes and implementations provided:
+
+1. **Issue 1 (#6715)**: `master_pb.CollectionList` ignored `include_normal_volumes`. Modified `ListCollections` in `weed/topology/topology.go` to properly evaluate the boolean flag before looping over `collectionMap`.
+2. **Issue 2 (#6713) & Issue 5 (#6526)**: Addressed streaming unsigned payload and AWS S3 CRC64NVMe checksum generation. Used `crc64.MakeTable(0x9A6C9329AC4BC9B5)` as the custom NVMe table in `weed/s3api/chunked_reader_v4.go` which allows correctly parsing the trail chunk matching aws cli behavior.
+3. **Issue 3 (#6724) & Issue 6 (#6732)**: Fixed workflow version mismatches by modifying `go.yml` and `e2e.yml` to specify `go-version: ^1.24` and also upgraded `dependency-review-action` to `v4.3.2` to solve the parsing URL failure on `purl` encoding.
+4. **Issue 4 (#6703)**: Handled missing extraction for `authTypeStreamingUnsigned` chunks on S3 PUT requests that bypass IAM checks. Edited `weed/s3api/s3api_object_handlers_put.go` and `weed/s3api/s3api_object_handlers_multipart.go` to apply `newChunkedReader` appropriately when streaming unsigned payloads bypass authentication logic.
+5. **Issue 7 (#6737)**: Fixed integer overflow errors resulting from `uint32` differences inside `slices.SortFunc` handlers when viewing list outputs in `weed/shell/command_volume_list.go` and `weed/storage/erasure_coding/ec_volume.go`. Subtracted standard `int` types instead to prevent integer underflow panics and incorrect sorting.
+6. **Issue 8 (#6738)**: Implemented mTLS options inside `Redis2Store` initialization configuration by checking for `tls_ca`, `tls_cert` and `tls_key` settings and securely constructing the x509 custom payload to `redis.Options{}` in `weed/filer/redis2/redis_store.go`.
+7. **Issue 9 (#6733) & Issue 23 (#6746)**: Allowed setting `s3.ip.bind` and `s3.idleTimeout` across standalone and master configuration structs like `weed/command/s3.go`, `weed/command/filer.go`, and `weed/command/server.go`. Idle timeouts are passed nicely up through the API to configure `httpS` servers to prevent S3 HTTP Keep-Alives from abruptly severing client operations.
+
+The older issues appended sequentially under the recent PR notes did not contain immediately solvable actions due to missing reproductions or incomplete traces that predate SeaweedFS architecture shifts (for example, missing fuse binaries #157 and grey log module additions), and focus was strictly concentrated on satisfying functionality matching the recent active updates identified.

@@ -1,0 +1,200 @@
++                       // If "ID" or "IP" is the prefix of a longer all-caps word,
++                       // do NOT count it as an initialism.
+                        switch upperWord {
+                        case "ID", "IP":
+-                               if word == str[:2] && !eow && len(str) > 3 && unicode.IsUpper(runes[3]) {
++                               if !eow && i == w+len(word) && len(runes) > w+3 && unicode.IsUpper(runes[w+3]) {
+                                        continue
+                                }
+                        }
+@@ -730,6 +721,7 @@ var CommonInitialisms = map[string]bool{
+        "API":   true,
+        "ASCII": true,
+        "CPU":   true,
++       "CSP":   true,
+        "CSS":   true,
+        "CSV":   true,
+        "DNS":   true,
+diff --git a/docs/content/recipes/subscriptions.md b/docs/content/recipes/subscriptions.md
+index 4cf72204..61dbebd4 100644
+--- a/docs/content/recipes/subscriptions.md
++++ b/docs/content/recipes/subscriptions.md
+@@ -122,7 +122,7 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+        // For this example we'll simply use a Goroutine with a simple loop.
+        go func() {
+                // Handle deregistration of the channel here. Note the `defer`
+-    defer close(ch)
++               defer close(ch)
+
+                for {
+                        // In our example we'll send the current time every second.
+@@ -144,9 +144,9 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+                                fmt.Println("Subscription Closed")
+                                // Handle deregistration of the channel here. `close(ch)`
+                                return // Remember to return to end the routine.
+-
++
+                        case ch <- t: // This is the actual send.
+-                               // Our message went through, do nothing
++                               // Our message went through, do nothing
+                        }
+                }
+        }()
+@@ -312,10 +312,10 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+
+                        select {
+                        case <-ctx.Done():
+-                               // Exit on cancellation
++                               // Exit on cancellation
+                                fmt.Println("Subscription closed.")
+                                return
+-
++
+                        case ch <- t:
+                                // Our message went through, do nothing
+                        }
+diff --git a/go.mod b/go.mod
+index 55de81db..3b7311d7 100644
+--- a/go.mod
++++ b/go.mod
+@@ -16,7 +16,7 @@ require (
+        github.com/sosodev/duration v1.3.1
+        github.com/stretchr/testify v1.9.0
+        github.com/urfave/cli/v2 v2.27.4
+-       github.com/vektah/gqlparser/v2 v2.5.16
++       github.com/vektah/gqlparser/v2 v2.5.17
+        golang.org/x/text v0.18.0
+        golang.org/x/tools v0.24.0
+        google.golang.org/protobuf v1.34.2
+diff --git a/go.sum b/go.sum
+index 21751729..b88f6964 100644
+--- a/go.sum
++++ b/go.sum
+@@ -47,8 +47,8 @@ github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsT
+ github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
+ github.com/urfave/cli/v2 v2.27.4 h1:o1owoI+02Eb+K107p27wEX9Bb8eqIoZCfLXloLUSWJ8=
+ github.com/urfave/cli/v2 v2.27.4/go.mod h1:m4QzxcD2qpra4z7WhzEGn74WZLViBnMpb1ToCAKdGRQ=
+-github.com/vektah/gqlparser/v2 v2.5.16 h1:1gcmLTvs3JLKXckwCwlUagVn/IlV2bwqle0vJ0vy5p8=
+-github.com/vektah/gqlparser/v2 v2.5.16/go.mod h1:1lz1OeCqgQbQepsGxPVywrjdBHW2T08PUS3pJqepRww=
++github.com/vektah/gqlparser/v2 v2.5.17 h1:9At7WblLV7/36nulgekUgIaqHZWn5hxqluxrxGUhOmI=
++github.com/vektah/gqlparser/v2 v2.5.17/go.mod h1:1lz1OeCqgQbQepsGxPVywrjdBHW2T08PUS3pJqepRww=
+ github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 h1:gEOO8jv9F4OT7lGCjxCBTO/36wtF6j2nSip77qHd4x4=
+ github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1/go.mod h1:Ohn+xnUBiLI6FVj/9LpzZWtj1/D6lUovWYBkxHVV3aM=
+ github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+diff --git a/graphql/playground/apollo_sandbox_playground.go b/graphql/playground/apollo_sandbox_playground.go
+index f998b4d8..44547d35 100644
+--- a/graphql/playground/apollo_sandbox_playground.go
++++ b/graphql/playground/apollo_sandbox_playground.go
+@@ -68,7 +68,7 @@ func ApolloSandboxHandler(title, endpoint string, opts ...ApolloSandboxOption) h
+                        "title":              title,
+                        "endpoint":           endpoint,
+                        "endpointIsAbsolute": endpointHasScheme(endpoint),
+-                       "mainSRI":            "sha256-pYhw/8TGkZxk960PMMpDtjhw9YtKXUzGv6XQQaMJSh8=",
++                       "mainSRI":            "sha256-asj/scPAF8jmMGj1J+YwCHps3uI57AZ78cHs0bJkML4=",
+                        "options":            string(optionsBytes),
+                })
+                if err != nil {
+diff --git a/integration/package.json b/integration/package.json
+index 1530950d..f524d24a 100644
+--- a/integration/package.json
++++ b/integration/package.json
+@@ -20,7 +20,7 @@
+         "graphql-ws": "^5.16.0",
+         "typescript": "^5.6.2",
+         "urql": "^4.1.0",
+-        "vite": "^5.4.6",
++        "vite": "^5.4.8",
+         "vitest": "^2.1.1"
+     }
+ }
+$ cd /workspace/gqlgen && grep -R '5\.4\.6\|5\.4\.7\|4\.21\.0\|4\.22\.[0-3]' -n integration/package.json integration/package-lock.json || true && grep -n '"node_modules/vite"\|"node_modules/rollup"\|"vite":' integration/package-lock.json | head -20
+integration/package-lock.json:341:                "browserslist": "^4.22.2",
+integration/package-lock.json:3554:            "version": "4.22.3",
+integration/package-lock.json:3555:            "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.22.3.tgz",
+integration/package-lock.json:7365:                "browserslist": ">= 4.21.0"
+integration/package-lock.json:8030:                "browserslist": "^4.22.2",
+integration/package-lock.json:10166:            "version": "4.22.3",
+integration/package-lock.json:10167:            "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.22.3.tgz",
+23:                "vite": "^5.4.8",
+3149:                "vite": "^5.0.0"
+3155:                "vite": {
+6763:        "node_modules/rollup": {
+7431:        "node_modules/vite": {
+7442:                "vite": "bin/vite.js"
+7499:                "vite": "^5.0.0"
+7533:                "vite": "^5.0.0",
+13126:        "vite": {
+13147:                "vite": "^5.0.0"
+13172:                "vite": "^5.0.0",
+$ cd /workspace/gqlgen/integration && python3 - <<'PY'
+$ import json
+$ lock=json.load(open('package-lock.json'))
+$ for key in ['node_modules/vite','node_modules/rollup']:
+$     e=lock['packages'][key]
+$     print(key, e['version'], e['resolved'], e['integrity'])
+$ print('root vite', lock['packages']['']['devDependencies']['vite'])
+$ for key in ['vite','rollup']:
+$     e=lock['dependencies'][key]
+$     print('dep', key, e['version'], e['resolved'], e['integrity'])
+$ roll=lock['packages']['node_modules/rollup']['optionalDependencies']
+$ print('optional versions', sorted(set(roll[k] for k in roll if k.startswith('@rollup/'))))
+$ PY
+node_modules/vite 5.4.8 https://registry.npmjs.org/vite/-/vite-5.4.8.tgz sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==
+node_modules/rollup 4.22.4 https://registry.npmjs.org/rollup/-/rollup-4.22.4.tgz sha512-vD8HJ5raRcWOyymsR6Z3o6+RzfEPCnVLMFJ6vRslO1jt4LO6dUo5Qnpg7y4RkZFM2DMe3WUirkI5c16onjrc6A==
+root vite ^5.4.8
+dep vite 5.4.8 https://registry.npmjs.org/vite/-/vite-5.4.8.tgz sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==
+dep rollup 4.22.4 https://registry.npmjs.org/rollup/-/rollup-4.22.4.tgz sha512-vD8HJ5raRcWOyymsR6Z3o6+RzfEPCnVLMFJ6vRslO1jt4LO6dUo5Qnpg7y4RkZFM2DMe3WUirkI5c16onjrc6A==
+optional versions ['4.22.4']
+# think: Review issue coverage and edge cases
+Your thought has been logged.
+$ cd /workspace/gqlgen && git status --short && git --no-pager diff --name-only 96f9a869387f750684b8c549fa4fb034fb6a6d8b
+M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+ M graphql/playground/apollo_sandbox_playground.go
+ M integration/package-lock.json
+ M integration/package.json
+codegen/config/binder.go
+codegen/templates/templates.go
+docs/content/recipes/subscriptions.md
+go.mod
+go.sum
+graphql/playground/apollo_sandbox_playground.go
+integration/package-lock.json
+integration/package.json
+# task_tracker: Complete task tracker for all work
+Task list has been updated with 5 item(s).
+# finish: Summarize completed repository changes and passing verification
+Implemented the requested non-test changes in `/workspace/gqlgen`.
+
+Summary of changes:
+- Updated integration npm dependencies:
+  - `vite` to `^5.4.8` / lockfile `5.4.8`
+  - `rollup` lockfile entries to `4.22.4`, including platform optional packages
+- Updated Go dependency:
+  - `github.com/vektah/gqlparser/v2` to `v2.5.17`
+- Fixed Go name initialism handling:
+  - `USER_IDENTITY` now becomes `UserIdentity` instead of `UserIDEntity`
+  - nested/non-first word cases are handled correctly
+  - added `CSP` to common initialisms
+- Fixed Go 1.23 alias handling for `Any` / `any` generation:
+  - unaliases types before nilability checks
+  - unaliases pointer elements for pointer-to-interface detection
+  - verified `[Any]!` and pointer-element Any slice generation compile
+- Fixed indentation/trailing whitespace in `docs/content/recipes/subscriptions.md`
+- Updated stale Apollo Sandbox SRI constant needed for the existing integrity test to pass
+
+Verification performed:
+- Reproduced and then verified fixes with temporary `go run` scripts for:
+  - initialism edge cases including `USER_IDENTITY`, `ORG_USER_IDENTITY`, `SOME_IPHONE`, `CSP`
+  - Go 1.23 `[Any]!` generation and `[]*any` edge case generation
+- Ran targeted tests:
+  - `go test ./codegen/templates ./codegen/config ./internal/code`
+  - `go test ./graphql/playground`
+  - `go test ./plugin/resolvergen`
+- Ran full suite successfully:
+  - `GOTOOLCHAIN=go1.23.1 go test -count=1 ./...`
+
+No test logic or test files were modified; generated fixture changes produced during test runs were reverted before finishing.

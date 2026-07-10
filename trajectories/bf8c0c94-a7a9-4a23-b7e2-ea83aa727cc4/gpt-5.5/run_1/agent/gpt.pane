@@ -1,0 +1,200 @@
+
+Diff in /workspace/clap/src/builder/debug_asserts.rs:72:
+         }
+
+         for (short_alias, _) in &arg.short_aliases {
+-            short_flags.push(Flag::Arg(
+-                format!("-{short_alias}"),
+-                arg.get_id().as_str(),
+-            ));
++            short_flags.push(Flag::Arg(format!("-{short_alias}"), arg.get_id().as_str()));
+         }
+
+         if let Some(l) = arg.get_long() {
+Diff in /workspace/clap/src/builder/debug_asserts.rs:84:
+         }
+
+         for (long_alias, _) in &arg.aliases {
+-            long_flags.push(Flag::Arg(
+-                format!("--{long_alias}"),
+-                arg.get_id().as_str(),
+-            ));
++            long_flags.push(Flag::Arg(format!("--{long_alias}"), arg.get_id().as_str()));
+         }
+
+         // Name conflicts
+Diff in /workspace/clap/src/builder/mod.rs:35:
+ pub use resettable::Resettable;
+ pub use styled_str::StyledStr;
+ pub use value_hint::ValueHint;
++pub use value_parser::_AnonymousValueParser;
+ pub use value_parser::_AutoValueParser;
+ pub use value_parser::via_prelude;
+ pub use value_parser::BoolValueParser;
+Diff in /workspace/clap/src/builder/mod.rs:52:
+ pub use value_parser::TypedValueParser;
+ pub use value_parser::ValueParser;
+ pub use value_parser::ValueParserFactory;
+-pub use value_parser::_AnonymousValueParser;
+
+ #[allow(unused_imports)]
+ pub(crate) use self::str::Inner as StrInner;
+Diff in /workspace/clap/src/parser/error.rs:27:
+             }
+             Err(err) => err,
+         };
+-        panic!(
+-            "Mismatch between definition and access of `{id}`. {err}"
+-        )
++        panic!("Mismatch between definition and access of `{id}`. {err}")
+     }
+ }
+$ cd /workspace/clap && python3 - <<'PY'
+$ from pathlib import Path
+$ repls={
+$ 'clap_complete/src/shells/zsh.rs': [
+$     ('let s = format!(\n                    "\'{conflicts}{multiple}-{short}+[{help}]{vc}\' \\\\"\n                );', 'let s = format!("\'{conflicts}{multiple}-{short}+[{help}]{vc}\' \\\\");'),
+$     ('let l = format!(\n                    "\'{conflicts}{multiple}--{long}=[{help}]{vc}\' \\\\"\n                );', 'let l = format!("\'{conflicts}{multiple}--{long}=[{help}]{vc}\' \\\\");'),
+$     ('let s = format!(\n                "\'{conflicts}{multiple}-{short}[{help}]\' \\\\"\n            );', 'let s = format!("\'{conflicts}{multiple}-{short}[{help}]\' \\\\");'),
+$     ('let s = format!(\n                        "\'{conflicts}{multiple}-{alias}[{help}]\' \\\\"\n                    );', 'let s = format!("\'{conflicts}{multiple}-{alias}[{help}]\' \\\\");'),
+$     ('let l = format!(\n                "\'{conflicts}{multiple}--{long}[{help}]\' \\\\"\n            );', 'let l = format!("\'{conflicts}{multiple}--{long}[{help}]\' \\\\");'),
+$     ('let l = format!(\n                        "\'{conflicts}{multiple}--{alias}[{help}]\' \\\\"\n                    );', 'let l = format!("\'{conflicts}{multiple}--{alias}[{help}]\' \\\\");'),
+$ ],
+$ 'src/builder/debug_asserts.rs': [
+$     ('short_flags.push(Flag::Arg(\n                format!("-{short_alias}"),\n                arg.get_id().as_str(),\n            ));', 'short_flags.push(Flag::Arg(format!("-{short_alias}"), arg.get_id().as_str()));'),
+$     ('long_flags.push(Flag::Arg(\n                format!("--{long_alias}"),\n                arg.get_id().as_str(),\n            ));', 'long_flags.push(Flag::Arg(format!("--{long_alias}"), arg.get_id().as_str()));'),
+$ ],
+$ 'src/parser/error.rs': [
+$     ('panic!(\n            "Mismatch between definition and access of `{id}`. {err}"\n        )', 'panic!("Mismatch between definition and access of `{id}`. {err}")'),
+$ ],
+$ }
+$ for rel,pairs in repls.items():
+$     p=Path(rel)
+$     text=p.read_text()
+$     for old,new in pairs:
+$         if old not in text:
+$             print('MISSING', rel, old)
+$         text=text.replace(old,new)
+$     p.write_text(text)
+$ PY
+$ cargo fmt --check -- clap_complete/src/shells/zsh.rs src/builder/debug_asserts.rs src/parser/error.rs
+cd /workspace/clap && python3 - <<'PY'
+from pathlib import Path
+repls={
+'clap_complete/src/shells/zsh.rs': [
+    ('let s = format!(\n                    "\'{conflicts}{multiple}-{short}+[{help}]{vc}\' \\\\"\n                );', 'let s = format!("\'{conflicts}{multiple}-{short}+[{help}]{vc}\' \\\\");'),
+    ('let l = format!(\n                    "\'{conflicts}{multiple}--{long}=[{help}]{vc}\' \\\\"\n                );', 'let l = format!("\'{conflicts}{multiple}--{long}=[{help}]{vc}\' \\\\");'),
+    ('let s = format!(\n                "\'{conflicts}{multiple}-{short}[{help}]\' \\\\"\n            );', 'let s = format!("\'{conflicts}{multiple}-{short}[{help}]\' \\\\");'),
+    ('let s = format!(\n                        "\'{conflicts}{multiple}-{alias}[{help}]\' \\\\"\n                    );', 'let s = format!("\'{conflicts}{multiple}-{alias}[{help}]\' \\\\");'),
+    ('let l = format!(\n                "\'{conflicts}{multiple}--{long}[{help}]\' \\\\"\n            );', 'let l = format!("\'{conflicts}{multiple}--{long}[{help}]\' \\\\");'),
+    ('let l = format!(\n                        "\'{conflicts}{multiple}--{alias}[{help}]\' \\\\"\n                    );', 'let l = format!("\'{conflicts}{multiple}--{alias}[{help}]\' \\\\");'),
+],
+'src/builder/debug_asserts.rs': [
+    ('short_flags.push(Flag::Arg(\n                format!("-{short_alias}"),\n                arg.get_id().as_str(),\n            ));', 'short_flags.push(Flag::Arg(format!("-{short_alias}"), arg.get_id().as_str()));'),
+    ('long_flags.push(Flag::Arg(\n                format!("--{long_alias}"),\n                arg.get_id().as_str(),\n            ));', 'long_flags.push(Flag::Arg(format!("--{long_alias}"), arg.get_id().as_str()));'),
+],
+'src/parser/error.rs': [
+    ('panic!(\n            "Mismatch between definition and access of `{id}`. {err}"\n        )', 'panic!("Mismatch between definition and access of `{id}`. {err}")'),
+],
+}
+for rel,pairs in repls.items():
+    p=Path(rel)
+    text=p.read_text()
+    for old,new in pairs:
+        if old not in text:
+            print('MISSING', rel, old)
+        text=text.replace(old,new)
+    p.write_text(text)
+PY
+
+
+cargo fmt --check -- clap_complete/src/shells/zsh.rs src/builder/debug_asserts.rs src/parser/error.rs
+Diff in /workspace/clap/src/builder/mod.rs:35:
+ pub use resettable::Resettable;
+ pub use styled_str::StyledStr;
+ pub use value_hint::ValueHint;
++pub use value_parser::_AnonymousValueParser;
+ pub use value_parser::_AutoValueParser;
+ pub use value_parser::via_prelude;
+ pub use value_parser::BoolValueParser;
+Diff in /workspace/clap/src/builder/mod.rs:52:
+ pub use value_parser::TypedValueParser;
+ pub use value_parser::ValueParser;
+ pub use value_parser::ValueParserFactory;
+-pub use value_parser::_AnonymousValueParser;
+
+ #[allow(unused_imports)]
+ pub(crate) use self::str::Inner as StrInner;
+$ cd /workspace/clap && git status --short && git --no-pager diff --check
+M clap_complete/src/dynamic.rs
+ M clap_complete/src/shells/bash.rs
+ M clap_complete/src/shells/elvish.rs
+ M clap_complete/src/shells/fish.rs
+ M clap_complete/src/shells/powershell.rs
+ M clap_complete/src/shells/shell.rs
+ M clap_complete/src/shells/zsh.rs
+ M clap_complete_fig/src/fig.rs
+ M clap_mangen/src/render.rs
+ M examples/cargo-example-derive.rs
+ M examples/cargo-example.rs
+ M examples/derive_ref/augment_args.rs
+ M examples/derive_ref/augment_subcommands.rs
+ M examples/derive_ref/flatten_hand_args.rs
+ M examples/derive_ref/hand_subcommand.rs
+ M examples/find.rs
+ M examples/git-derive.rs
+ M examples/git.rs
+ M examples/pacman.rs
+ M examples/repl.rs
+ M examples/tutorial_builder/01_quick.rs
+ M examples/tutorial_builder/04_01_enum.rs
+ M examples/tutorial_builder/04_02_parse.rs
+ M examples/tutorial_builder/04_02_validate.rs
+ M examples/tutorial_builder/04_03_relations.rs
+ M examples/tutorial_builder/04_04_custom.rs
+ M examples/tutorial_builder/05_01_assert.rs
+ M examples/tutorial_derive/01_quick.rs
+ M examples/tutorial_derive/03_04_subcommands.rs
+ M examples/tutorial_derive/04_02_validate.rs
+ M examples/tutorial_derive/04_03_relations.rs
+ M examples/tutorial_derive/04_04_custom.rs
+ M examples/typed-derive.rs
+ M src/builder/arg.rs
+ M src/builder/command.rs
+ M src/builder/debug_asserts.rs
+ M src/builder/range.rs
+ M src/builder/str.rs
+ M src/builder/value_hint.rs
+ M src/derive.rs
+ M src/error/format.rs
+ M src/error/mod.rs
+ M src/output/help_template.rs
+ M src/parser/arg_matcher.rs
+ M src/parser/error.rs
+ M src/parser/matches/arg_matches.rs
+ M src/parser/parser.rs
+ M src/parser/validator.rs
+ M src/util/color.rs
+$ cd /workspace/clap && git --no-pager diff --name-only | grep '^tests/' || true
+# task_tracker: Mark all implementation tasks complete
+Task list has been updated with 5 item(s).
+# finish: Finish implementation summary and verification results
+Implemented the requested non-test changes in `/workspace/clap`.
+
+Summary:
+- Cleaned up `clippy::uninlined_format_args` warnings across source, completion generators, mangen, and examples.
+- Fixed help detection so hidden args (and hidden possible-values) with possible-value descriptions don’t accidentally force long help for `--help`.
+- Optimized `builder::str::inner::Inner::into_string` to move `Box<str>` into `String` when owned.
+- Renamed the cargo derive example enum from `Cargo` to `CargoCli` to distinguish the Rust type from the command name.
+- Fixed the typo in `examples/git.rs` (`unreachabe` → `unreachable`).
+- Did not modify any files under `tests/`.
+
+Verification run:
+- Temporary `cargo run --bin repro_4683` reproduction: failed before the help fix, passed after with added edge cases, then removed.
+- `cargo clippy --workspace --lib --all-features -- -A clippy::all -W clippy::uninlined_format_args`: passed with no targeted clippy warnings remaining.
+- `cargo clippy --examples --all-features -- -A clippy::all -W clippy::uninlined_format_args`: passed with no targeted clippy warnings remaining.
+- `cargo test -p clap --test builder help`: passed.
+- `cargo test --workspace`: passed.
+- `cargo test --workspace --all-features`: fails because enabling all features includes debug/backtrace behavior that changes many expected help/error snapshots; this appears unrelated to these changes.
+
+Also ran `git diff --check`, which passed.

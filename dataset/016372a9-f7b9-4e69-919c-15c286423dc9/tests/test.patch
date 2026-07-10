@@ -1,0 +1,1935 @@
+diff --git a/clause/benchmarks_test.go b/clause/benchmarks_test.go
+index 88a238e368..e08677ac0c 100644
+--- a/clause/benchmarks_test.go
++++ b/clause/benchmarks_test.go
+@@ -32,7 +32,8 @@ func BenchmarkComplexSelect(b *testing.B) {
+ 	for i := 0; i < b.N; i++ {
+ 		stmt := gorm.Statement{DB: db, Table: user.Table, Schema: user, Clauses: map[string]clause.Clause{}}
+ 		clauses := []clause.Interface{
+-			clause.Select{}, clause.From{},
++			clause.Select{},
++			clause.From{},
+ 			clause.Where{Exprs: []clause.Expression{
+ 				clause.Eq{Column: clause.PrimaryColumn, Value: "1"},
+ 				clause.Gt{Column: "age", Value: 18},
+diff --git a/clause/group_by_test.go b/clause/group_by_test.go
+index 589f96130f..7c282cb96e 100644
+--- a/clause/group_by_test.go
++++ b/clause/group_by_test.go
+@@ -18,7 +18,8 @@ func TestGroupBy(t *testing.T) {
+ 				Columns: []clause.Column{{Name: "role"}},
+ 				Having:  []clause.Expression{clause.Eq{"role", "admin"}},
+ 			}},
+-			"SELECT * FROM `users` GROUP BY `role` HAVING `role` = ?", []interface{}{"admin"},
++			"SELECT * FROM `users` GROUP BY `role` HAVING `role` = ?",
++			[]interface{}{"admin"},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.GroupBy{
+@@ -28,7 +29,8 @@ func TestGroupBy(t *testing.T) {
+ 				Columns: []clause.Column{{Name: "gender"}},
+ 				Having:  []clause.Expression{clause.Neq{"gender", "U"}},
+ 			}},
+-			"SELECT * FROM `users` GROUP BY `role`,`gender` HAVING `role` = ? AND `gender` <> ?", []interface{}{"admin", "U"},
++			"SELECT * FROM `users` GROUP BY `role`,`gender` HAVING `role` = ? AND `gender` <> ?",
++			[]interface{}{"admin", "U"},
+ 		},
+ 	}
+ 
+diff --git a/clause/order_by_test.go b/clause/order_by_test.go
+index 8fd1e2a866..d8b5dfbf6d 100644
+--- a/clause/order_by_test.go
++++ b/clause/order_by_test.go
+@@ -45,7 +45,8 @@ func TestOrderBy(t *testing.T) {
+ 					Expression: clause.Expr{SQL: "FIELD(id, ?)", Vars: []interface{}{[]int{1, 2, 3}}, WithoutParentheses: true},
+ 				},
+ 			},
+-			"SELECT * FROM `users` ORDER BY FIELD(id, ?,?,?)", []interface{}{1, 2, 3},
++			"SELECT * FROM `users` ORDER BY FIELD(id, ?,?,?)",
++			[]interface{}{1, 2, 3},
+ 		},
+ 	}
+ 
+diff --git a/clause/set_test.go b/clause/set_test.go
+index 56fac70601..7a9ee895a9 100644
+--- a/clause/set_test.go
++++ b/clause/set_test.go
+@@ -20,7 +20,8 @@ func TestSet(t *testing.T) {
+ 				clause.Update{},
+ 				clause.Set([]clause.Assignment{{clause.PrimaryColumn, 1}}),
+ 			},
+-			"UPDATE `users` SET `users`.`id`=?", []interface{}{1},
++			"UPDATE `users` SET `users`.`id`=?",
++			[]interface{}{1},
+ 		},
+ 		{
+ 			[]clause.Interface{
+@@ -28,7 +29,8 @@ func TestSet(t *testing.T) {
+ 				clause.Set([]clause.Assignment{{clause.PrimaryColumn, 1}}),
+ 				clause.Set([]clause.Assignment{{clause.Column{Name: "name"}, "jinzhu"}}),
+ 			},
+-			"UPDATE `users` SET `name`=?", []interface{}{"jinzhu"},
++			"UPDATE `users` SET `name`=?",
++			[]interface{}{"jinzhu"},
+ 		},
+ 	}
+ 
+diff --git a/clause/values_test.go b/clause/values_test.go
+index 9c02c8a54c..1eea8652c5 100644
+--- a/clause/values_test.go
++++ b/clause/values_test.go
+@@ -21,7 +21,8 @@ func TestValues(t *testing.T) {
+ 					Values:  [][]interface{}{{"jinzhu", 18}, {"josh", 1}},
+ 				},
+ 			},
+-			"INSERT INTO `users` (`name`,`age`) VALUES (?,?),(?,?)", []interface{}{"jinzhu", 18, "josh", 1},
++			"INSERT INTO `users` (`name`,`age`) VALUES (?,?),(?,?)",
++			[]interface{}{"jinzhu", 18, "josh", 1},
+ 		},
+ 	}
+ 
+diff --git a/clause/where_test.go b/clause/where_test.go
+index 2fa11d76e9..272c7b76b4 100644
+--- a/clause/where_test.go
++++ b/clause/where_test.go
+@@ -17,25 +17,29 @@ func TestWhere(t *testing.T) {
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Eq{Column: clause.PrimaryColumn, Value: "1"}, clause.Gt{Column: "age", Value: 18}, clause.Or(clause.Neq{Column: "name", Value: "jinzhu"})},
+ 			}},
+-			"SELECT * FROM `users` WHERE `users`.`id` = ? AND `age` > ? OR `name` <> ?", []interface{}{"1", 18, "jinzhu"},
++			"SELECT * FROM `users` WHERE `users`.`id` = ? AND `age` > ? OR `name` <> ?",
++			[]interface{}{"1", 18, "jinzhu"},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Or(clause.Neq{Column: "name", Value: "jinzhu"}), clause.Eq{Column: clause.PrimaryColumn, Value: "1"}, clause.Gt{Column: "age", Value: 18}},
+ 			}},
+-			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ? AND `age` > ?", []interface{}{"1", "jinzhu", 18},
++			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ? AND `age` > ?",
++			[]interface{}{"1", "jinzhu", 18},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Or(clause.Neq{Column: "name", Value: "jinzhu"}), clause.Eq{Column: clause.PrimaryColumn, Value: "1"}, clause.Gt{Column: "age", Value: 18}},
+ 			}},
+-			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ? AND `age` > ?", []interface{}{"1", "jinzhu", 18},
++			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ? AND `age` > ?",
++			[]interface{}{"1", "jinzhu", 18},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Or(clause.Eq{Column: clause.PrimaryColumn, Value: "1"}), clause.Or(clause.Neq{Column: "name", Value: "jinzhu"})},
+ 			}},
+-			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ?", []interface{}{"1", "jinzhu"},
++			"SELECT * FROM `users` WHERE `users`.`id` = ? OR `name` <> ?",
++			[]interface{}{"1", "jinzhu"},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+@@ -43,7 +47,8 @@ func TestWhere(t *testing.T) {
+ 			}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Or(clause.Gt{Column: "score", Value: 100}, clause.Like{Column: "name", Value: "%linus%"})},
+ 			}},
+-			"SELECT * FROM `users` WHERE `users`.`id` = ? AND `age` > ? OR `name` <> ? AND (`score` > ? OR `name` LIKE ?)", []interface{}{"1", 18, "jinzhu", 100, "%linus%"},
++			"SELECT * FROM `users` WHERE `users`.`id` = ? AND `age` > ? OR `name` <> ? AND (`score` > ? OR `name` LIKE ?)",
++			[]interface{}{"1", 18, "jinzhu", 100, "%linus%"},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+@@ -51,13 +56,15 @@ func TestWhere(t *testing.T) {
+ 			}, clause.Where{
+ 				Exprs: []clause.Expression{clause.Or(clause.Not(clause.Gt{Column: "score", Value: 100}), clause.Like{Column: "name", Value: "%linus%"})},
+ 			}},
+-			"SELECT * FROM `users` WHERE (`users`.`id` <> ? AND `age` <= ?) OR `name` <> ? AND (`score` <= ? OR `name` LIKE ?)", []interface{}{"1", 18, "jinzhu", 100, "%linus%"},
++			"SELECT * FROM `users` WHERE (`users`.`id` <> ? AND `age` <= ?) OR `name` <> ? AND (`score` <= ? OR `name` LIKE ?)",
++			[]interface{}{"1", 18, "jinzhu", 100, "%linus%"},
+ 		},
+ 		{
+ 			[]clause.Interface{clause.Select{}, clause.From{}, clause.Where{
+ 				Exprs: []clause.Expression{clause.And(clause.Eq{Column: "age", Value: 18}, clause.Or(clause.Neq{Column: "name", Value: "jinzhu"}))},
+ 			}},
+-			"SELECT * FROM `users` WHERE (`age` = ? OR `name` <> ?)", []interface{}{18, "jinzhu"},
++			"SELECT * FROM `users` WHERE (`age` = ? OR `name` <> ?)",
++			[]interface{}{18, "jinzhu"},
+ 		},
+ 	}
+ 
+diff --git a/schema/callbacks_test.go b/schema/callbacks_test.go
+index dec41eba0a..4583a20729 100644
+--- a/schema/callbacks_test.go
++++ b/schema/callbacks_test.go
+@@ -9,8 +9,7 @@ import (
+ 	"gorm.io/gorm/schema"
+ )
+ 
+-type UserWithCallback struct {
+-}
++type UserWithCallback struct{}
+ 
+ func (UserWithCallback) BeforeSave(*gorm.DB) error {
+ 	return nil
+diff --git a/schema/field_test.go b/schema/field_test.go
+index 4be3e5ab9e..8fa46b876f 100644
+--- a/schema/field_test.go
++++ b/schema/field_test.go
+@@ -244,7 +244,7 @@ func TestParseFieldWithPermission(t *testing.T) {
+ 		t.Fatalf("Failed to parse user with permission, got error %v", err)
+ 	}
+ 
+-	fields := []schema.Field{
++	fields := []*schema.Field{
+ 		{Name: "ID", DBName: "id", BindNames: []string{"ID"}, DataType: schema.Uint, PrimaryKey: true, Size: 64, Creatable: true, Updatable: true, Readable: true, HasDefaultValue: true, AutoIncrement: true},
+ 		{Name: "Name", DBName: "", BindNames: []string{"Name"}, DataType: "", Tag: `gorm:"-"`, Creatable: false, Updatable: false, Readable: false},
+ 		{Name: "Name2", DBName: "name2", BindNames: []string{"Name2"}, DataType: schema.String, Tag: `gorm:"->"`, Creatable: false, Updatable: false, Readable: true},
+@@ -257,6 +257,77 @@ func TestParseFieldWithPermission(t *testing.T) {
+ 	}
+ 
+ 	for _, f := range fields {
+-		checkSchemaField(t, user, &f, func(f *schema.Field) {})
++		checkSchemaField(t, user, f, func(f *schema.Field) {})
++	}
++}
++
++type (
++	ID      int64
++	INT     int
++	INT8    int8
++	INT16   int16
++	INT32   int32
++	INT64   int64
++	UINT    uint
++	UINT8   uint8
++	UINT16  uint16
++	UINT32  uint32
++	UINT64  uint64
++	FLOAT32 float32
++	FLOAT64 float64
++	BOOL    bool
++	STRING  string
++	TIME    time.Time
++	BYTES   []byte
++
++	TypeAlias struct {
++		ID
++		INT     `gorm:"column:fint"`
++		INT8    `gorm:"column:fint8"`
++		INT16   `gorm:"column:fint16"`
++		INT32   `gorm:"column:fint32"`
++		INT64   `gorm:"column:fint64"`
++		UINT    `gorm:"column:fuint"`
++		UINT8   `gorm:"column:fuint8"`
++		UINT16  `gorm:"column:fuint16"`
++		UINT32  `gorm:"column:fuint32"`
++		UINT64  `gorm:"column:fuint64"`
++		FLOAT32 `gorm:"column:ffloat32"`
++		FLOAT64 `gorm:"column:ffloat64"`
++		BOOL    `gorm:"column:fbool"`
++		STRING  `gorm:"column:fstring"`
++		TIME    `gorm:"column:ftime"`
++		BYTES   `gorm:"column:fbytes"`
++	}
++)
++
++func TestTypeAliasField(t *testing.T) {
++	alias, err := schema.Parse(&TypeAlias{}, &sync.Map{}, schema.NamingStrategy{})
++	if err != nil {
++		t.Fatalf("Failed to parse TypeAlias with permission, got error %v", err)
++	}
++
++	fields := []*schema.Field{
++		{Name: "ID", DBName: "id", BindNames: []string{"ID"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 64, PrimaryKey: true, HasDefaultValue: true, AutoIncrement: true},
++		{Name: "INT", DBName: "fint", BindNames: []string{"INT"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 64, Tag: `gorm:"column:fint"`},
++		{Name: "INT8", DBName: "fint8", BindNames: []string{"INT8"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 8, Tag: `gorm:"column:fint8"`},
++		{Name: "INT16", DBName: "fint16", BindNames: []string{"INT16"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 16, Tag: `gorm:"column:fint16"`},
++		{Name: "INT32", DBName: "fint32", BindNames: []string{"INT32"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 32, Tag: `gorm:"column:fint32"`},
++		{Name: "INT64", DBName: "fint64", BindNames: []string{"INT64"}, DataType: schema.Int, Creatable: true, Updatable: true, Readable: true, Size: 64, Tag: `gorm:"column:fint64"`},
++		{Name: "UINT", DBName: "fuint", BindNames: []string{"UINT"}, DataType: schema.Uint, Creatable: true, Updatable: true, Readable: true, Size: 64, Tag: `gorm:"column:fuint"`},
++		{Name: "UINT8", DBName: "fuint8", BindNames: []string{"UINT8"}, DataType: schema.Uint, Creatable: true, Updatable: true, Readable: true, Size: 8, Tag: `gorm:"column:fuint8"`},
++		{Name: "UINT16", DBName: "fuint16", BindNames: []string{"UINT16"}, DataType: schema.Uint, Creatable: true, Updatable: true, Readable: true, Size: 16, Tag: `gorm:"column:fuint16"`},
++		{Name: "UINT32", DBName: "fuint32", BindNames: []string{"UINT32"}, DataType: schema.Uint, Creatable: true, Updatable: true, Readable: true, Size: 32, Tag: `gorm:"column:fuint32"`},
++		{Name: "UINT64", DBName: "fuint64", BindNames: []string{"UINT64"}, DataType: schema.Uint, Creatable: true, Updatable: true, Readable: true, Size: 64, Tag: `gorm:"column:fuint64"`},
++		{Name: "FLOAT32", DBName: "ffloat32", BindNames: []string{"FLOAT32"}, DataType: schema.Float, Creatable: true, Updatable: true, Readable: true, Size: 32, Tag: `gorm:"column:ffloat32"`},
++		{Name: "FLOAT64", DBName: "ffloat64", BindNames: []string{"FLOAT64"}, DataType: schema.Float, Creatable: true, Updatable: true, Readable: true, Size: 64, Tag: `gorm:"column:ffloat64"`},
++		{Name: "BOOL", DBName: "fbool", BindNames: []string{"BOOL"}, DataType: schema.Bool, Creatable: true, Updatable: true, Readable: true, Tag: `gorm:"column:fbool"`},
++		{Name: "STRING", DBName: "fstring", BindNames: []string{"STRING"}, DataType: schema.String, Creatable: true, Updatable: true, Readable: true, Tag: `gorm:"column:fstring"`},
++		{Name: "TIME", DBName: "ftime", BindNames: []string{"TIME"}, DataType: schema.Time, Creatable: true, Updatable: true, Readable: true, Tag: `gorm:"column:ftime"`},
++		{Name: "BYTES", DBName: "fbytes", BindNames: []string{"BYTES"}, DataType: schema.Bytes, Creatable: true, Updatable: true, Readable: true, Tag: `gorm:"column:fbytes"`},
++	}
++
++	for _, f := range fields {
++		checkSchemaField(t, alias, f, func(f *schema.Field) {})
+ 	}
+ }
+diff --git a/schema/model_test.go b/schema/model_test.go
+index 1f2b094811..9e6c3590f9 100644
+--- a/schema/model_test.go
++++ b/schema/model_test.go
+@@ -26,9 +26,11 @@ type User struct {
+ 	Active    *bool
+ }
+ 
+-type mytime time.Time
+-type myint int
+-type mybool = bool
++type (
++	mytime time.Time
++	myint  int
++	mybool = bool
++)
+ 
+ type AdvancedDataTypeUser struct {
+ 	ID           sql.NullInt64
+diff --git a/schema/naming_test.go b/schema/naming_test.go
+index 6add338e6f..c3e6bf9233 100644
+--- a/schema/naming_test.go
++++ b/schema/naming_test.go
+@@ -6,7 +6,7 @@ import (
+ )
+ 
+ func TestToDBName(t *testing.T) {
+-	var maps = map[string]string{
++	maps := map[string]string{
+ 		"":                          "",
+ 		"x":                         "x",
+ 		"X":                         "x",
+@@ -56,7 +56,7 @@ func TestToDBName(t *testing.T) {
+ }
+ 
+ func TestNamingStrategy(t *testing.T) {
+-	var ns = NamingStrategy{
++	ns := NamingStrategy{
+ 		TablePrefix:   "public.",
+ 		SingularTable: true,
+ 		NameReplacer:  strings.NewReplacer("CID", "Cid"),
+@@ -102,7 +102,7 @@ func (r CustomReplacer) Replace(name string) string {
+ }
+ 
+ func TestCustomReplacer(t *testing.T) {
+-	var ns = NamingStrategy{
++	ns := NamingStrategy{
+ 		TablePrefix:   "public.",
+ 		SingularTable: true,
+ 		NameReplacer: CustomReplacer{
+@@ -146,7 +146,7 @@ func TestCustomReplacer(t *testing.T) {
+ }
+ 
+ func TestCustomReplacerWithNoLowerCase(t *testing.T) {
+-	var ns = NamingStrategy{
++	ns := NamingStrategy{
+ 		TablePrefix:   "public.",
+ 		SingularTable: true,
+ 		NameReplacer: CustomReplacer{
+@@ -190,7 +190,7 @@ func TestCustomReplacerWithNoLowerCase(t *testing.T) {
+ }
+ 
+ func TestFormatNameWithStringLongerThan64Characters(t *testing.T) {
+-	var ns = NamingStrategy{}
++	ns := NamingStrategy{}
+ 
+ 	formattedName := ns.formatName("prefix", "table", "thisIsAVeryVeryVeryVeryVeryVeryVeryVeryVeryLongString")
+ 	if formattedName != "prefixtablethisIsAVeryVeryVeryVeryVeryVeryVeryVeryVeryLo180f2c67" {
+diff --git a/schema/relationship_test.go b/schema/relationship_test.go
+index afa103b3d8..e2cf11a918 100644
+--- a/schema/relationship_test.go
++++ b/schema/relationship_test.go
+@@ -105,7 +105,6 @@ func TestSelfReferentialBelongsTo(t *testing.T) {
+ 		Name: "Creator", Type: schema.BelongsTo, Schema: "User", FieldSchema: "User",
+ 		References: []Reference{{"ID", "User", "CreatorID", "User", "", false}},
+ 	})
+-
+ }
+ 
+ func TestSelfReferentialBelongsToOverrideReferences(t *testing.T) {
+@@ -160,7 +159,6 @@ func TestHasOneOverrideReferences(t *testing.T) {
+ }
+ 
+ func TestHasOneOverrideReferences2(t *testing.T) {
+-
+ 	type Profile struct {
+ 		gorm.Model
+ 		Name string
+@@ -518,7 +516,6 @@ func TestSameForeignKey(t *testing.T) {
+ }
+ 
+ func TestBelongsToSameForeignKey(t *testing.T) {
+-
+ 	type User struct {
+ 		gorm.Model
+ 		Name string
+diff --git a/schema/schema_test.go b/schema/schema_test.go
+index a426cd905d..8a752fb7b8 100644
+--- a/schema/schema_test.go
++++ b/schema/schema_test.go
+@@ -145,8 +145,7 @@ func TestParseSchemaWithAdvancedDataType(t *testing.T) {
+ 	}
+ }
+ 
+-type CustomizeTable struct {
+-}
++type CustomizeTable struct{}
+ 
+ func (CustomizeTable) TableName() string {
+ 	return "customize"
+@@ -165,7 +164,6 @@ func TestCustomizeTableName(t *testing.T) {
+ 
+ func TestNestedModel(t *testing.T) {
+ 	versionUser, err := schema.Parse(&VersionUser{}, &sync.Map{}, schema.NamingStrategy{})
+-
+ 	if err != nil {
+ 		t.Fatalf("failed to parse nested user, got error %v", err)
+ 	}
+@@ -204,7 +202,6 @@ func TestEmbeddedStruct(t *testing.T) {
+ 	}
+ 
+ 	cropSchema, err := schema.Parse(&Corp{}, &sync.Map{}, schema.NamingStrategy{})
+-
+ 	if err != nil {
+ 		t.Fatalf("failed to parse embedded struct with primary key, got error %v", err)
+ 	}
+@@ -273,7 +270,6 @@ func TestEmbeddedStructForCustomizedNamingStrategy(t *testing.T) {
+ 	}
+ 
+ 	cropSchema, err := schema.Parse(&Corp{}, &sync.Map{}, CustomizedNamingStrategy{schema.NamingStrategy{}})
+-
+ 	if err != nil {
+ 		t.Fatalf("failed to parse embedded struct with primary key, got error %v", err)
+ 	}
+diff --git a/tests/associations_belongs_to_test.go b/tests/associations_belongs_to_test.go
+index 3e4de7260e..f74799ceac 100644
+--- a/tests/associations_belongs_to_test.go
++++ b/tests/associations_belongs_to_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func TestBelongsToAssociation(t *testing.T) {
+-	var user = *GetUser("belongs-to", Config{Company: true, Manager: true})
++	user := *GetUser("belongs-to", Config{Company: true, Manager: true})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -31,8 +31,8 @@ func TestBelongsToAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Manager", 1, "")
+ 
+ 	// Append
+-	var company = Company{Name: "company-belongs-to-append"}
+-	var manager = GetUser("manager-belongs-to-append", Config{})
++	company := Company{Name: "company-belongs-to-append"}
++	manager := GetUser("manager-belongs-to-append", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Company").Append(&company); err != nil {
+ 		t.Fatalf("Error happened when append Company, got %v", err)
+@@ -60,8 +60,8 @@ func TestBelongsToAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user2, "Manager", 1, "AfterAppend")
+ 
+ 	// Replace
+-	var company2 = Company{Name: "company-belongs-to-replace"}
+-	var manager2 = GetUser("manager-belongs-to-replace", Config{})
++	company2 := Company{Name: "company-belongs-to-replace"}
++	manager2 := GetUser("manager-belongs-to-replace", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Company").Replace(&company2); err != nil {
+ 		t.Fatalf("Error happened when replace Company, got %v", err)
+@@ -132,10 +132,17 @@ func TestBelongsToAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user2, "Company", 0, "after clear")
+ 	AssertAssociationCount(t, user2, "Manager", 0, "after clear")
++
++	// unexist company id
++	unexistCompanyID := company.ID + 9999999
++	user = User{Name: "invalid-user-with-invalid-belongs-to-foreign-key", CompanyID: &unexistCompanyID}
++	if err := DB.Create(&user).Error; err == nil {
++		t.Errorf("should have gotten foreign key violation error")
++	}
+ }
+ 
+ func TestBelongsToAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-belongs-to-1", Config{Company: true, Manager: true}),
+ 		*GetUser("slice-belongs-to-2", Config{Company: true, Manager: false}),
+ 		*GetUser("slice-belongs-to-3", Config{Company: true, Manager: true}),
+diff --git a/tests/associations_has_many_test.go b/tests/associations_has_many_test.go
+index 173e923192..002ae63647 100644
+--- a/tests/associations_has_many_test.go
++++ b/tests/associations_has_many_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func TestHasManyAssociation(t *testing.T) {
+-	var user = *GetUser("hasmany", Config{Pets: 2})
++	user := *GetUser("hasmany", Config{Pets: 2})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -42,7 +42,7 @@ func TestHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Pets", 2, "")
+ 
+ 	// Append
+-	var pet = Pet{Name: "pet-has-many-append"}
++	pet := Pet{Name: "pet-has-many-append"}
+ 
+ 	if err := DB.Model(&user2).Association("Pets").Append(&pet); err != nil {
+ 		t.Fatalf("Error happened when append account, got %v", err)
+@@ -57,14 +57,14 @@ func TestHasManyAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user, "Pets", 3, "AfterAppend")
+ 
+-	var pets2 = []Pet{{Name: "pet-has-many-append-1-1"}, {Name: "pet-has-many-append-1-1"}}
++	pets2 := []Pet{{Name: "pet-has-many-append-1-1"}, {Name: "pet-has-many-append-1-1"}}
+ 
+ 	if err := DB.Model(&user2).Association("Pets").Append(&pets2); err != nil {
+ 		t.Fatalf("Error happened when append pet, got %v", err)
+ 	}
+ 
+ 	for _, pet := range pets2 {
+-		var pet = pet
++		pet := pet
+ 		if pet.ID == 0 {
+ 			t.Fatalf("Pet's ID should be created")
+ 		}
+@@ -77,7 +77,7 @@ func TestHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Pets", 5, "AfterAppendSlice")
+ 
+ 	// Replace
+-	var pet2 = Pet{Name: "pet-has-many-replace"}
++	pet2 := Pet{Name: "pet-has-many-replace"}
+ 
+ 	if err := DB.Model(&user2).Association("Pets").Replace(&pet2); err != nil {
+ 		t.Fatalf("Error happened when append pet, got %v", err)
+@@ -119,7 +119,7 @@ func TestHasManyAssociation(t *testing.T) {
+ }
+ 
+ func TestSingleTableHasManyAssociation(t *testing.T) {
+-	var user = *GetUser("hasmany", Config{Team: 2})
++	user := *GetUser("hasmany", Config{Team: 2})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -137,7 +137,7 @@ func TestSingleTableHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Team", 2, "")
+ 
+ 	// Append
+-	var team = *GetUser("team", Config{})
++	team := *GetUser("team", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Team").Append(&team); err != nil {
+ 		t.Fatalf("Error happened when append account, got %v", err)
+@@ -152,14 +152,14 @@ func TestSingleTableHasManyAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user, "Team", 3, "AfterAppend")
+ 
+-	var teams = []User{*GetUser("team-append-1", Config{}), *GetUser("team-append-2", Config{})}
++	teams := []User{*GetUser("team-append-1", Config{}), *GetUser("team-append-2", Config{})}
+ 
+ 	if err := DB.Model(&user2).Association("Team").Append(&teams); err != nil {
+ 		t.Fatalf("Error happened when append team, got %v", err)
+ 	}
+ 
+ 	for _, team := range teams {
+-		var team = team
++		team := team
+ 		if team.ID == 0 {
+ 			t.Fatalf("Team's ID should be created")
+ 		}
+@@ -172,7 +172,7 @@ func TestSingleTableHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Team", 5, "AfterAppendSlice")
+ 
+ 	// Replace
+-	var team2 = *GetUser("team-replace", Config{})
++	team2 := *GetUser("team-replace", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Team").Replace(&team2); err != nil {
+ 		t.Fatalf("Error happened when append team, got %v", err)
+@@ -214,7 +214,7 @@ func TestSingleTableHasManyAssociation(t *testing.T) {
+ }
+ 
+ func TestHasManyAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-hasmany-1", Config{Pets: 2}),
+ 		*GetUser("slice-hasmany-2", Config{Pets: 0}),
+ 		*GetUser("slice-hasmany-3", Config{Pets: 4}),
+@@ -268,7 +268,7 @@ func TestHasManyAssociationForSlice(t *testing.T) {
+ }
+ 
+ func TestSingleTableHasManyAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-hasmany-1", Config{Team: 2}),
+ 		*GetUser("slice-hasmany-2", Config{Team: 0}),
+ 		*GetUser("slice-hasmany-3", Config{Team: 4}),
+@@ -324,7 +324,7 @@ func TestSingleTableHasManyAssociationForSlice(t *testing.T) {
+ }
+ 
+ func TestPolymorphicHasManyAssociation(t *testing.T) {
+-	var user = *GetUser("hasmany", Config{Toys: 2})
++	user := *GetUser("hasmany", Config{Toys: 2})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -342,7 +342,7 @@ func TestPolymorphicHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Toys", 2, "")
+ 
+ 	// Append
+-	var toy = Toy{Name: "toy-has-many-append"}
++	toy := Toy{Name: "toy-has-many-append"}
+ 
+ 	if err := DB.Model(&user2).Association("Toys").Append(&toy); err != nil {
+ 		t.Fatalf("Error happened when append account, got %v", err)
+@@ -357,14 +357,14 @@ func TestPolymorphicHasManyAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user, "Toys", 3, "AfterAppend")
+ 
+-	var toys = []Toy{{Name: "toy-has-many-append-1-1"}, {Name: "toy-has-many-append-1-1"}}
++	toys := []Toy{{Name: "toy-has-many-append-1-1"}, {Name: "toy-has-many-append-1-1"}}
+ 
+ 	if err := DB.Model(&user2).Association("Toys").Append(&toys); err != nil {
+ 		t.Fatalf("Error happened when append toy, got %v", err)
+ 	}
+ 
+ 	for _, toy := range toys {
+-		var toy = toy
++		toy := toy
+ 		if toy.ID == 0 {
+ 			t.Fatalf("Toy's ID should be created")
+ 		}
+@@ -377,7 +377,7 @@ func TestPolymorphicHasManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Toys", 5, "AfterAppendSlice")
+ 
+ 	// Replace
+-	var toy2 = Toy{Name: "toy-has-many-replace"}
++	toy2 := Toy{Name: "toy-has-many-replace"}
+ 
+ 	if err := DB.Model(&user2).Association("Toys").Replace(&toy2); err != nil {
+ 		t.Fatalf("Error happened when append toy, got %v", err)
+@@ -419,7 +419,7 @@ func TestPolymorphicHasManyAssociation(t *testing.T) {
+ }
+ 
+ func TestPolymorphicHasManyAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-hasmany-1", Config{Toys: 2}),
+ 		*GetUser("slice-hasmany-2", Config{Toys: 0}),
+ 		*GetUser("slice-hasmany-3", Config{Toys: 4}),
+diff --git a/tests/associations_has_one_test.go b/tests/associations_has_one_test.go
+index a4fc8c4fc3..a2c0750904 100644
+--- a/tests/associations_has_one_test.go
++++ b/tests/associations_has_one_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func TestHasOneAssociation(t *testing.T) {
+-	var user = *GetUser("hasone", Config{Account: true})
++	user := *GetUser("hasone", Config{Account: true})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -25,7 +25,7 @@ func TestHasOneAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Account", 1, "")
+ 
+ 	// Append
+-	var account = Account{Number: "account-has-one-append"}
++	account := Account{Number: "account-has-one-append"}
+ 
+ 	if err := DB.Model(&user2).Association("Account").Append(&account); err != nil {
+ 		t.Fatalf("Error happened when append account, got %v", err)
+@@ -41,7 +41,7 @@ func TestHasOneAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Account", 1, "AfterAppend")
+ 
+ 	// Replace
+-	var account2 = Account{Number: "account-has-one-replace"}
++	account2 := Account{Number: "account-has-one-replace"}
+ 
+ 	if err := DB.Model(&user2).Association("Account").Replace(&account2); err != nil {
+ 		t.Fatalf("Error happened when append Account, got %v", err)
+@@ -84,7 +84,7 @@ func TestHasOneAssociation(t *testing.T) {
+ }
+ 
+ func TestHasOneAssociationWithSelect(t *testing.T) {
+-	var user = *GetUser("hasone", Config{Account: true})
++	user := *GetUser("hasone", Config{Account: true})
+ 
+ 	DB.Omit("Account.Number").Create(&user)
+ 
+@@ -98,7 +98,7 @@ func TestHasOneAssociationWithSelect(t *testing.T) {
+ }
+ 
+ func TestHasOneAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-hasone-1", Config{Account: true}),
+ 		*GetUser("slice-hasone-2", Config{Account: false}),
+ 		*GetUser("slice-hasone-3", Config{Account: true}),
+@@ -139,7 +139,7 @@ func TestHasOneAssociationForSlice(t *testing.T) {
+ }
+ 
+ func TestPolymorphicHasOneAssociation(t *testing.T) {
+-	var pet = Pet{Name: "hasone", Toy: Toy{Name: "toy-has-one"}}
++	pet := Pet{Name: "hasone", Toy: Toy{Name: "toy-has-one"}}
+ 
+ 	if err := DB.Create(&pet).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -157,7 +157,7 @@ func TestPolymorphicHasOneAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, pet, "Toy", 1, "")
+ 
+ 	// Append
+-	var toy = Toy{Name: "toy-has-one-append"}
++	toy := Toy{Name: "toy-has-one-append"}
+ 
+ 	if err := DB.Model(&pet2).Association("Toy").Append(&toy); err != nil {
+ 		t.Fatalf("Error happened when append toy, got %v", err)
+@@ -173,7 +173,7 @@ func TestPolymorphicHasOneAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, pet, "Toy", 1, "AfterAppend")
+ 
+ 	// Replace
+-	var toy2 = Toy{Name: "toy-has-one-replace"}
++	toy2 := Toy{Name: "toy-has-one-replace"}
+ 
+ 	if err := DB.Model(&pet2).Association("Toy").Replace(&toy2); err != nil {
+ 		t.Fatalf("Error happened when append Toy, got %v", err)
+@@ -216,7 +216,7 @@ func TestPolymorphicHasOneAssociation(t *testing.T) {
+ }
+ 
+ func TestPolymorphicHasOneAssociationForSlice(t *testing.T) {
+-	var pets = []Pet{
++	pets := []Pet{
+ 		{Name: "hasone-1", Toy: Toy{Name: "toy-has-one"}},
+ 		{Name: "hasone-2", Toy: Toy{}},
+ 		{Name: "hasone-3", Toy: Toy{Name: "toy-has-one"}},
+diff --git a/tests/associations_many2many_test.go b/tests/associations_many2many_test.go
+index 739d1682d7..28b441bd8e 100644
+--- a/tests/associations_many2many_test.go
++++ b/tests/associations_many2many_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func TestMany2ManyAssociation(t *testing.T) {
+-	var user = *GetUser("many2many", Config{Languages: 2})
++	user := *GetUser("many2many", Config{Languages: 2})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -26,7 +26,7 @@ func TestMany2ManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Languages", 2, "")
+ 
+ 	// Append
+-	var language = Language{Code: "language-many2many-append", Name: "language-many2many-append"}
++	language := Language{Code: "language-many2many-append", Name: "language-many2many-append"}
+ 	DB.Create(&language)
+ 
+ 	if err := DB.Model(&user2).Association("Languages").Append(&language); err != nil {
+@@ -38,7 +38,7 @@ func TestMany2ManyAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user, "Languages", 3, "AfterAppend")
+ 
+-	var languages = []Language{
++	languages := []Language{
+ 		{Code: "language-many2many-append-1-1", Name: "language-many2many-append-1-1"},
+ 		{Code: "language-many2many-append-2-1", Name: "language-many2many-append-2-1"},
+ 	}
+@@ -55,7 +55,7 @@ func TestMany2ManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Languages", 5, "AfterAppendSlice")
+ 
+ 	// Replace
+-	var language2 = Language{Code: "language-many2many-replace", Name: "language-many2many-replace"}
++	language2 := Language{Code: "language-many2many-replace", Name: "language-many2many-replace"}
+ 	DB.Create(&language2)
+ 
+ 	if err := DB.Model(&user2).Association("Languages").Replace(&language2); err != nil {
+@@ -94,7 +94,7 @@ func TestMany2ManyAssociation(t *testing.T) {
+ }
+ 
+ func TestMany2ManyOmitAssociations(t *testing.T) {
+-	var user = *GetUser("many2many_omit_associations", Config{Languages: 2})
++	user := *GetUser("many2many_omit_associations", Config{Languages: 2})
+ 
+ 	if err := DB.Omit("Languages.*").Create(&user).Error; err == nil {
+ 		t.Fatalf("should raise error when create users without languages reference")
+@@ -114,14 +114,14 @@ func TestMany2ManyOmitAssociations(t *testing.T) {
+ 		t.Errorf("languages count should be %v, but got %v", 2, len(languages))
+ 	}
+ 
+-	var newLang = Language{Code: "omitmany2many", Name: "omitmany2many"}
++	newLang := Language{Code: "omitmany2many", Name: "omitmany2many"}
+ 	if err := DB.Model(&user).Omit("Languages.*").Association("Languages").Replace(&newLang); err == nil {
+ 		t.Errorf("should failed to insert languages due to constraint failed, error: %v", err)
+ 	}
+ }
+ 
+ func TestMany2ManyAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-many2many-1", Config{Languages: 2}),
+ 		*GetUser("slice-many2many-2", Config{Languages: 0}),
+ 		*GetUser("slice-many2many-3", Config{Languages: 4}),
+@@ -139,11 +139,11 @@ func TestMany2ManyAssociationForSlice(t *testing.T) {
+ 	}
+ 
+ 	// Append
+-	var languages1 = []Language{
++	languages1 := []Language{
+ 		{Code: "language-many2many-append-1", Name: "language-many2many-append-1"},
+ 	}
+-	var languages2 = []Language{}
+-	var languages3 = []Language{
++	languages2 := []Language{}
++	languages3 := []Language{
+ 		{Code: "language-many2many-append-3-1", Name: "language-many2many-append-3-1"},
+ 		{Code: "language-many2many-append-3-2", Name: "language-many2many-append-3-2"},
+ 	}
+@@ -191,7 +191,7 @@ func TestMany2ManyAssociationForSlice(t *testing.T) {
+ }
+ 
+ func TestSingleTableMany2ManyAssociation(t *testing.T) {
+-	var user = *GetUser("many2many", Config{Friends: 2})
++	user := *GetUser("many2many", Config{Friends: 2})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -210,7 +210,7 @@ func TestSingleTableMany2ManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Friends", 2, "")
+ 
+ 	// Append
+-	var friend = *GetUser("friend", Config{})
++	friend := *GetUser("friend", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Friends").Append(&friend); err != nil {
+ 		t.Fatalf("Error happened when append account, got %v", err)
+@@ -221,7 +221,7 @@ func TestSingleTableMany2ManyAssociation(t *testing.T) {
+ 
+ 	AssertAssociationCount(t, user, "Friends", 3, "AfterAppend")
+ 
+-	var friends = []*User{GetUser("friend-append-1", Config{}), GetUser("friend-append-2", Config{})}
++	friends := []*User{GetUser("friend-append-1", Config{}), GetUser("friend-append-2", Config{})}
+ 
+ 	if err := DB.Model(&user2).Association("Friends").Append(&friends); err != nil {
+ 		t.Fatalf("Error happened when append friend, got %v", err)
+@@ -234,7 +234,7 @@ func TestSingleTableMany2ManyAssociation(t *testing.T) {
+ 	AssertAssociationCount(t, user, "Friends", 5, "AfterAppendSlice")
+ 
+ 	// Replace
+-	var friend2 = *GetUser("friend-replace-2", Config{})
++	friend2 := *GetUser("friend-replace-2", Config{})
+ 
+ 	if err := DB.Model(&user2).Association("Friends").Replace(&friend2); err != nil {
+ 		t.Fatalf("Error happened when append friend, got %v", err)
+@@ -272,7 +272,7 @@ func TestSingleTableMany2ManyAssociation(t *testing.T) {
+ }
+ 
+ func TestSingleTableMany2ManyAssociationForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice-many2many-1", Config{Team: 2}),
+ 		*GetUser("slice-many2many-2", Config{Team: 0}),
+ 		*GetUser("slice-many2many-3", Config{Team: 4}),
+@@ -290,17 +290,17 @@ func TestSingleTableMany2ManyAssociationForSlice(t *testing.T) {
+ 	}
+ 
+ 	// Append
+-	var teams1 = []User{*GetUser("friend-append-1", Config{})}
+-	var teams2 = []User{}
+-	var teams3 = []*User{GetUser("friend-append-3-1", Config{}), GetUser("friend-append-3-2", Config{})}
++	teams1 := []User{*GetUser("friend-append-1", Config{})}
++	teams2 := []User{}
++	teams3 := []*User{GetUser("friend-append-3-1", Config{}), GetUser("friend-append-3-2", Config{})}
+ 
+ 	DB.Model(&users).Association("Team").Append(&teams1, &teams2, &teams3)
+ 
+ 	AssertAssociationCount(t, users, "Team", 9, "After Append")
+ 
+-	var teams2_1 = []User{*GetUser("friend-replace-1", Config{}), *GetUser("friend-replace-2", Config{})}
+-	var teams2_2 = []User{*GetUser("friend-replace-2-1", Config{}), *GetUser("friend-replace-2-2", Config{})}
+-	var teams2_3 = GetUser("friend-replace-3-1", Config{})
++	teams2_1 := []User{*GetUser("friend-replace-1", Config{}), *GetUser("friend-replace-2", Config{})}
++	teams2_2 := []User{*GetUser("friend-replace-2-1", Config{}), *GetUser("friend-replace-2-2", Config{})}
++	teams2_3 := GetUser("friend-replace-3-1", Config{})
+ 
+ 	// Replace
+ 	DB.Model(&users).Association("Team").Replace(&teams2_1, &teams2_2, teams2_3)
+diff --git a/tests/associations_test.go b/tests/associations_test.go
+index a4b1f1f288..5ce98c7dcf 100644
+--- a/tests/associations_test.go
++++ b/tests/associations_test.go
+@@ -27,7 +27,7 @@ func AssertAssociationCount(t *testing.T, data interface{}, name string, result
+ }
+ 
+ func TestInvalidAssociation(t *testing.T) {
+-	var user = *GetUser("invalid", Config{Company: true, Manager: true})
++	user := *GetUser("invalid", Config{Company: true, Manager: true})
+ 	if err := DB.Model(&user).Association("Invalid").Find(&user.Company).Error; err == nil {
+ 		t.Fatalf("should return errors for invalid association, but got nil")
+ 	}
+@@ -179,12 +179,8 @@ func TestForeignKeyConstraintsBelongsTo(t *testing.T) {
+ 
+ func TestFullSaveAssociations(t *testing.T) {
+ 	coupon := &Coupon{
+-		ID: "full-save-association-coupon1",
+ 		AppliesToProduct: []*CouponProduct{
+-			{
+-				CouponId:  "full-save-association-coupon1",
+-				ProductId: "full-save-association-product1",
+-			},
++			{ProductId: "full-save-association-product1"},
+ 		},
+ 		AmountOff:  10,
+ 		PercentOff: 0.0,
+@@ -193,16 +189,15 @@ func TestFullSaveAssociations(t *testing.T) {
+ 	err := DB.
+ 		Session(&gorm.Session{FullSaveAssociations: true}).
+ 		Create(coupon).Error
+-
+ 	if err != nil {
+ 		t.Errorf("Failed, got error: %v", err)
+ 	}
+ 
+-	if DB.First(&Coupon{}, "id = ?", "full-save-association-coupon1").Error != nil {
++	if DB.First(&Coupon{}, "id = ?", coupon.ID).Error != nil {
+ 		t.Errorf("Failed to query saved coupon")
+ 	}
+ 
+-	if DB.First(&CouponProduct{}, "coupon_id = ? AND product_id = ?", "full-save-association-coupon1", "full-save-association-product1").Error != nil {
++	if DB.First(&CouponProduct{}, "coupon_id = ? AND product_id = ?", coupon.ID, "full-save-association-product1").Error != nil {
+ 		t.Errorf("Failed to query saved association")
+ 	}
+ 
+@@ -210,4 +205,18 @@ func TestFullSaveAssociations(t *testing.T) {
+ 	if err := DB.Create(&orders).Error; err != nil {
+ 		t.Errorf("failed to create orders, got %v", err)
+ 	}
++
++	coupon2 := Coupon{
++		AppliesToProduct: []*CouponProduct{{Desc: "coupon-description"}},
++	}
++
++	DB.Session(&gorm.Session{FullSaveAssociations: true}).Create(&coupon2)
++	var result Coupon
++	if err := DB.Preload("AppliesToProduct").First(&result, "id = ?", coupon2.ID).Error; err != nil {
++		t.Errorf("Failed to create coupon w/o name, got error: %v", err)
++	}
++
++	if len(result.AppliesToProduct) != 1 {
++		t.Errorf("Failed to preload AppliesToProduct")
++	}
+ }
+diff --git a/tests/benchmark_test.go b/tests/benchmark_test.go
+index c6ce93a263..d897a63416 100644
+--- a/tests/benchmark_test.go
++++ b/tests/benchmark_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func BenchmarkCreate(b *testing.B) {
+-	var user = *GetUser("bench", Config{})
++	user := *GetUser("bench", Config{})
+ 
+ 	for x := 0; x < b.N; x++ {
+ 		user.ID = 0
+@@ -16,7 +16,7 @@ func BenchmarkCreate(b *testing.B) {
+ }
+ 
+ func BenchmarkFind(b *testing.B) {
+-	var user = *GetUser("find", Config{})
++	user := *GetUser("find", Config{})
+ 	DB.Create(&user)
+ 
+ 	for x := 0; x < b.N; x++ {
+@@ -25,7 +25,7 @@ func BenchmarkFind(b *testing.B) {
+ }
+ 
+ func BenchmarkUpdate(b *testing.B) {
+-	var user = *GetUser("find", Config{})
++	user := *GetUser("find", Config{})
+ 	DB.Create(&user)
+ 
+ 	for x := 0; x < b.N; x++ {
+@@ -34,7 +34,7 @@ func BenchmarkUpdate(b *testing.B) {
+ }
+ 
+ func BenchmarkDelete(b *testing.B) {
+-	var user = *GetUser("find", Config{})
++	user := *GetUser("find", Config{})
+ 
+ 	for x := 0; x < b.N; x++ {
+ 		user.ID = 0
+diff --git a/tests/connection_test.go b/tests/connection_test.go
+new file mode 100644
+index 0000000000..92b13dd68d
+--- /dev/null
++++ b/tests/connection_test.go
+@@ -0,0 +1,47 @@
++package tests_test
++
++import (
++	"fmt"
++	"testing"
++
++	"gorm.io/driver/mysql"
++	"gorm.io/gorm"
++)
++
++func TestWithSingleConnection(t *testing.T) {
++	var expectedName = "test"
++	var actualName string
++
++	setSQL, getSQL := getSetSQL(DB.Dialector.Name())
++	if len(setSQL) == 0 || len(getSQL) == 0 {
++		return
++	}
++
++	err := DB.Connection(func(tx *gorm.DB) error {
++		if err := tx.Exec(setSQL, expectedName).Error; err != nil {
++			return err
++		}
++
++		if err := tx.Raw(getSQL).Scan(&actualName).Error; err != nil {
++			return err
++		}
++		return nil
++	})
++
++	if err != nil {
++		t.Errorf(fmt.Sprintf("WithSingleConnection should work, but got err %v", err))
++	}
++
++	if actualName != expectedName {
++		t.Errorf("WithSingleConnection() method should get correct value, expect: %v, got %v", expectedName, actualName)
++	}
++}
++
++func getSetSQL(driverName string) (string, string) {
++	switch driverName {
++	case mysql.Dialector{}.Name():
++		return "SET @testName := ?", "SELECT @testName"
++	default:
++		return "", ""
++	}
++}
+diff --git a/tests/count_test.go b/tests/count_test.go
+index 7cae890b58..27d7ee607e 100644
+--- a/tests/count_test.go
++++ b/tests/count_test.go
+@@ -87,7 +87,7 @@ func TestCount(t *testing.T) {
+ 		t.Fatalf(fmt.Sprintf("Count should work, but got err %v", err))
+ 	}
+ 
+-	expects := []User{User{Name: "main"}, {Name: "other"}, {Name: "other"}}
++	expects := []User{{Name: "main"}, {Name: "other"}, {Name: "other"}}
+ 	sort.SliceStable(users, func(i, j int) bool {
+ 		return strings.Compare(users[i].Name, users[j].Name) < 0
+ 	})
+@@ -101,7 +101,7 @@ func TestCount(t *testing.T) {
+ 		t.Fatalf(fmt.Sprintf("Count should work, but got err %v", err))
+ 	}
+ 
+-	expects = []User{User{Name: "main", Age: 18}, {Name: "other", Age: 18}, {Name: "other", Age: 18}}
++	expects = []User{{Name: "main", Age: 18}, {Name: "other", Age: 18}, {Name: "other", Age: 18}}
+ 	sort.SliceStable(users, func(i, j int) bool {
+ 		return strings.Compare(users[i].Name, users[j].Name) < 0
+ 	})
+@@ -115,7 +115,7 @@ func TestCount(t *testing.T) {
+ 		t.Fatalf("Count should work, but got err %v", err)
+ 	}
+ 
+-	expects = []User{User{Name: "count-1", Age: 1}, {Name: "count-2", Age: 1}, {Name: "count-3", Age: 1}}
++	expects = []User{{Name: "count-1", Age: 1}, {Name: "count-2", Age: 1}, {Name: "count-3", Age: 1}}
+ 	sort.SliceStable(users, func(i, j int) bool {
+ 		return strings.Compare(users[i].Name, users[j].Name) < 0
+ 	})
+@@ -144,5 +144,4 @@ func TestCount(t *testing.T) {
+ 	if err := DB.Model(&User{}).Where("name = ?", "count-4").Group("name").Count(&count11).Error; err != nil || count11 != 1 {
+ 		t.Fatalf("Count should be 3, but got count: %v err %v", count11, err)
+ 	}
+-
+ }
+diff --git a/tests/create_test.go b/tests/create_test.go
+index 060f78af2c..af2abdb087 100644
+--- a/tests/create_test.go
++++ b/tests/create_test.go
+@@ -13,7 +13,7 @@ import (
+ )
+ 
+ func TestCreate(t *testing.T) {
+-	var user = *GetUser("create", Config{})
++	user := *GetUser("create", Config{})
+ 
+ 	if results := DB.Create(&user); results.Error != nil {
+ 		t.Fatalf("errors happened when create: %v", results.Error)
+@@ -139,7 +139,7 @@ func TestCreateFromMap(t *testing.T) {
+ }
+ 
+ func TestCreateWithAssociations(t *testing.T) {
+-	var user = *GetUser("create_with_associations", Config{
++	user := *GetUser("create_with_associations", Config{
+ 		Account:   true,
+ 		Pets:      2,
+ 		Toys:      3,
+@@ -223,7 +223,7 @@ func TestBulkCreatePtrDataWithAssociations(t *testing.T) {
+ 
+ func TestPolymorphicHasOne(t *testing.T) {
+ 	t.Run("Struct", func(t *testing.T) {
+-		var pet = Pet{
++		pet := Pet{
+ 			Name: "PolymorphicHasOne",
+ 			Toy:  Toy{Name: "Toy-PolymorphicHasOne"},
+ 		}
+@@ -240,7 +240,7 @@ func TestPolymorphicHasOne(t *testing.T) {
+ 	})
+ 
+ 	t.Run("Slice", func(t *testing.T) {
+-		var pets = []Pet{{
++		pets := []Pet{{
+ 			Name: "PolymorphicHasOne-Slice-1",
+ 			Toy:  Toy{Name: "Toy-PolymorphicHasOne-Slice-1"},
+ 		}, {
+@@ -269,7 +269,7 @@ func TestPolymorphicHasOne(t *testing.T) {
+ 	})
+ 
+ 	t.Run("SliceOfPtr", func(t *testing.T) {
+-		var pets = []*Pet{{
++		pets := []*Pet{{
+ 			Name: "PolymorphicHasOne-Slice-1",
+ 			Toy:  Toy{Name: "Toy-PolymorphicHasOne-Slice-1"},
+ 		}, {
+@@ -290,7 +290,7 @@ func TestPolymorphicHasOne(t *testing.T) {
+ 	})
+ 
+ 	t.Run("Array", func(t *testing.T) {
+-		var pets = [...]Pet{{
++		pets := [...]Pet{{
+ 			Name: "PolymorphicHasOne-Array-1",
+ 			Toy:  Toy{Name: "Toy-PolymorphicHasOne-Array-1"},
+ 		}, {
+@@ -311,7 +311,7 @@ func TestPolymorphicHasOne(t *testing.T) {
+ 	})
+ 
+ 	t.Run("ArrayPtr", func(t *testing.T) {
+-		var pets = [...]*Pet{{
++		pets := [...]*Pet{{
+ 			Name: "PolymorphicHasOne-Array-1",
+ 			Toy:  Toy{Name: "Toy-PolymorphicHasOne-Array-1"},
+ 		}, {
+@@ -348,12 +348,12 @@ func TestCreateEmptyStruct(t *testing.T) {
+ }
+ 
+ func TestCreateEmptySlice(t *testing.T) {
+-	var data = []User{}
++	data := []User{}
+ 	if err := DB.Create(&data).Error; err != gorm.ErrEmptySlice {
+ 		t.Errorf("no data should be created, got %v", err)
+ 	}
+ 
+-	var sliceMap = []map[string]interface{}{}
++	sliceMap := []map[string]interface{}{}
+ 	if err := DB.Model(&User{}).Create(&sliceMap).Error; err != gorm.ErrEmptySlice {
+ 		t.Errorf("no data should be created, got %v", err)
+ 	}
+diff --git a/tests/default_value_test.go b/tests/default_value_test.go
+index 14a0a97745..5e00b15469 100644
+--- a/tests/default_value_test.go
++++ b/tests/default_value_test.go
+@@ -23,7 +23,7 @@ func TestDefaultValue(t *testing.T) {
+ 		t.Fatalf("Failed to migrate with default value, got error: %v", err)
+ 	}
+ 
+-	var harumph = Harumph{Email: "hello@gorm.io"}
++	harumph := Harumph{Email: "hello@gorm.io"}
+ 	if err := DB.Create(&harumph).Error; err != nil {
+ 		t.Fatalf("Failed to create data with default value, got error: %v", err)
+ 	} else if harumph.Name != "foo" || harumph.Name2 != "foo" || harumph.Name3 != "" || harumph.Age != 18 || !harumph.Enabled {
+diff --git a/tests/delete_test.go b/tests/delete_test.go
+index 049b2ac462..5cb4b91e61 100644
+--- a/tests/delete_test.go
++++ b/tests/delete_test.go
+@@ -10,7 +10,7 @@ import (
+ )
+ 
+ func TestDelete(t *testing.T) {
+-	var users = []User{*GetUser("delete", Config{}), *GetUser("delete", Config{}), *GetUser("delete", Config{})}
++	users := []User{*GetUser("delete", Config{}), *GetUser("delete", Config{}), *GetUser("delete", Config{})}
+ 
+ 	if err := DB.Create(&users).Error; err != nil {
+ 		t.Errorf("errors happened when create: %v", err)
+diff --git a/tests/distinct_test.go b/tests/distinct_test.go
+index f97738a77a..8c8298ae2f 100644
+--- a/tests/distinct_test.go
++++ b/tests/distinct_test.go
+@@ -9,7 +9,7 @@ import (
+ )
+ 
+ func TestDistinct(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("distinct", Config{}),
+ 		*GetUser("distinct", Config{}),
+ 		*GetUser("distinct", Config{}),
+diff --git a/tests/go.mod b/tests/go.mod
+index 6315c7f1a6..3233ea9512 100644
+--- a/tests/go.mod
++++ b/tests/go.mod
+@@ -5,14 +5,14 @@ go 1.14
+ require (
+ 	github.com/google/uuid v1.3.0
+ 	github.com/jackc/pgx/v4 v4.14.1 // indirect
+-	github.com/jinzhu/now v1.1.3
++	github.com/jinzhu/now v1.1.4
+ 	github.com/lib/pq v1.10.4
+-	golang.org/x/crypto v0.0.0-20211117183948-ae814b36b871 // indirect
+-	gorm.io/driver/mysql v1.2.0
++	golang.org/x/crypto v0.0.0-20211209193657-4570a0811e8b // indirect
++	gorm.io/driver/mysql v1.2.3
+ 	gorm.io/driver/postgres v1.2.3
+ 	gorm.io/driver/sqlite v1.2.6
+ 	gorm.io/driver/sqlserver v1.2.1
+-	gorm.io/gorm v1.22.3
++	gorm.io/gorm v1.22.4
+ )
+ 
+ replace gorm.io/gorm => ../
+diff --git a/tests/group_by_test.go b/tests/group_by_test.go
+index 96dfc5477e..5335fed14a 100644
+--- a/tests/group_by_test.go
++++ b/tests/group_by_test.go
+@@ -7,7 +7,7 @@ import (
+ )
+ 
+ func TestGroupBy(t *testing.T) {
+-	var users = []User{{
++	users := []User{{
+ 		Name:     "groupby",
+ 		Age:      10,
+ 		Birthday: Now(),
+@@ -67,7 +67,7 @@ func TestGroupBy(t *testing.T) {
+ 		t.Errorf("name should be groupby, but got %v, total should be 660, but got %v", name, total)
+ 	}
+ 
+-	var result = struct {
++	result := struct {
+ 		Name  string
+ 		Total int64
+ 	}{}
+diff --git a/tests/joins_test.go b/tests/joins_test.go
+index ca8477dc9c..e276a74a15 100644
+--- a/tests/joins_test.go
++++ b/tests/joins_test.go
+@@ -57,7 +57,7 @@ func TestJoinsForSlice(t *testing.T) {
+ }
+ 
+ func TestJoinConds(t *testing.T) {
+-	var user = *GetUser("joins-conds", Config{Account: true, Pets: 3})
++	user := *GetUser("joins-conds", Config{Account: true, Pets: 3})
+ 	DB.Save(&user)
+ 
+ 	var users1 []User
+@@ -111,7 +111,7 @@ func TestJoinConds(t *testing.T) {
+ }
+ 
+ func TestJoinOn(t *testing.T) {
+-	var user = *GetUser("joins-on", Config{Pets: 2})
++	user := *GetUser("joins-on", Config{Pets: 2})
+ 	DB.Save(&user)
+ 
+ 	var user1 User
+@@ -168,8 +168,8 @@ func TestJoinCount(t *testing.T) {
+ 	DB.Create(&user)
+ 
+ 	query := DB.Model(&User{}).Joins("Company")
+-	//Bug happens when .Count is called on a query.
+-	//Removing the below two lines or downgrading to gorm v1.20.12 will make this test pass.
++	// Bug happens when .Count is called on a query.
++	// Removing the below two lines or downgrading to gorm v1.20.12 will make this test pass.
+ 	var total int64
+ 	query.Count(&total)
+ 
+diff --git a/tests/migrate_test.go b/tests/migrate_test.go
+index 3d15bf2c7b..aa0a84ab52 100644
+--- a/tests/migrate_test.go
++++ b/tests/migrate_test.go
+@@ -2,11 +2,13 @@ package tests_test
+ 
+ import (
+ 	"math/rand"
++	"reflect"
+ 	"strings"
+ 	"testing"
+ 	"time"
+ 
+ 	"gorm.io/gorm"
++	"gorm.io/gorm/schema"
+ 	. "gorm.io/gorm/utils/tests"
+ )
+ 
+@@ -174,7 +176,6 @@ func TestSmartMigrateColumn(t *testing.T) {
+ 			}
+ 		}
+ 	}
+-
+ }
+ 
+ func TestMigrateWithColumnComment(t *testing.T) {
+@@ -455,3 +456,73 @@ func TestMigrateIndexesWithDynamicTableName(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// check column order after migration, flaky test
++// https://github.com/go-gorm/gorm/issues/4351
++func TestMigrateColumnOrder(t *testing.T) {
++	type UserMigrateColumn struct {
++		ID uint
++	}
++	DB.Migrator().DropTable(&UserMigrateColumn{})
++	DB.AutoMigrate(&UserMigrateColumn{})
++
++	type UserMigrateColumn2 struct {
++		ID  uint
++		F1  string
++		F2  string
++		F3  string
++		F4  string
++		F5  string
++		F6  string
++		F7  string
++		F8  string
++		F9  string
++		F10 string
++		F11 string
++		F12 string
++		F13 string
++		F14 string
++		F15 string
++		F16 string
++		F17 string
++		F18 string
++		F19 string
++		F20 string
++		F21 string
++		F22 string
++		F23 string
++		F24 string
++		F25 string
++		F26 string
++		F27 string
++		F28 string
++		F29 string
++		F30 string
++		F31 string
++		F32 string
++		F33 string
++		F34 string
++		F35 string
++	}
++	if err := DB.Table("user_migrate_columns").AutoMigrate(&UserMigrateColumn2{}); err != nil {
++		t.Fatalf("failed to auto migrate, got error: %v", err)
++	}
++
++	columnTypes, err := DB.Table("user_migrate_columns").Migrator().ColumnTypes(&UserMigrateColumn2{})
++	if err != nil {
++		t.Fatalf("failed to get column types, got error: %v", err)
++	}
++	typ := reflect.Indirect(reflect.ValueOf(&UserMigrateColumn2{})).Type()
++	numField := typ.NumField()
++	if numField != len(columnTypes) {
++		t.Fatalf("column's number not match struct and ddl, %d != %d", numField, len(columnTypes))
++	}
++	namer := schema.NamingStrategy{}
++	for i := 0; i < numField; i++ {
++		expectName := namer.ColumnName("", typ.Field(i).Name)
++		if columnTypes[i].Name() != expectName {
++			t.Fatalf("column order not match struct and ddl, idx %d: %s != %s",
++				i, columnTypes[i].Name(), expectName)
++		}
++	}
++}
+diff --git a/tests/multi_primary_keys_test.go b/tests/multi_primary_keys_test.go
+index 3a8c08aa8d..4a7ab9f610 100644
+--- a/tests/multi_primary_keys_test.go
++++ b/tests/multi_primary_keys_test.go
+@@ -71,7 +71,7 @@ func TestManyToManyWithMultiPrimaryKeys(t *testing.T) {
+ 	}
+ 
+ 	// Append
+-	var tag3 = &Tag{Locale: "ZH", Value: "tag3"}
++	tag3 := &Tag{Locale: "ZH", Value: "tag3"}
+ 	DB.Model(&blog).Association("Tags").Append([]*Tag{tag3})
+ 
+ 	if !compareTags(blog.Tags, []string{"tag1", "tag2", "tag3"}) {
+@@ -95,8 +95,8 @@ func TestManyToManyWithMultiPrimaryKeys(t *testing.T) {
+ 	}
+ 
+ 	// Replace
+-	var tag5 = &Tag{Locale: "ZH", Value: "tag5"}
+-	var tag6 = &Tag{Locale: "ZH", Value: "tag6"}
++	tag5 := &Tag{Locale: "ZH", Value: "tag5"}
++	tag6 := &Tag{Locale: "ZH", Value: "tag6"}
+ 	DB.Model(&blog).Association("Tags").Replace(tag5, tag6)
+ 	var tags2 []Tag
+ 	DB.Model(&blog).Association("Tags").Find(&tags2)
+@@ -170,7 +170,7 @@ func TestManyToManyWithCustomizedForeignKeys(t *testing.T) {
+ 	}
+ 
+ 	// Append
+-	var tag3 = &Tag{Locale: "ZH", Value: "tag3"}
++	tag3 := &Tag{Locale: "ZH", Value: "tag3"}
+ 	DB.Model(&blog).Association("SharedTags").Append([]*Tag{tag3})
+ 	if !compareTags(blog.SharedTags, []string{"tag1", "tag2", "tag3"}) {
+ 		t.Fatalf("Blog should has three tags after Append")
+@@ -201,7 +201,7 @@ func TestManyToManyWithCustomizedForeignKeys(t *testing.T) {
+ 		t.Fatalf("Preload many2many relations")
+ 	}
+ 
+-	var tag4 = &Tag{Locale: "ZH", Value: "tag4"}
++	tag4 := &Tag{Locale: "ZH", Value: "tag4"}
+ 	DB.Model(&blog2).Association("SharedTags").Append(tag4)
+ 
+ 	DB.Model(&blog).Association("SharedTags").Find(&tags)
+@@ -215,8 +215,8 @@ func TestManyToManyWithCustomizedForeignKeys(t *testing.T) {
+ 	}
+ 
+ 	// Replace
+-	var tag5 = &Tag{Locale: "ZH", Value: "tag5"}
+-	var tag6 = &Tag{Locale: "ZH", Value: "tag6"}
++	tag5 := &Tag{Locale: "ZH", Value: "tag5"}
++	tag6 := &Tag{Locale: "ZH", Value: "tag6"}
+ 	DB.Model(&blog2).Association("SharedTags").Replace(tag5, tag6)
+ 	var tags2 []Tag
+ 	DB.Model(&blog).Association("SharedTags").Find(&tags2)
+@@ -291,7 +291,7 @@ func TestManyToManyWithCustomizedForeignKeys2(t *testing.T) {
+ 	DB.Create(&blog2)
+ 
+ 	// Append
+-	var tag3 = &Tag{Locale: "ZH", Value: "tag3"}
++	tag3 := &Tag{Locale: "ZH", Value: "tag3"}
+ 	DB.Model(&blog).Association("LocaleTags").Append([]*Tag{tag3})
+ 	if !compareTags(blog.LocaleTags, []string{"tag1", "tag2", "tag3"}) {
+ 		t.Fatalf("Blog should has three tags after Append")
+@@ -322,7 +322,7 @@ func TestManyToManyWithCustomizedForeignKeys2(t *testing.T) {
+ 		t.Fatalf("Preload many2many relations")
+ 	}
+ 
+-	var tag4 = &Tag{Locale: "ZH", Value: "tag4"}
++	tag4 := &Tag{Locale: "ZH", Value: "tag4"}
+ 	DB.Model(&blog2).Association("LocaleTags").Append(tag4)
+ 
+ 	DB.Model(&blog).Association("LocaleTags").Find(&tags)
+@@ -336,8 +336,8 @@ func TestManyToManyWithCustomizedForeignKeys2(t *testing.T) {
+ 	}
+ 
+ 	// Replace
+-	var tag5 = &Tag{Locale: "ZH", Value: "tag5"}
+-	var tag6 = &Tag{Locale: "ZH", Value: "tag6"}
++	tag5 := &Tag{Locale: "ZH", Value: "tag5"}
++	tag6 := &Tag{Locale: "ZH", Value: "tag6"}
+ 	DB.Model(&blog2).Association("LocaleTags").Replace(tag5, tag6)
+ 
+ 	var tags2 []Tag
+diff --git a/tests/named_argument_test.go b/tests/named_argument_test.go
+index d0a6f915fb..a3a25f7ba1 100644
+--- a/tests/named_argument_test.go
++++ b/tests/named_argument_test.go
+@@ -2,6 +2,7 @@ package tests_test
+ 
+ import (
+ 	"database/sql"
++	"errors"
+ 	"testing"
+ 
+ 	"gorm.io/gorm"
+@@ -66,4 +67,16 @@ func TestNamedArg(t *testing.T) {
+ 	}
+ 
+ 	AssertEqual(t, result6, namedUser)
++
++	var result7 NamedUser
++	if err := DB.Where("name1 = @name OR name2 = @name", sql.Named("name", "jinzhu-new")).Where("name3 = 'jinzhu-new3'").First(&result7).Error; err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
++		t.Errorf("should return record not found error, but got %v", err)
++	}
++
++	DB.Delete(&namedUser)
++
++	var result8 NamedUser
++	if err := DB.Where("name1 = @name OR name2 = @name", map[string]interface{}{"name": "jinzhu-new"}).First(&result8).Error; err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
++		t.Errorf("should return record not found error, but got %v", err)
++	}
+ }
+diff --git a/tests/non_std_test.go b/tests/non_std_test.go
+index d3561b11eb..8ae4269113 100644
+--- a/tests/non_std_test.go
++++ b/tests/non_std_test.go
+@@ -8,7 +8,7 @@ import (
+ type Animal struct {
+ 	Counter    uint64 `gorm:"primary_key:yes"`
+ 	Name       string `gorm:"DEFAULT:'galeone'"`
+-	From       string //test reserved sql keyword as field name
++	From       string // test reserved sql keyword as field name
+ 	Age        *time.Time
+ 	unexported string // unexported value
+ 	CreatedAt  time.Time
+diff --git a/tests/preload_test.go b/tests/preload_test.go
+index a3e6720038..adb54ee19a 100644
+--- a/tests/preload_test.go
++++ b/tests/preload_test.go
+@@ -14,7 +14,7 @@ import (
+ )
+ 
+ func TestPreloadWithAssociations(t *testing.T) {
+-	var user = *GetUser("preload_with_associations", Config{
++	user := *GetUser("preload_with_associations", Config{
+ 		Account:   true,
+ 		Pets:      2,
+ 		Toys:      3,
+@@ -35,7 +35,7 @@ func TestPreloadWithAssociations(t *testing.T) {
+ 	DB.Preload(clause.Associations).Find(&user2, "id = ?", user.ID)
+ 	CheckUser(t, user2, user)
+ 
+-	var user3 = *GetUser("preload_with_associations_new", Config{
++	user3 := *GetUser("preload_with_associations_new", Config{
+ 		Account:   true,
+ 		Pets:      2,
+ 		Toys:      3,
+@@ -51,7 +51,7 @@ func TestPreloadWithAssociations(t *testing.T) {
+ }
+ 
+ func TestNestedPreload(t *testing.T) {
+-	var user = *GetUser("nested_preload", Config{Pets: 2})
++	user := *GetUser("nested_preload", Config{Pets: 2})
+ 
+ 	for idx, pet := range user.Pets {
+ 		pet.Toy = Toy{Name: "toy_nested_preload_" + strconv.Itoa(idx+1)}
+@@ -75,7 +75,7 @@ func TestNestedPreload(t *testing.T) {
+ }
+ 
+ func TestNestedPreloadForSlice(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice_nested_preload_1", Config{Pets: 2}),
+ 		*GetUser("slice_nested_preload_2", Config{Pets: 0}),
+ 		*GetUser("slice_nested_preload_3", Config{Pets: 3}),
+@@ -105,7 +105,7 @@ func TestNestedPreloadForSlice(t *testing.T) {
+ }
+ 
+ func TestPreloadWithConds(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice_nested_preload_1", Config{Account: true}),
+ 		*GetUser("slice_nested_preload_2", Config{Account: false}),
+ 		*GetUser("slice_nested_preload_3", Config{Account: true}),
+@@ -163,7 +163,7 @@ func TestPreloadWithConds(t *testing.T) {
+ }
+ 
+ func TestNestedPreloadWithConds(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("slice_nested_preload_1", Config{Pets: 2}),
+ 		*GetUser("slice_nested_preload_2", Config{Pets: 0}),
+ 		*GetUser("slice_nested_preload_3", Config{Pets: 3}),
+@@ -213,7 +213,7 @@ func TestNestedPreloadWithConds(t *testing.T) {
+ }
+ 
+ func TestPreloadEmptyData(t *testing.T) {
+-	var user = *GetUser("user_without_associations", Config{})
++	user := *GetUser("user_without_associations", Config{})
+ 	DB.Create(&user)
+ 
+ 	DB.Preload("Team").Preload("Languages").Preload("Friends").First(&user, "name = ?", user.Name)
+diff --git a/tests/query_test.go b/tests/query_test.go
+index 8a476598be..c99214b60a 100644
+--- a/tests/query_test.go
++++ b/tests/query_test.go
+@@ -17,7 +17,7 @@ import (
+ )
+ 
+ func TestFind(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("find", Config{}),
+ 		*GetUser("find", Config{}),
+ 		*GetUser("find", Config{}),
+@@ -57,7 +57,7 @@ func TestFind(t *testing.T) {
+ 	}
+ 
+ 	t.Run("FirstMap", func(t *testing.T) {
+-		var first = map[string]interface{}{}
++		first := map[string]interface{}{}
+ 		if err := DB.Model(&User{}).Where("name = ?", "find").First(first).Error; err != nil {
+ 			t.Errorf("errors happened when query first: %v", err)
+ 		} else {
+@@ -88,7 +88,7 @@ func TestFind(t *testing.T) {
+ 	})
+ 
+ 	t.Run("FirstMapWithTable", func(t *testing.T) {
+-		var first = map[string]interface{}{}
++		first := map[string]interface{}{}
+ 		if err := DB.Table("users").Where("name = ?", "find").Find(first).Error; err != nil {
+ 			t.Errorf("errors happened when query first: %v", err)
+ 		} else {
+@@ -120,7 +120,7 @@ func TestFind(t *testing.T) {
+ 	})
+ 
+ 	t.Run("FirstPtrMap", func(t *testing.T) {
+-		var first = map[string]interface{}{}
++		first := map[string]interface{}{}
+ 		if err := DB.Model(&User{}).Where("name = ?", "find").First(&first).Error; err != nil {
+ 			t.Errorf("errors happened when query first: %v", err)
+ 		} else {
+@@ -135,7 +135,7 @@ func TestFind(t *testing.T) {
+ 	})
+ 
+ 	t.Run("FirstSliceOfMap", func(t *testing.T) {
+-		var allMap = []map[string]interface{}{}
++		allMap := []map[string]interface{}{}
+ 		if err := DB.Model(&User{}).Where("name = ?", "find").Find(&allMap).Error; err != nil {
+ 			t.Errorf("errors happened when query find: %v", err)
+ 		} else {
+@@ -170,7 +170,7 @@ func TestFind(t *testing.T) {
+ 	})
+ 
+ 	t.Run("FindSliceOfMapWithTable", func(t *testing.T) {
+-		var allMap = []map[string]interface{}{}
++		allMap := []map[string]interface{}{}
+ 		if err := DB.Table("users").Where("name = ?", "find").Find(&allMap).Error; err != nil {
+ 			t.Errorf("errors happened when query find: %v", err)
+ 		} else {
+@@ -241,7 +241,7 @@ func TestQueryWithAssociation(t *testing.T) {
+ }
+ 
+ func TestFindInBatches(t *testing.T) {
+-	var users = []User{
++	users := []User{
+ 		*GetUser("find_in_batches", Config{}),
+ 		*GetUser("find_in_batches", Config{}),
+ 		*GetUser("find_in_batches", Config{}),
+@@ -297,7 +297,7 @@ func TestFindInBatchesWithError(t *testing.T) {
+ 		t.Skip("skip sqlserver due to it will raise data race for invalid sql")
+ 	}
+ 
+-	var users = []User{
++	users := []User{
+ 		*GetUser("find_in_batches_with_error", Config{}),
+ 		*GetUser("find_in_batches_with_error", Config{}),
+ 		*GetUser("find_in_batches_with_error", Config{}),
+@@ -440,7 +440,7 @@ func TestNot(t *testing.T) {
+ 	if !regexp.MustCompile("SELECT \\* FROM .*users.* WHERE .*name.* IS NOT NULL").MatchString(result.Statement.SQL.String()) {
+ 		t.Fatalf("Build NOT condition, but got %v", result.Statement.SQL.String())
+ 	}
+-	
++
+ 	result = dryDB.Not(map[string]interface{}{"name": []string{"jinzhu", "jinzhu 2"}}).Find(&User{})
+ 	if !regexp.MustCompile("SELECT \\* FROM .*users.* WHERE .*name.* NOT IN \\(.+,.+\\)").MatchString(result.Statement.SQL.String()) {
+ 		t.Fatalf("Build NOT condition, but got %v", result.Statement.SQL.String())
+diff --git a/tests/scan_test.go b/tests/scan_test.go
+index 59fc6de5dd..1a188facf0 100644
+--- a/tests/scan_test.go
++++ b/tests/scan_test.go
+@@ -45,7 +45,7 @@ func TestScan(t *testing.T) {
+ 		t.Fatalf("Scan into struct should work, got %#v, should %#v", res, user3)
+ 	}
+ 
+-	var doubleAgeRes = &result{}
++	doubleAgeRes := &result{}
+ 	if err := DB.Table("users").Select("age + age as age").Where("id = ?", user3.ID).Scan(&doubleAgeRes).Error; err != nil {
+ 		t.Errorf("Scan to pointer of pointer")
+ 	}
+diff --git a/tests/scanner_valuer_test.go b/tests/scanner_valuer_test.go
+index fb1f579178..14121699ef 100644
+--- a/tests/scanner_valuer_test.go
++++ b/tests/scanner_valuer_test.go
+@@ -182,11 +182,11 @@ func (data *EncryptedData) Scan(value interface{}) error {
+ 
+ func (data EncryptedData) Value() (driver.Value, error) {
+ 	if len(data) > 0 && data[0] == 'x' {
+-		//needed to test failures
++		// needed to test failures
+ 		return nil, errors.New("Should not start with 'x'")
+ 	}
+ 
+-	//prepend asterisks
++	// prepend asterisks
+ 	return append([]byte("***"), data...), nil
+ }
+ 
+diff --git a/tests/scopes_test.go b/tests/scopes_test.go
+index 94fff30829..ab3807ea2d 100644
+--- a/tests/scopes_test.go
++++ b/tests/scopes_test.go
+@@ -23,7 +23,7 @@ func NameIn(names []string) func(d *gorm.DB) *gorm.DB {
+ }
+ 
+ func TestScopes(t *testing.T) {
+-	var users = []*User{
++	users := []*User{
+ 		GetUser("ScopeUser1", Config{}),
+ 		GetUser("ScopeUser2", Config{}),
+ 		GetUser("ScopeUser3", Config{}),
+diff --git a/tests/soft_delete_test.go b/tests/soft_delete_test.go
+index 0dfe24d5a2..9ac8da10da 100644
+--- a/tests/soft_delete_test.go
++++ b/tests/soft_delete_test.go
+@@ -83,3 +83,13 @@ func TestDeletedAtUnMarshal(t *testing.T) {
+ 		t.Errorf("Failed, result.DeletedAt: %v is not same as expected.DeletedAt: %v", result.DeletedAt, expected.DeletedAt)
+ 	}
+ }
++
++func TestDeletedAtOneOr(t *testing.T) {
++	actualSQL := DB.ToSQL(func(tx *gorm.DB) *gorm.DB {
++		return tx.Or("id = ?", 1).Find(&User{})
++	})
++
++	if !regexp.MustCompile(` WHERE id = 1 AND .users.\..deleted_at. IS NULL`).MatchString(actualSQL) {
++		t.Fatalf("invalid sql generated, got %v", actualSQL)
++	}
++}
+diff --git a/tests/sql_builder_test.go b/tests/sql_builder_test.go
+index 2f9fd8dad3..237d807b78 100644
+--- a/tests/sql_builder_test.go
++++ b/tests/sql_builder_test.go
+@@ -4,12 +4,11 @@ import (
+ 	"regexp"
+ 	"strings"
+ 	"testing"
++	"time"
+ 
+ 	"gorm.io/gorm"
+ 	"gorm.io/gorm/clause"
+ 	. "gorm.io/gorm/utils/tests"
+-
+-	"time"
+ )
+ 
+ func TestRow(t *testing.T) {
+@@ -389,12 +388,12 @@ func assertEqualSQL(t *testing.T, expected string, actually string) {
+ 	actually = replaceQuoteInSQL(actually)
+ 
+ 	// ignore updated_at value, becase it's generated in Gorm inernal, can't to mock value on update.
+-	var updatedAtRe = regexp.MustCompile(`(?i)"updated_at"=".+?"`)
++	updatedAtRe := regexp.MustCompile(`(?i)"updated_at"=".+?"`)
+ 	actually = updatedAtRe.ReplaceAllString(actually, `"updated_at"=?`)
+ 	expected = updatedAtRe.ReplaceAllString(expected, `"updated_at"=?`)
+ 
+ 	// ignore RETURNING "id" (only in PostgreSQL)
+-	var returningRe = regexp.MustCompile(`(?i)RETURNING "id"`)
++	returningRe := regexp.MustCompile(`(?i)RETURNING "id"`)
+ 	actually = returningRe.ReplaceAllString(actually, ``)
+ 	expected = returningRe.ReplaceAllString(expected, ``)
+ 
+diff --git a/tests/tests_test.go b/tests/tests_test.go
+index d1f19df308..e26f358df0 100644
+--- a/tests/tests_test.go
++++ b/tests/tests_test.go
+@@ -25,12 +25,15 @@ func init() {
+ 		os.Exit(1)
+ 	} else {
+ 		sqlDB, err := DB.DB()
+-		if err == nil {
+-			err = sqlDB.Ping()
++		if err != nil {
++			log.Printf("failed to connect database, got error %v", err)
++			os.Exit(1)
+ 		}
+ 
++		err = sqlDB.Ping()
+ 		if err != nil {
+-			log.Printf("failed to connect database, got error %v", err)
++			log.Printf("failed to ping sqlDB, got error %v", err)
++			os.Exit(1)
+ 		}
+ 
+ 		RunMigrations()
+@@ -76,6 +79,10 @@ func OpenTestConnection() (db *gorm.DB, err error) {
+ 		db, err = gorm.Open(sqlite.Open(filepath.Join(os.TempDir(), "gorm.db")), &gorm.Config{})
+ 	}
+ 
++	if err != nil {
++		return
++	}
++
+ 	if debug := os.Getenv("DEBUG"); debug == "true" {
+ 		db.Logger = db.Logger.LogMode(logger.Info)
+ 	} else if debug == "false" {
+diff --git a/tests/update_belongs_to_test.go b/tests/update_belongs_to_test.go
+index 736dfc5b67..8fe0f2897d 100644
+--- a/tests/update_belongs_to_test.go
++++ b/tests/update_belongs_to_test.go
+@@ -8,7 +8,7 @@ import (
+ )
+ 
+ func TestUpdateBelongsTo(t *testing.T) {
+-	var user = *GetUser("update-belongs-to", Config{})
++	user := *GetUser("update-belongs-to", Config{})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+diff --git a/tests/update_has_many_test.go b/tests/update_has_many_test.go
+index 9066cbaccd..2ca93e2be5 100644
+--- a/tests/update_has_many_test.go
++++ b/tests/update_has_many_test.go
+@@ -8,7 +8,7 @@ import (
+ )
+ 
+ func TestUpdateHasManyAssociations(t *testing.T) {
+-	var user = *GetUser("update-has-many", Config{})
++	user := *GetUser("update-has-many", Config{})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -44,7 +44,7 @@ func TestUpdateHasManyAssociations(t *testing.T) {
+ 	CheckUser(t, user4, user)
+ 
+ 	t.Run("Polymorphic", func(t *testing.T) {
+-		var user = *GetUser("update-has-many", Config{})
++		user := *GetUser("update-has-many", Config{})
+ 
+ 		if err := DB.Create(&user).Error; err != nil {
+ 			t.Fatalf("errors happened when create: %v", err)
+diff --git a/tests/update_has_one_test.go b/tests/update_has_one_test.go
+index 59d30e42ad..c926fbcf8f 100644
+--- a/tests/update_has_one_test.go
++++ b/tests/update_has_one_test.go
+@@ -10,7 +10,7 @@ import (
+ )
+ 
+ func TestUpdateHasOne(t *testing.T) {
+-	var user = *GetUser("update-has-one", Config{})
++	user := *GetUser("update-has-one", Config{})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+@@ -35,7 +35,7 @@ func TestUpdateHasOne(t *testing.T) {
+ 	DB.Preload("Account").Find(&user3, "id = ?", user.ID)
+ 
+ 	CheckUser(t, user2, user3)
+-	var lastUpdatedAt = user2.Account.UpdatedAt
++	lastUpdatedAt := user2.Account.UpdatedAt
+ 	time.Sleep(time.Second)
+ 
+ 	if err := DB.Session(&gorm.Session{FullSaveAssociations: true}).Save(&user).Error; err != nil {
+@@ -53,7 +53,7 @@ func TestUpdateHasOne(t *testing.T) {
+ 	}
+ 
+ 	t.Run("Polymorphic", func(t *testing.T) {
+-		var pet = Pet{Name: "create"}
++		pet := Pet{Name: "create"}
+ 
+ 		if err := DB.Create(&pet).Error; err != nil {
+ 			t.Fatalf("errors happened when create: %v", err)
+diff --git a/tests/update_many2many_test.go b/tests/update_many2many_test.go
+index d94ef4ab94..f1218cc0f2 100644
+--- a/tests/update_many2many_test.go
++++ b/tests/update_many2many_test.go
+@@ -8,7 +8,7 @@ import (
+ )
+ 
+ func TestUpdateMany2ManyAssociations(t *testing.T) {
+-	var user = *GetUser("update-many2many", Config{})
++	user := *GetUser("update-many2many", Config{})
+ 
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Fatalf("errors happened when create: %v", err)
+diff --git a/tests/update_test.go b/tests/update_test.go
+index 14ed982078..b471ba9be6 100644
+--- a/tests/update_test.go
++++ b/tests/update_test.go
+@@ -125,7 +125,7 @@ func TestUpdate(t *testing.T) {
+ }
+ 
+ func TestUpdates(t *testing.T) {
+-	var users = []*User{
++	users := []*User{
+ 		GetUser("updates_01", Config{}),
+ 		GetUser("updates_02", Config{}),
+ 	}
+@@ -178,7 +178,7 @@ func TestUpdates(t *testing.T) {
+ }
+ 
+ func TestUpdateColumn(t *testing.T) {
+-	var users = []*User{
++	users := []*User{
+ 		GetUser("update_column_01", Config{}),
+ 		GetUser("update_column_02", Config{}),
+ 	}
+@@ -622,7 +622,7 @@ func TestSave(t *testing.T) {
+ 	time.Sleep(time.Second)
+ 	user1UpdatedAt := result.UpdatedAt
+ 	user2UpdatedAt := user2.UpdatedAt
+-	var users = []*User{&result, &user2}
++	users := []*User{&result, &user2}
+ 	DB.Save(&users)
+ 
+ 	if user1UpdatedAt.Format(time.RFC1123Z) == result.UpdatedAt.Format(time.RFC1123Z) {
+@@ -645,7 +645,13 @@ func TestSave(t *testing.T) {
+ 
+ 	dryDB := DB.Session(&gorm.Session{DryRun: true})
+ 	stmt := dryDB.Save(&user).Statement
+-	if !regexp.MustCompile("WHERE .id. = [^ ]+$").MatchString(stmt.SQL.String()) {
++	if !regexp.MustCompile(`.id. = .* AND .users.\..deleted_at. IS NULL`).MatchString(stmt.SQL.String()) {
++		t.Fatalf("invalid updating SQL, got %v", stmt.SQL.String())
++	}
++
++	dryDB = DB.Session(&gorm.Session{DryRun: true})
++	stmt = dryDB.Unscoped().Save(&user).Statement
++	if !regexp.MustCompile(`WHERE .id. = [^ ]+$`).MatchString(stmt.SQL.String()) {
+ 		t.Fatalf("invalid updating SQL, got %v", stmt.SQL.String())
+ 	}
+ 
+diff --git a/tests/upsert_test.go b/tests/upsert_test.go
+index a7b53ab7c1..c5d196055e 100644
+--- a/tests/upsert_test.go
++++ b/tests/upsert_test.go
+@@ -67,7 +67,7 @@ func TestUpsert(t *testing.T) {
+ 		}
+ 	}
+ 
+-	var user = *GetUser("upsert_on_conflict", Config{})
++	user := *GetUser("upsert_on_conflict", Config{})
+ 	user.Age = 20
+ 	if err := DB.Create(&user).Error; err != nil {
+ 		t.Errorf("failed to create user, got error %v", err)
+@@ -320,11 +320,9 @@ func TestUpdateWithMissWhere(t *testing.T) {
+ 
+ 	if err := tx.Error; err != nil {
+ 		t.Fatalf("failed to update user,missing where condtion,err=%+v", err)
+-
+ 	}
+ 
+ 	if !regexp.MustCompile("WHERE .id. = [^ ]+$").MatchString(tx.Statement.SQL.String()) {
+ 		t.Fatalf("invalid updating SQL, got %v", tx.Statement.SQL.String())
+ 	}
+-
+ }
+diff --git a/utils/tests/dummy_dialecter.go b/utils/tests/dummy_dialecter.go
+index 84fdd2b6e7..9543f750aa 100644
+--- a/utils/tests/dummy_dialecter.go
++++ b/utils/tests/dummy_dialecter.go
+@@ -7,8 +7,7 @@ import (
+ 	"gorm.io/gorm/schema"
+ )
+ 
+-type DummyDialector struct {
+-}
++type DummyDialector struct{}
+ 
+ func (DummyDialector) Name() string {
+ 	return "dummy"
+diff --git a/utils/tests/models.go b/utils/tests/models.go
+index 337682d612..c84f9cae9c 100644
+--- a/utils/tests/models.go
++++ b/utils/tests/models.go
+@@ -62,15 +62,16 @@ type Language struct {
+ }
+ 
+ type Coupon struct {
+-	ID               string           `gorm:"primarykey; size:255"`
++	ID               int              `gorm:"primarykey; size:255"`
+ 	AppliesToProduct []*CouponProduct `gorm:"foreignKey:CouponId;constraint:OnDelete:CASCADE"`
+ 	AmountOff        uint32           `gorm:"amount_off"`
+ 	PercentOff       float32          `gorm:"percent_off"`
+ }
+ 
+ type CouponProduct struct {
+-	CouponId  string `gorm:"primarykey; size:255"`
+-	ProductId string `gorm:"primarykey; size:255"`
++	CouponId  int    `gorm:"primarykey;size:255"`
++	ProductId string `gorm:"primarykey;size:255"`
++	Desc      string
+ }
+ 
+ type Order struct {

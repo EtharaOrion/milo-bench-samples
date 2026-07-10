@@ -1,0 +1,203 @@
+diff --git a/ctx_test.go b/ctx_test.go
+index 97232307567..9c9300b69c9 100644
+--- a/ctx_test.go
++++ b/ctx_test.go
+@@ -259,7 +259,7 @@ func Test_Ctx_BaseURL(t *testing.T) {
+ 	utils.AssertEqual(t, "http://google.com", c.BaseURL())
+ }
+ 
+-// go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
++// go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
+ func Benchmark_Ctx_BaseURL(b *testing.B) {
+ 	app := New()
+ 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+diff --git a/middleware/proxy/proxy_test.go b/middleware/proxy/proxy_test.go
+index 26a3516c006..04350e3bd1d 100644
+--- a/middleware/proxy/proxy_test.go
++++ b/middleware/proxy/proxy_test.go
+@@ -25,8 +25,8 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
+ // go test -run Test_Proxy_Next
+ func Test_Proxy_Next(t *testing.T) {
+ 	app := fiber.New()
+-	app.Use(New(Config{
+-		Servers: []string{"localhost"},
++	app.Use(Balancer(Config{
++		Servers: []string{"127.0.0.1"},
+ 		Next: func(_ *fiber.Ctx) bool {
+ 			return true
+ 		},
+@@ -40,16 +40,14 @@ func Test_Proxy_Next(t *testing.T) {
+ // go test -run Test_Proxy
+ func Test_Proxy(t *testing.T) {
+ 	target := fiber.New()
+-
+ 	target.Get("/", func(c *fiber.Ctx) error {
+ 		return c.SendStatus(fiber.StatusTeapot)
+ 	})
+-
+ 	go func() {
+ 		utils.AssertEqual(t, nil, target.Listen(":3001"))
+ 	}()
+ 
+-	time.Sleep(time.Second)
++	time.Sleep(1 * time.Second)
+ 
+ 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+ 	utils.AssertEqual(t, nil, err)
+@@ -57,10 +55,10 @@ func Test_Proxy(t *testing.T) {
+ 
+ 	app := fiber.New()
+ 
+-	app.Use(New(Config{Servers: []string{"localhost:3001"}}))
++	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:3001"}}))
+ 
+ 	req := httptest.NewRequest("GET", "/", nil)
+-	req.Host = "localhost:3001"
++	req.Host = "127.0.0.1:3001"
+ 	resp, err = app.Test(req)
+ 	utils.AssertEqual(t, nil, err)
+ 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+@@ -70,7 +68,7 @@ func Test_Proxy(t *testing.T) {
+ func Test_Proxy_Do_With_Error(t *testing.T) {
+ 	app := fiber.New()
+ 
+-	app.Use(New(Config{Servers: []string{"localhost:90000"}}))
++	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:90000"}}))
+ 
+ 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+ 	utils.AssertEqual(t, nil, err)
+@@ -85,14 +83,15 @@ func Test_Proxy_Forward(t *testing.T) {
+ 	app := fiber.New()
+ 
+ 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
+-	go func() {
+-		utils.AssertEqual(t, nil, target.Listen(":50001"))
+-	}()
+ 	target.Get("/", func(c *fiber.Ctx) error {
+ 		return c.SendString("forwarded")
+ 	})
++	go func() {
++		utils.AssertEqual(t, nil, target.Listen(":50001"))
++	}()
++	time.Sleep(1 * time.Second)
+ 
+-	app.Use(Forward("http://localhost:50001"))
++	app.Use(Forward("http://127.0.0.1:50001"))
+ 
+ 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+ 	utils.AssertEqual(t, nil, err)
+@@ -105,23 +104,23 @@ func Test_Proxy_Forward(t *testing.T) {
+ 
+ func Test_Proxy_Modify_Response(t *testing.T) {
+ 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
++	target.Get("/", func(c *fiber.Ctx) error {
++		return c.Status(500).SendString("not modified")
++	})
+ 	go func() {
+ 		utils.AssertEqual(t, nil, target.Listen(":50002"))
+ 	}()
++	time.Sleep(1 * time.Second)
+ 
+ 	app := fiber.New()
+ 	app.Use(Balancer(Config{
+-		Servers: []string{"localhost:50002"},
++		Servers: []string{"127.0.0.1:50002"},
+ 		ModifyResponse: func(c *fiber.Ctx) error {
+ 			c.Response().SetStatusCode(fiber.StatusOK)
+ 			return c.SendString("modified response")
+ 		},
+ 	}))
+ 
+-	target.Get("/", func(c *fiber.Ctx) error {
+-		return c.SendString("not modified")
+-	})
+-
+ 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+ 	utils.AssertEqual(t, nil, err)
+ 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+@@ -133,24 +132,24 @@ func Test_Proxy_Modify_Response(t *testing.T) {
+ 
+ func Test_Proxy_Modify_Request(t *testing.T) {
+ 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
++	target.Get("/", func(c *fiber.Ctx) error {
++		b := c.Request().Body()
++		return c.SendString(string(b))
++	})
+ 	go func() {
+ 		utils.AssertEqual(t, nil, target.Listen(":50003"))
+ 	}()
++	time.Sleep(1 * time.Second)
+ 
+ 	app := fiber.New()
+ 	app.Use(Balancer(Config{
+-		Servers: []string{"localhost:50003"},
++		Servers: []string{"127.0.0.1:50003"},
+ 		ModifyRequest: func(c *fiber.Ctx) error {
+ 			c.Request().SetBody([]byte("modified request"))
+ 			return nil
+ 		},
+ 	}))
+ 
+-	target.Get("/", func(c *fiber.Ctx) error {
+-		b := c.Request().Body()
+-		return c.SendString(string(b))
+-	})
+-
+ 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+ 	utils.AssertEqual(t, nil, err)
+ 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+diff --git a/middleware/requestid/requestid_test.go b/middleware/requestid/requestid_test.go
+index 5903de2a3c1..c2d211c8519 100644
+--- a/middleware/requestid/requestid_test.go
++++ b/middleware/requestid/requestid_test.go
+@@ -48,3 +48,28 @@ func Test_RequestID_Next(t *testing.T) {
+ 	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
+ 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+ }
++
++// go test -run Test_RequestID_Locals
++func Test_RequestID_Locals(t *testing.T) {
++	reqId := "ThisIsARequestId"
++	ctxKey := "ThisIsAContextKey"
++
++	app := fiber.New()
++	app.Use(New(Config{
++		Generator: func() string {
++			return reqId
++		},
++		ContextKey: ctxKey,
++	}))
++
++	var ctxVal string
++
++	app.Use(func (c *fiber.Ctx) error {
++		ctxVal = c.Locals(ctxKey).(string)
++		return c.Next()
++	})
++
++	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
++	utils.AssertEqual(t, nil, err)
++	utils.AssertEqual(t, reqId, ctxVal)
++}
+\ No newline at end of file
+diff --git a/router_test.go b/router_test.go
+index 9d6aa8e2cea..0e713de553c 100644
+--- a/router_test.go
++++ b/router_test.go
+@@ -88,6 +88,16 @@ func Test_Route_Match_Star(t *testing.T) {
+ 	match := route.match("", "", &params)
+ 	utils.AssertEqual(t, true, match)
+ 	utils.AssertEqual(t, [maxParams]string{}, params)
++
++	// with parameter
++	match = route.match("/favicon.ico", "/favicon.ico", &params)
++	utils.AssertEqual(t, true, match)
++	utils.AssertEqual(t, [maxParams]string{"favicon.ico"}, params)
++
++	// without parameter again
++	match = route.match("", "", &params)
++	utils.AssertEqual(t, true, match)
++	utils.AssertEqual(t, [maxParams]string{}, params)
+ }
+ 
+ func Test_Route_Match_Root(t *testing.T) {

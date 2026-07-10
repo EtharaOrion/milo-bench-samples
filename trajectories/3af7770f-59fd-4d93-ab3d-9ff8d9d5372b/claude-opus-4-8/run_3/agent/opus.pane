@@ -1,0 +1,200 @@
+export GOTOOLCHAIN=go1.23.1 && timeout 120 go test ./codegen/templates/ -run TestZZTmp -v 2>&1 | tail -15; rm codegen/templates/zz_tmp_test.go
+$ cd /workspace/gqlgen && export GOTOOLCHAIN=go1.23.1 && cat > /tmp/zz_tmp_test.go <<'EOF'
+$ package templates
+$ 
+$ import "testing"
+$ 
+$ func TestZZTmp(t *testing.T) {
+$ 	for _, c := range []string{"CSPs", "cspReport", "CSPReport", "USER_IDENTITY", "userIdentity", "ipAddress", "IP_ADDRESS", "idCard", "ID_CARD"} {
+$ 		t.Logf("ToGo(%q)=%q ToGoPrivate=%q", c, ToGo(c), ToGoPrivate(c))
+$ 	}
+$ }
+$ EOF
+$ cp /tmp/zz_tmp_test.go codegen/templates/zz_tmp_test.go && timeout 120 go test ./codegen/templates/ -run TestZZTmp -v 2>&1 | grep ToGo; rm codegen/templates/zz_tmp_test.go /tmp/zz_tmp_test.go
+cd /workspace/gqlgen && export GOTOOLCHAIN=go1.23.1 && cat > /tmp/zz_tmp_test.go <<'EOF'
+package templates
+import "testing"
+func TestZZTmp(t *testing.T) {
+for _, c := range []string{"CSPs", "cspReport", "CSPReport", "USER_IDENTITY", "userIdentity", "ipAddress", "IP_ADDRESS", "idCard", "ID_CARD"} {
+
+.chglog/              .dockerignore         .editorconfig         .git/                 .gitattributes        .github/              .gitignore            .golangci.yml         CHANGELOG.md          CONTRIBUTING.md       LICENSE               README.md             RELEASE-CHECKLIST.md  TESTING.md            _examples/            api/                  bin/                  client/               codegen/              complexity/           docs/                 go.mod                go.sum                graphql/              handler/              init-templates/       integration/          internal/             main.go               plugin/               testdata/
+t.Logf("ToGo(%q)=%q ToGoPrivate=%q", c, ToGo(c), ToGoPrivate(c))
+}
+}
+EOF
+
+
+
+cp /tmp/zz_tmp_test.go codegen/templates/zz_tmp_test.go && timeout 120 go test ./codegen/templates/ -run TestZZTmp -v 2>&1 | grep ToGo; rm codegen/templates/zz_tmp_test.go /tmp/zz_tmp_test.go
+# file_editor: Create temp verification test
+File created successfully at: /workspace/gqlgen/codegen/templates/zz_tmp_test.go
+$ cd /workspace/gqlgen && export GOTOOLCHAIN=go1.23.1 && timeout 120 go test ./codegen/templates/ -run TestZZTmp -v 2>&1 | grep -i "togo"; rm codegen/templates/zz_tmp_test.go
+zz_tmp_test.go:7: ToGo("CSPs")="CSPs" ToGoPrivate="cSPs"
+    zz_tmp_test.go:7: ToGo("cspReport")="CSPReport" ToGoPrivate="cspReport"
+    zz_tmp_test.go:7: ToGo("CSPReport")="CSPReport" ToGoPrivate="cspReport"
+    zz_tmp_test.go:7: ToGo("USER_IDENTITY")="UserIdentity" ToGoPrivate="userIdentity"
+    zz_tmp_test.go:7: ToGo("userIdentity")="UserIdentity" ToGoPrivate="userIdentity"
+    zz_tmp_test.go:7: ToGo("ipAddress")="IPAddress" ToGoPrivate="ipAddress"
+    zz_tmp_test.go:7: ToGo("IP_ADDRESS")="IPAddress" ToGoPrivate="ipAddress"
+    zz_tmp_test.go:7: ToGo("idCard")="IDCard" ToGoPrivate="idCard"
+    zz_tmp_test.go:7: ToGo("ID_CARD")="IDCard" ToGoPrivate="idCard"
+$ cd /workspace/gqlgen && git status --short && echo "=== diff ===" && git --no-pager diff codegen/templates/templates.go codegen/config/binder.go
+M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+=== diff ===
+diff --git a/codegen/config/binder.go b/codegen/config/binder.go
+index 3655bfa2..33f49cb0 100644
+--- a/codegen/config/binder.go
++++ b/codegen/config/binder.go
+@@ -508,8 +508,12 @@ func (b *Binder) CopyModifiersFromAst(t *ast.Type, base types.Type) types.Type {
+        }
+
+        var isInterface bool
+-       if named, ok := base.(*types.Named); ok {
+-               _, isInterface = named.Underlying().(*types.Interface)
++       switch t := code.Unalias(base).(type) {
++       case *types.Named:
++               _, isInterface = t.Underlying().(*types.Interface)
++       case *types.Interface:
++               // e.g. the `Any` scalar which is bound to `interface{}` (`any`).
++               isInterface = true
+        }
+
+        if !isInterface && !IsNilable(base) && !t.NonNull {
+@@ -520,6 +524,7 @@ func (b *Binder) CopyModifiersFromAst(t *ast.Type, base types.Type) types.Type {
+ }
+
+ func IsNilable(t types.Type) bool {
++       t = code.Unalias(t)
+        if namedType, isNamed := t.(*types.Named); isNamed {
+                return IsNilable(namedType.Underlying())
+        }
+diff --git a/codegen/templates/templates.go b/codegen/templates/templates.go
+index 5a4374f0..facba8e6 100644
+--- a/codegen/templates/templates.go
++++ b/codegen/templates/templates.go
+@@ -495,18 +495,22 @@ func wordWalker(str string, f func(*wordInfo)) {
+                if initialisms[upperWord] {
+                        // If the uppercase word (string(runes[w:i]) is "ID" or "IP"
+                        // AND
+-                       // the word is the first two characters of the str
+-                       // AND
+                        // that is not the end of the word
+                        // AND
+-                       // the length of the string is greater than 3
++                       // the current word is longer than the initialism by at least two runes
+                        // AND
+-                       // the third rune is an uppercase one
++                       // the rune two positions after the initialism is an uppercase one
+                        // THEN
+                        // do NOT count this as an initialism.
++                       //
++                       // This handles identifiers such as "IDENTITY" or "USER_IDENTITY"
++                       // where the initialism ("ID") is merely the prefix of a longer
++                       // word rather than a standalone initialism. The check is relative to
++                       // the start of the current word (w) so it also works for initialisms
++                       // that are not the first word of the identifier.
+                        switch upperWord {
+                        case "ID", "IP":
+-                               if word == str[:2] && !eow && len(str) > 3 && unicode.IsUpper(runes[3]) {
++                               if !eow && len(runes) > w+len(word)+1 && unicode.IsUpper(runes[w+len(word)+1]) {
+                                        continue
+                                }
+                        }
+@@ -730,6 +734,7 @@ var CommonInitialisms = map[string]bool{
+        "API":   true,
+        "ASCII": true,
+        "CPU":   true,
++       "CSP":   true,
+        "CSS":   true,
+        "CSV":   true,
+        "DNS":   true,
+$ cd /workspace/gqlgen && git --no-pager diff go.mod && echo "=== docs ===" && git --no-pager diff docs/content/recipes/subscriptions.md
+diff --git a/go.mod b/go.mod
+index 55de81db..3b7311d7 100644
+--- a/go.mod
++++ b/go.mod
+@@ -16,7 +16,7 @@ require (
+        github.com/sosodev/duration v1.3.1
+        github.com/stretchr/testify v1.9.0
+        github.com/urfave/cli/v2 v2.27.4
+-       github.com/vektah/gqlparser/v2 v2.5.16
++       github.com/vektah/gqlparser/v2 v2.5.17
+        golang.org/x/text v0.18.0
+        golang.org/x/tools v0.24.0
+        google.golang.org/protobuf v1.34.2
+=== docs ===
+diff --git a/docs/content/recipes/subscriptions.md b/docs/content/recipes/subscriptions.md
+index 4cf72204..f38e1a09 100644
+--- a/docs/content/recipes/subscriptions.md
++++ b/docs/content/recipes/subscriptions.md
+@@ -122,7 +122,7 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+        // For this example we'll simply use a Goroutine with a simple loop.
+        go func() {
+                // Handle deregistration of the channel here. Note the `defer`
+-    defer close(ch)
++               defer close(ch)
+
+                for {
+                        // In our example we'll send the current time every second.
+@@ -144,9 +144,9 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+                                fmt.Println("Subscription Closed")
+                                // Handle deregistration of the channel here. `close(ch)`
+                                return // Remember to return to end the routine.
+-
++
+                        case ch <- t: // This is the actual send.
+-                               // Our message went through, do nothing
++                               // Our message went through, do nothing
+                        }
+                }
+        }()
+$ cd /workspace/gqlgen && export GOTOOLCHAIN=go1.23.1 && timeout 200 go test ./codegen/config/... ./codegen/templates/... ./internal/code/... ./api/... 2>&1 | tail -15; git checkout -- plugin/resolvergen/testdata/ 2>/dev/null; git status --short
+ok      github.com/99designs/gqlgen/codegen/config      (cached)
+ok      github.com/99designs/gqlgen/codegen/templates   77.182s
+ok      github.com/99designs/gqlgen/internal/code       1.627s
+ok      github.com/99designs/gqlgen/api (cached)
+ M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+# finish: Summarize completed changes and verification
+I implemented the code-level changes from the bundled issue description. The dependency-bump PRs that only touch JavaScript lockfiles (vite #3296/#3311, rollup #3299) could not be done because `npm` is unavailable in this environment, but all the Go/source/docs changes were completed and verified.
+
+## Changes made
+
+### Issue #3302 — Handle common initialisms as a non-first word
+File: `codegen/templates/templates.go` (`wordWalker`)
+
+The special-case that avoids treating `ID`/`IP` as an initialism when it's merely the prefix of a longer all-caps word (e.g. `IDENTITY`) was hard-coded to the **first** word of the identifier (`word == str[:2]`, `runes[3]`). I made the check relative to the start of the current word (`w`), so it now also fires for non-first words:
+- `ToGo("USER_IDENTITY")` → `UserIdentity` (was `UserIDEntity`)
+- existing cases still hold: `IDFoo`→`IDFoo`, `IDENTITY`→`Identity`, `USER_ID`→`UserID`, `IDCard`, etc.
+
+### Issue #3303 — Add CSP to common initialisms
+File: `codegen/templates/templates.go` (`CommonInitialisms`)
+- Added `"CSP": true`. Now `ToGo("csp_report")` → `CSPReport`, `ToGo("CSPs")` → `CSPs`.
+
+### Issue #3301 — `[Any]` array generation
+File: `codegen/config/binder.go`
+- `CopyModifiersFromAst` now recognises a base type that is a bare `*types.Interface` (e.g. the `Any` scalar bound to `interface{}`/`any`), in addition to a named interface, and unaliases the base before inspecting it.
+- `IsNilable` now unaliases its input so alias types (such as `any` under `gotypesalias=1`) are correctly treated as nilable.
+This prevents an extra pointer being added for `interface{}` elements/values, so `[Any]!` generates `[]any` (verified by generating and compiling a schema containing `[Any]` in both object and input types).
+
+### Issue #3305 — subscriptions.md indentation
+File: `docs/content/recipes/subscriptions.md`
+- Fixed a code-block line that used spaces instead of tabs (`defer close(ch)`) and trimmed stray trailing whitespace so the Go example indents consistently.
+
+### Issue #3307 — Bump gqlparser to v2.5.17
+Files: `go.mod`, `go.sum`
+- `github.com/vektah/gqlparser/v2 v2.5.16` → `v2.5.17` (ran `go mod tidy`).
+
+## Verification
+- `go build ./...` succeeds.
+- All relevant suites pass: `codegen/...`, `plugin/...`, `api/...`, `internal/code/...`, `codegen/config`, `codegen/templates`, `graphql/...` (existing `TestToGo`/`TestToGoPrivate` still green).
+- Pre-existing, unrelated failures observed and left untouched: `graphql/playground` integrity test (depends on live CDN content) and the `plugin/resolvergen` testdata, which the test mutates on every run (reverted).
+
+Note on environment: the installed Go toolchain (1.25) is incompatible with the pinned `golang.org/x/tools v0.24.0` (compile error in `tokeninternal`), so I ran the test/build with `GOTOOLCHAIN=go1.23.1`, which matches the module's `//go:build go1.23` alias code path.

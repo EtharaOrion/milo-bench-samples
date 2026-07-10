@@ -1,0 +1,200 @@
+    23	]
+# file_editor: Allow initial dictionary in InMemoryStore
+The file /workspace/langchain/libs/langchain/langchain/storage/in_memory.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/storage/in_memory.py:
+    32	    """Store that maps string keys to bytes."""
+    33	
+    34	
+    35	class InMemoryBaseStore(BaseStore[K, V]):
+    36	    """In-memory implementation of the key-value store interface."""
+    37	
+    38	    def __init__(self, store: Optional[Dict[K, V]] = None) -> None:
+    39	        self.store: Dict[K, V] = store or {}
+    40	
+    41	    def mget(self, keys: Sequence[K]) -> List[Optional[V]]:
+    42	        return [self.store.get(key) for key in keys]
+    43	
+    44	    def mset(self, key_value_pairs: Sequence[Tuple[K, V]]) -> None:
+    45	        for key, value in key_value_pairs:
+    46	            self.store[key] = value
+    47	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python -m ruff langchain/storage langchain/retrievers/multi_vector.py langchain/retrievers/parent_document_retriever.py langchain/document_loaders/airbyte.py langchain/memory/chat_message_histories/rocksetdb.py langchain/callbacks/tracers/base.py && /workspace/langchain/libs/langchain/.venv/bin/python /workspace/reproduce_langchain_issues.py
+All issue APIs and edge cases passed
+$ git -C /workspace/langchain status --short | grep -E 'tests|test_' || true
+?? .github/workflows/langchain_scheduled_integration_tests.yml
+# task_tracker: Update task plan after tests pass
+Task list has been updated with 6 item(s).
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python - <<'PY'
+$ from langchain.retrievers.multi_vector import MultiVectorRetriever
+$ from langchain.storage import InMemoryByteStore
+$ from langchain.schema import Document
+$ from langchain.vectorstores.base import VectorStore
+$ 
+$ class V(VectorStore):
+$     def add_texts(self, texts, metadatas=None, **kwargs): return []
+$     def similarity_search(self, query, k=4, **kwargs): return [Document(page_content='c', metadata={'doc_id':'p'})]
+$     @classmethod
+$     def from_texts(cls, texts, embedding, metadatas=None, **kwargs): return cls()
+$ 
+$ r=MultiVectorRetriever(vectorstore=V(), byte_store=InMemoryByteStore())
+$ r.docstore.mset([('p', Document(page_content='parent'))])
+$ assert r.get_relevant_documents('q') == [Document(page_content='parent')]
+$ print('byte_store-backed MultiVectorRetriever ok')
+$ PY
+cd /workspace/langchain/libs/langchain && .venv/bin/python - <<'PY'
+from langchain.retrievers.multi_vector import MultiVectorRetriever
+from langchain.storage import InMemoryByteStore
+from langchain.schema import Document
+from langchain.vectorstores.base import VectorStore
+class V(VectorStore):
+    def add_texts(self, texts, metadatas=None, **kwargs): return []
+    def similarity_search(self, query, k=4, **kwargs): return [Document(page_content='c', metadata={'doc_id':'p'})]
+    @classmethod
+    def from_texts(cls, texts, embedding, metadatas=None, **kwargs): return cls()
+r=MultiVectorRetriever(vectorstore=V(), byte_store=InMemoryByteStore())
+r.docstore.mset([('p', Document(page_content='parent'))])
+assert r.get_relevant_documents('q') == [Document(page_content='parent')]
+print('byte_store-backed MultiVectorRetriever ok')
+PY
+byte_store-backed MultiVectorRetriever ok
+$ git -C /workspace/langchain --no-pager diff --check
+$ find /workspace/langchain/docs -maxdepth 4 -type d | grep -i 'expression\|lcel\|runnable' | sort; find /workspace/langchain/docs -maxdepth 4 -type f | grep -i 'fallback\|expression_language\|lcel' | head -100
+/workspace/langchain/docs/docs_skeleton/docs/guides/expression_language
+/workspace/langchain/docs/extras/guides/expression_language
+/workspace/langchain/docs/extras/guides/expression_language/cookbook.ipynb
+/workspace/langchain/docs/extras/guides/expression_language/interface.ipynb
+# file_editor: View Weaviate provider doc
+NOTE: We only show up to 33 since there're only 33 lines in this file.
+Here's the result of running `cat -n` on /workspace/langchain/docs/extras/integrations/providers/weaviate.mdx:
+     1	# Weaviate
+     2	
+     3	This page covers how to use the Weaviate ecosystem within LangChain.
+     4	
+     5	What is Weaviate?
+     6	
+     7	**Weaviate in a nutshell:**
+     8	- Weaviate is an open-source ​database of the type ​vector search engine.
+     9	- Weaviate allows you to store JSON documents in a class property-like fashion while attaching machine learning vectors to these documents to represent them in vector space.
+    10	- Weaviate can be used stand-alone (aka bring your vectors) or with a variety of modules that can do the vectorization for you and extend the core capabilities.
+    11	- Weaviate has a GraphQL-API to access your data easily.
+    12	- We aim to bring your vector search set up to production to query in mere milliseconds (check our [open source benchmarks](https://weaviate.io/developers/weaviate/current/benchmarks/) to see if Weaviate fits your use case).
+    13	- Get to know Weaviate in the [basics getting started guide](https://weaviate.io/developers/weaviate/current/core-knowledge/basics.html) in under five minutes.
+    14	
+    15	**Weaviate in detail:**
+    16	
+    17	Weaviate is a low-latency vector search engine with out-of-the-box support for different media types (text, images, etc.). It offers Semantic Search, Question-Answer Extraction, Classification, Customizable Models (PyTorch/TensorFlow/Keras), etc. Built from scratch in Go, Weaviate stores both objects and vectors, allowing for combining vector search with structured filtering and the fault tolerance of a cloud-native database. It is all accessible through GraphQL, REST, and various client-side programming languages.
+    18	
+    19	## Installation and Setup
+    20	- Install the Python SDK with `pip install weaviate-client`
+    21	## Wrappers
+    22	
+    23	### VectorStore
+    24	
+    25	There exists a wrapper around Weaviate indexes, allowing you to use it as a vectorstore,
+    26	whether for semantic search or example selection.
+    27	
+    28	To import this vectorstore:
+    29	```python
+    30	from langchain.vectorstores import Weaviate
+    31	```
+    32	
+    33	For a more detailed walkthrough of the Weaviate wrapper, see [this notebook](/docs/integrations/vectorstores/weaviate.html)
+# file_editor: Create Log10 provider documentation
+File created successfully at: /workspace/langchain/docs/extras/integrations/providers/log10.mdx
+# file_editor: Create LCEL fallback documentation
+File created successfully at: /workspace/langchain/docs/extras/guides/expression_language/fallbacks.md
+# file_editor: Add Weaviate auth example to provider docs
+The file /workspace/langchain/docs/extras/integrations/providers/weaviate.mdx has been edited. Here's the result of running `cat -n` on a snippet of the edited file:
+    28	To import this vectorstore:
+    29	```python
+    30	from langchain.vectorstores import Weaviate
+    31	```
+    32	
+    33	To connect to a Weaviate instance that requires API key authentication:
+    34	
+    35	```python
+    36	import weaviate
+    37	
+    38	client = weaviate.Client(
+    39	    url="https://your-weaviate-instance.weaviate.network",
+    40	    auth_client_secret=weaviate.auth.AuthApiKey("YOUR-WEAVIATE-API-KEY"),
+    41	)
+    42	```
+    43	
+    44	
+    45	For a more detailed walkthrough of the Weaviate wrapper, see [this notebook](/docs/integrations/vectorstores/weaviate.html)
+    46	
+Review the changes and make sure they are as expected (correct indentation, no duplicate lines, etc). Edit the file again if necessary.
+$ git -C /workspace/langchain status --short && git -C /workspace/langchain --no-pager diff --stat
+M docs/extras/integrations/providers/weaviate.mdx
+ M libs/langchain/langchain/callbacks/tracers/base.py
+ M libs/langchain/langchain/document_loaders/__init__.py
+ M libs/langchain/langchain/memory/chat_message_histories/__init__.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/langchain/schema/__init__.py
+ M libs/langchain/pyproject.toml
+?? .github/workflows/langchain_scheduled_integration_tests.yml
+?? docs/extras/guides/expression_language/fallbacks.md
+?? docs/extras/integrations/providers/log10.mdx
+?? libs/langchain/langchain/document_loaders/airbyte.py
+?? libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+?? libs/langchain/langchain/retrievers/multi_vector.py
+?? libs/langchain/langchain/retrievers/parent_document_retriever.py
+?? libs/langchain/langchain/storage/
+ docs/extras/integrations/providers/weaviate.mdx                    | 12 ++++++++++++
+ libs/langchain/langchain/callbacks/tracers/base.py                 | 32 +++++++++++++++++++++-----------
+ libs/langchain/langchain/document_loaders/__init__.py              | 18 ++++++++++++++++++
+ libs/langchain/langchain/memory/chat_message_histories/__init__.py |  2 ++
+ libs/langchain/langchain/retrievers/__init__.py                    |  4 ++++
+ libs/langchain/langchain/schema/__init__.py                        |  3 +++
+ libs/langchain/pyproject.toml                                      |  5 +++--
+ 7 files changed, 63 insertions(+), 13 deletions(-)
+$ git -C /workspace/langchain --no-pager diff --check
+$ /workspace/langchain/libs/langchain/.venv/bin/python /workspace/reproduce_langchain_issues.py
+All issue APIs and edge cases passed
+$ git -C /workspace/langchain --no-pager diff --name-status ab193338aa6d2ca811e073ff49e6e2f37de32c31 -- | sed -n '1,200p'
+M       docs/extras/integrations/providers/weaviate.mdx
+M       libs/langchain/langchain/callbacks/tracers/base.py
+M       libs/langchain/langchain/document_loaders/__init__.py
+M       libs/langchain/langchain/memory/chat_message_histories/__init__.py
+M       libs/langchain/langchain/retrievers/__init__.py
+M       libs/langchain/langchain/schema/__init__.py
+M       libs/langchain/pyproject.toml
+# task_tracker: Mark all tasks complete
+Task list has been updated with 6 item(s).
+# finish: Summarize completed implementation and validation
+Implemented the requested non-test changes in `/workspace/langchain`.
+
+Summary of changes:
+- Added Airbyte CDK-based document loaders:
+  - `AirbyteCDKLoader`
+  - `AirbyteGongLoader`, `AirbyteHubspotLoader`, `AirbyteSalesforceLoader`, `AirbyteShopifyLoader`, `AirbyteStripeLoader`, `AirbyteTypeformLoader`, `AirbyteZendeskSupportLoader`
+- Added key-value storage support:
+  - `BaseStore`, `ByteStore`
+  - `InMemoryStore`, `InMemoryByteStore`
+  - `LocalFileStore`
+  - `EncoderBackedStore`
+  - `create_kv_docstore` / `create_lc_store`
+- Added retrieval support:
+  - `MultiVectorRetriever`
+  - `ParentDocumentRetriever`
+- Added `RocksetChatMessageHistory`.
+- Updated tracer missing-run errors to include the run id, and corrected LLM error callback routing.
+- Added scheduled integration-test GitHub workflow and `scheduled` pytest marker registration.
+- Bumped `libs/langchain` version to `0.0.259`.
+- Added minimal docs for Log10, Weaviate auth, and LCEL fallbacks.
+- Created and expanded `/workspace/reproduce_langchain_issues.py` to reproduce/verify the implemented behavior.
+
+Validation run:
+- `/workspace/langchain/libs/langchain/.venv/bin/python /workspace/reproduce_langchain_issues.py` ✅
+- `ruff` on modified Python files ✅
+- `py_compile` on modified Python files ✅
+- Focused tracer/runnable tests ✅
+- Retriever unit tests ✅
+- Document loader unit tests ✅
+- Memory unit tests ✅
+- Full `libs/langchain` unit suite: `928 passed, 212 skipped` ✅
+- Experimental unit suite: `21 passed` ✅
+- `git diff --check` ✅
+
+I did not modify any repository test files. I did not run external integration tests because those typically require service credentials/networked dependencies; the scheduled workflow is added for those marked tests.

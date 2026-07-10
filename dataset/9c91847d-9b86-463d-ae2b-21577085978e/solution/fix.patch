@@ -1,0 +1,592 @@
+diff --git a/.github/ISSUE_TEMPLATE/feature_request.md b/.github/ISSUE_TEMPLATE/feature_request.md
+index 5315f76fe1..ab4de7198d 100644
+--- a/.github/ISSUE_TEMPLATE/feature_request.md
++++ b/.github/ISSUE_TEMPLATE/feature_request.md
+@@ -7,6 +7,8 @@ assignees: ''
+ 
+ ---
+ 
++Consider posting in https://github.com/willmcgugan/rich/discussions for feedback before raising a feature request.
++
+ Have you checked the issues for a similar suggestions?
+ 
+ **How would you improve Rich?**
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d5bb59eeb3..0598c7adcd 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## [9.7.0] - 2021-01-09
++
++### Added
++
++- Added rich.tree
++- Added no_color argument to Console
++
+ ## [9.6.2] - 2021-01-07
+ 
+ ### Fixed
+diff --git a/README.md b/README.md
+index ff05c927bd..f0ab6f00c6 100644
+--- a/README.md
++++ b/README.md
+@@ -262,6 +262,20 @@ The above command generate the following output in the terminal:
+ 
+ ![spinners](https://github.com/willmcgugan/rich/raw/master/imgs/spinners.gif)
+ 
++## Tree
++
++Rich can render tree views with guide lines. A tree view is ideal for displaying a file structure, or any other hierarchical data.
++
++The labels of the tree can be simple text or anything else Rich can render. Run the following for a demonstration:
++
++```
++python -m rich.tree
++```
++
++This generates the following output:
++
++![markdown](https://github.com/willmcgugan/rich/raw/master/imgs/tree.png)
++
+ ## Columns
+ 
+ Rich can render content in neat [columns](https://rich.readthedocs.io/en/latest/columns.html) with equal or optimal width. Here's a very basic clone of the (MacOS / Linux) `ls` command which displays a directory listing in columns:
+diff --git a/docs/requirements.txt b/docs/requirements.txt
+index a5db0b4e59..739c601500 100644
+--- a/docs/requirements.txt
++++ b/docs/requirements.txt
+@@ -1,3 +1,3 @@
+ alabaster==0.7.12
+-Sphinx==3.4.1
+-sphinx-rtd-theme==0.5.0
++Sphinx==3.4.3
++sphinx-rtd-theme==0.5.1
+\ No newline at end of file
+diff --git a/docs/source/index.rst b/docs/source/index.rst
+index f40541a2f3..be116a241e 100644
+--- a/docs/source/index.rst
++++ b/docs/source/index.rst
+@@ -20,15 +20,16 @@ Welcome to Rich's documentation!
+    traceback.rst
+    prompt.rst
+ 
+-   tables.rst
+-   padding.rst
+-   panel.rst
+-   group.rst
+    columns.rst
++   group.rst
+    live.rst
+-   progress.rst
+    markdown.rst
++   padding.rst
++   panel.rst
++   progress.rst
+    syntax.rst
++   tables.rst
++   tree.rst
+ 
+    protocol.rst
+ 
+diff --git a/docs/source/progress.rst b/docs/source/progress.rst
+index a68fa08aa6..41566649df 100644
+--- a/docs/source/progress.rst
++++ b/docs/source/progress.rst
+@@ -34,7 +34,9 @@ If you require multiple tasks in the display, or wish to configure the columns i
+ The Progress class is designed to be used as a *context manager* which will start and stop the progress display automatically.
+ 
+ Here's a simple example::
+-
++    
++    import time
++    
+     from rich.progress import Progress
+ 
+     with Progress() as progress:
+diff --git a/docs/source/reference.rst b/docs/source/reference.rst
+index ed85f17a74..d4deb43218 100644
+--- a/docs/source/reference.rst
++++ b/docs/source/reference.rst
+@@ -35,4 +35,5 @@ Reference
+    reference/text.rst
+    reference/theme.rst
+    reference/traceback.rst
++   reference/tree.rst
+    references/abc.rst
+diff --git a/docs/source/text.rst b/docs/source/text.rst
+index ed5f06cbfe..50113d3724 100644
+--- a/docs/source/text.rst
++++ b/docs/source/text.rst
+@@ -9,7 +9,10 @@ You can consider this class to be like a string with marked up regions of text.
+ 
+ One way to add a style to Text is the :meth:`~rich.text.Text.stylize` method which applies a style to a start and end offset. Here is an example::
+ 
++    from rich.console import Console
+     from rich.text import Text
++
++    console = Console()
+     text = Text("Hello, World!")
+     text.stylize("bold magenta", 0, 6)
+     console.print(text)
+diff --git a/examples/tree.py b/examples/tree.py
+new file mode 100644
+index 0000000000..8868e5da6b
+--- /dev/null
++++ b/examples/tree.py
+@@ -0,0 +1,51 @@
++import os
++import pathlib
++import sys
++
++from rich import print
++from rich.filesize import decimal
++from rich.markup import escape
++from rich.text import Text
++from rich.tree import Tree
++
++
++def walk_directory(directory: pathlib.Path, tree: Tree) -> None:
++    """Recursively build a Tree with directory contents."""
++    # Sort dirs first then by filename
++    paths = sorted(
++        pathlib.Path(directory).iterdir(),
++        key=lambda path: (path.is_file(), path.name.lower()),
++    )
++    for path in paths:
++        # Remove hidden files
++        if path.name.startswith("."):
++            continue
++        if path.is_dir():
++            style = "dim" if path.name.startswith("__") else ""
++            branch = tree.add(
++                f"[bold magenta]:open_file_folder: [link file://{path}]{escape(path.name)}",
++                style=style,
++                guide_style=style,
++            )
++            walk_directory(path, branch)
++        else:
++            text_filename = Text(path.name, "green")
++            text_filename.highlight_regex(r"\..*$", "bold red")
++            text_filename.stylize(f"link file://{path}")
++            file_size = path.stat().st_size
++            text_filename.append(f" ({decimal(file_size)})", "blue")
++            icon = "🐍 " if path.suffix == ".py" else "📄 "
++            tree.add(Text(icon) + text_filename)
++
++
++try:
++    directory = os.path.abspath(sys.argv[1])
++except IndexError:
++    print("[b]Usage:[/] python tree.py <DIRECTORY>")
++else:
++    tree = Tree(
++        f":open_file_folder: [link file://{directory}]{directory}",
++        guide_style="bold bright_blue",
++    )
++    walk_directory(pathlib.Path(directory), tree)
++    print(tree)
+diff --git a/imgs/tree.png b/imgs/tree.png
+new file mode 100644
+index 0000000000..04a30a53e2
+Binary files /dev/null and b/imgs/tree.png differ
+diff --git a/poetry.lock b/poetry.lock
+index e0c6969c91..9660024601 100644
+--- a/poetry.lock
++++ b/poetry.lock
+@@ -232,7 +232,7 @@ python-versions = "*"
+ 
+ [[package]]
+ name = "ipywidgets"
+-version = "7.6.2"
++version = "7.6.3"
+ description = "IPython HTML widgets for Jupyter"
+ category = "main"
+ optional = true
+@@ -241,7 +241,7 @@ python-versions = "*"
+ [package.dependencies]
+ ipykernel = ">=4.5.1"
+ ipython = {version = ">=4.0.0", markers = "python_version >= \"3.3\""}
+-jupyterlab-widgets = {version = ">=1.0.0", markers = "python_version >= \"3.5\""}
++jupyterlab-widgets = {version = ">=1.0.0", markers = "python_version >= \"3.6\""}
+ nbformat = ">=4.2.0"
+ traitlets = ">=4.3.1"
+ widgetsnbextension = ">=3.5.0,<3.6.0"
+@@ -910,8 +910,8 @@ ipython-genutils = [
+     {file = "ipython_genutils-0.2.0.tar.gz", hash = "sha256:eb2e116e75ecef9d4d228fdc66af54269afa26ab4463042e33785b887c628ba8"},
+ ]
+ ipywidgets = [
+-    {file = "ipywidgets-7.6.2-py2.py3-none-any.whl", hash = "sha256:eab960f737f380075cabca41f92e5e81dfb6eba3ce6392094469ef2418ca4d35"},
+-    {file = "ipywidgets-7.6.2.tar.gz", hash = "sha256:bbb881ce18fb0cff4ac718f40c04709c7ac86a77abee149f1b447965ede86e36"},
++    {file = "ipywidgets-7.6.3-py2.py3-none-any.whl", hash = "sha256:e6513cfdaf5878de30f32d57f6dc2474da395a2a2991b94d487406c0ab7f55ca"},
++    {file = "ipywidgets-7.6.3.tar.gz", hash = "sha256:9f1a43e620530f9e570e4a493677d25f08310118d315b00e25a18f12913c41f0"},
+ ]
+ jedi = [
+     {file = "jedi-0.17.1-py2.py3-none-any.whl", hash = "sha256:1ddb0ec78059e8e27ec9eb5098360b4ea0a3dd840bedf21415ea820c21b40a22"},
+diff --git a/pyproject.toml b/pyproject.toml
+index adc8a261d4..f5ede46fb6 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -2,7 +2,7 @@
+ name = "rich"
+ homepage = "https://github.com/willmcgugan/rich"
+ documentation = "https://rich.readthedocs.io/en/latest/"
+-version = "9.6.2"
++version = "9.7.0"
+ description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
+ authors = ["Will McGugan <willmcgugan@gmail.com>"]
+ license = "MIT"
+diff --git a/rich/console.py b/rich/console.py
+index 2ef5b3d75b..d955ecd1f4 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -402,6 +402,7 @@ class Console:
+         width (int, optional): The width of the terminal. Leave as default to auto-detect width.
+         height (int, optional): The height of the terminal. Leave as default to auto-detect height.
+         style (StyleType, optional): Style to apply to all output, or None for no style. Defaults to None.
++        no_color (Optional[bool], optional): Enabled no color mode, or None to auto detect. Defaults to None.
+         record (bool, optional): Boolean to enable recording of terminal output,
+             required to call :meth:`export_html` and :meth:`export_text`. Defaults to False.
+         markup (bool, optional): Boolean to enable :ref:`console_markup`. Defaults to True.
+@@ -433,6 +434,7 @@ def __init__(
+         width: int = None,
+         height: int = None,
+         style: StyleType = None,
++        no_color: bool = None,
+         tab_size: int = 8,
+         record: bool = False,
+         markup: bool = True,
+@@ -492,6 +494,9 @@ def __init__(
+         self.get_datetime = get_datetime or datetime.now
+         self.get_time = get_time or monotonic
+         self.style = style
++        self.no_color = (
++            no_color if no_color is not None else "NO_COLOR" in self._environ
++        )
+ 
+         self._record_buffer_lock = threading.RLock()
+         self._thread_locals = ConsoleThreadLocals(
+@@ -538,7 +543,7 @@ def _detect_color_system(self) -> Optional[ColorSystem]:
+         """Detect color system from env vars."""
+         if self.is_jupyter:
+             return ColorSystem.TRUECOLOR
+-        if not self.is_terminal or "NO_COLOR" in self._environ or self.is_dumb_terminal:
++        if not self.is_terminal or self.is_dumb_terminal:
+             return None
+         if WINDOWS:  # pragma: no cover
+             if self.legacy_windows:  # pragma: no cover
+@@ -1374,6 +1379,8 @@ def _render_buffer(self, buffer: Iterable[Segment]) -> str:
+             with self._record_buffer_lock:
+                 self._record_buffer.extend(buffer)
+         not_terminal = not self.is_terminal
++        if self.no_color and color_system:
++            buffer = Segment.remove_color(buffer)
+         for text, style, is_control in buffer:
+             if style:
+                 append(
+diff --git a/rich/default_styles.py b/rich/default_styles.py
+index a192040e83..ac0f5badda 100644
+--- a/rich/default_styles.py
++++ b/rich/default_styles.py
+@@ -121,6 +121,8 @@
+     "progress.data.speed": Style(color="red"),
+     "progress.spinner": Style(color="green"),
+     "status.spinner": Style(color="green"),
++    "tree": Style(),
++    "tree.line": Style(),
+ }
+ 
+ MARKDOWN_STYLES = {
+diff --git a/rich/segment.py b/rich/segment.py
+index db17b0fbb6..34ae7ab0d0 100644
+--- a/rich/segment.py
++++ b/rich/segment.py
+@@ -1,4 +1,4 @@
+-from typing import NamedTuple, Optional
++from typing import Dict, NamedTuple, Optional
+ 
+ from .cells import cell_len, set_cell_size
+ from .style import Style
+@@ -331,12 +331,37 @@ def strip_links(cls, segments: Iterable["Segment"]) -> Iterable["Segment"]:
+     def strip_styles(cls, segments: Iterable["Segment"]) -> Iterable["Segment"]:
+         """Remove all styles from an iterable of segments.
+ 
++        Args:
++            segments (Iterable[Segment]): An iterable segments.
++
+         Yields:
+             Segment: Segments with styles replace with None
+         """
+         for text, _style, is_control in segments:
+             yield cls(text, None, is_control)
+ 
++    @classmethod
++    def remove_color(cls, segments: Iterable["Segment"]) -> Iterable["Segment"]:
++        """Remove all color from an iterable of segments.
++
++        Args:
++            segments (Iterable[Segment]): An iterable segments.
++
++        Yields:
++            Segment: Segments with colorless style.
++        """
++
++        cache: Dict[Style, Style] = {}
++        for text, style, is_control in segments:
++            if style:
++                colorless_style = cache.get(style)
++                if colorless_style is None:
++                    colorless_style = style.without_color
++                    cache[style] = colorless_style
++                yield cls(text, colorless_style, is_control)
++            else:
++                yield cls(text, None, is_control)
++
+ 
+ if __name__ == "__main__":  # pragma: no cover
+     lines = [[Segment("Hello")]]
+diff --git a/rich/style.py b/rich/style.py
+index 5a802d0762..cda8380638 100644
+--- a/rich/style.py
++++ b/rich/style.py
+@@ -383,6 +383,24 @@ def background_style(self) -> "Style":
+         """A Style with background only."""
+         return Style(bgcolor=self.bgcolor)
+ 
++    @property
++    def without_color(self) -> "Style":
++        """Get a copy of the style with color removed."""
++        if self._null:
++            return NULL_STYLE
++        style = self.__new__(Style)
++        style._ansi = None
++        style._style_definition = None
++        style._color = None
++        style._bgcolor = None
++        style._attributes = self._attributes
++        style._set_attributes = self._set_attributes
++        style._link = self._link
++        style._link_id = f"{time()}-{randint(0, 999999)}" if self._link else ""
++        style._hash = self._hash
++        style._null = False
++        return style
++
+     @classmethod
+     @lru_cache(maxsize=4096)
+     def parse(cls, style_definition: str) -> "Style":
+diff --git a/rich/tree.py b/rich/tree.py
+new file mode 100644
+index 0000000000..614783a3f9
+--- /dev/null
++++ b/rich/tree.py
+@@ -0,0 +1,208 @@
++from typing import Iterator, List, Tuple
++
++from ._loop import loop_first, loop_last
++from .console import Console, ConsoleOptions, RenderableType, RenderResult
++from .jupyter import JupyterMixin
++from .segment import Segment
++from .style import Style, StyleStack, StyleType
++from .styled import Styled
++
++
++class Tree(JupyterMixin):
++    """A renderable for a tree structure.
++
++    Args:
++        label (RenderableType): The renderable or str for the tree label.
++        style (StyleType, optional): Style of this tree. Defaults to "tree".
++        guide_style (StyleType, optional): Style of the guide lines. Defaults to "tree.line".
++        expanded (bool, optional): Also display children. Defaults to True.
++        highlight (bool, optional): Highlight renderable (if str). Defaults to False.
++    """
++
++    def __init__(
++        self,
++        label: RenderableType,
++        *,
++        style: StyleType = "tree",
++        guide_style: StyleType = "tree.line",
++        expanded=True,
++        highlight=False,
++    ) -> None:
++        self.label = label
++        self.style = style
++        self.guide_style = guide_style
++        self.children: List[Tree] = []
++        self.expanded = expanded
++        self.highlight = highlight
++
++    def add(
++        self,
++        label: RenderableType,
++        *,
++        style: StyleType = None,
++        guide_style: StyleType = None,
++        expanded=True,
++        highlight=False,
++    ) -> "Tree":
++        """Add a child tree.
++
++        Args:
++            label (RenderableType): The renderable or str for the tree label.
++            style (StyleType, optional): Style of this tree. Defaults to "tree".
++            guide_style (StyleType, optional): Style of the guide lines. Defaults to "tree.line".
++            expanded (bool, optional): Also display children. Defaults to True.
++            highlight (Optional[bool], optional): Highlight renderable (if str). Defaults to False.
++
++        Returns:
++            Tree: A new child Tree, which may be further modified.
++        """
++        node = Tree(
++            label,
++            style=self.style if style is None else style,
++            guide_style=self.guide_style if guide_style is None else guide_style,
++            expanded=expanded,
++            highlight=self.highlight if highlight is None else highlight,
++        )
++        self.children.append(node)
++        return node
++
++    def __rich_console__(
++        self, console: "Console", options: "ConsoleOptions"
++    ) -> "RenderResult":
++
++        stack: List[Iterator[Tuple[bool, Tree]]] = []
++        pop = stack.pop
++        push = stack.append
++        new_line = Segment.line()
++
++        get_style = console.get_style
++        null_style = Style.null()
++        guide_style = get_style(self.guide_style) or null_style
++        SPACE, CONTINUE, FORK, END = range(4)
++
++        ASCII_GUIDES = ("    ", "|   ", "+-- ", "`-- ")
++        TREE_GUIDES = [
++            ("    ", "│   ", "├── ", "└── "),
++            ("    ", "┃   ", "┣━━ ", "┗━━ "),
++            ("    ", "║   ", "╠══ ", "╚══ "),
++        ]
++        _Segment = Segment
++
++        def make_guide(index: int, style: Style) -> Segment:
++            """Make a Segment for a level of the guide lines."""
++            if options.ascii_only:
++                line = ASCII_GUIDES[index]
++            else:
++                guide = 1 if style.bold else (2 if style.underline2 else 0)
++                line = TREE_GUIDES[guide][index]
++            return _Segment(line, style)
++
++        levels: List[Segment] = [make_guide(CONTINUE, guide_style)]
++        push(iter(loop_last([self])))
++
++        guide_style_stack = StyleStack(get_style(self.guide_style))
++        style_stack = StyleStack(get_style(self.style))
++
++        while stack:
++            stack_node = pop()
++            try:
++                last, node = next(stack_node)
++            except StopIteration:
++                levels.pop()
++                if levels:
++                    guide_style = levels[-1].style or null_style
++                    levels[-1] = make_guide(FORK, guide_style)
++                    guide_style_stack.pop()
++                    style_stack.pop()
++                continue
++            push(stack_node)
++            if last:
++                levels[-1] = make_guide(END, levels[-1].style or null_style)
++
++            guide_style = guide_style_stack.current + get_style(node.guide_style)
++            style = style_stack.current + get_style(node.style)
++            prefix = levels[1:]
++            renderable_lines = console.render_lines(
++                Styled(node.label, style),
++                options.update(
++                    width=options.max_width
++                    - sum(level.cell_length for level in prefix),
++                    highlight=self.highlight,
++                ),
++            )
++            for first, line in loop_first(renderable_lines):
++                if prefix:
++                    yield from _Segment.apply_style(prefix, style.background_style)
++                yield from line
++                yield new_line
++                if first and prefix:
++                    prefix[-1] = make_guide(
++                        SPACE if last else CONTINUE, prefix[-1].style or null_style
++                    )
++
++            if node.expanded and node.children:
++                levels[-1] = make_guide(
++                    SPACE if last else CONTINUE, levels[-1].style or null_style
++                )
++                levels.append(
++                    make_guide(END if len(node.children) == 1 else FORK, guide_style)
++                )
++                style_stack.push(get_style(node.style))
++                guide_style_stack.push(get_style(node.guide_style))
++                push(iter(loop_last(node.children)))
++
++
++if __name__ == "__main__":  # pragma: no cover
++
++    from rich.console import RenderGroup
++    from rich.markdown import Markdown
++    from rich.panel import Panel
++    from rich.syntax import Syntax
++    from rich.table import Table
++
++    table = Table(row_styles=["", "dim"])
++
++    table.add_column("Released", style="cyan", no_wrap=True)
++    table.add_column("Title", style="magenta")
++    table.add_column("Box Office", justify="right", style="green")
++
++    table.add_row("Dec 20, 2019", "Star Wars: The Rise of Skywalker", "$952,110,690")
++    table.add_row("May 25, 2018", "Solo: A Star Wars Story", "$393,151,347")
++    table.add_row("Dec 15, 2017", "Star Wars Ep. V111: The Last Jedi", "$1,332,539,889")
++    table.add_row("Dec 16, 2016", "Rogue One: A Star Wars Story", "$1,332,439,889")
++
++    code = """\
++class Segment(NamedTuple):
++    text: str = ""    
++    style: Optional[Style] = None    
++    is_control: bool = False    
++"""
++    syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
++
++    markdown = Markdown(
++        """\
++### example.md
++> Hello, World!
++> 
++> Markdown _all_ the things
++"""
++    )
++
++    root = Tree("🌲 [b green]Rich Tree", highlight=True)
++
++    node = root.add(":file_folder: Renderables", guide_style="red")
++    simple_node = node.add(":file_folder: [bold yellow]Atomic", guide_style="uu green")
++    simple_node.add(RenderGroup("📄 Syntax", syntax))
++    simple_node.add(RenderGroup("📄 Markdown", Panel(markdown, border_style="green")))
++
++    containers_node = node.add(
++        ":file_folder: [bold magenta]Containers", guide_style="bold magenta"
++    )
++    containers_node.expanded = True
++    panel = Panel.fit("Just a panel", border_style="red")
++    containers_node.add(RenderGroup("📄 Panels", panel))
++
++    containers_node.add(RenderGroup("📄 [b magenta]Table", table))
++
++    console = Console()
++    console.print(root)

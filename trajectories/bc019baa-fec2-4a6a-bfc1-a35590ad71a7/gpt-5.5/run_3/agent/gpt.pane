@@ -1,0 +1,200 @@
+
++        let nodeToInsert = root.nodes[0]
++
++        if (!nodeToInsert) {
++          continue
++        }
++
+         // Insert it
+         siblings.push([
+           // Ensure that when we are sorting, that we take the layer order into account
+           { ...meta, sort: meta.sort | context.layerOrder[meta.layer] },
+-          root.nodes[0],
++          nodeToInsert,
+         ])
+       }
+     }
+diff --git a/src/lib/generateRules.js b/src/lib/generateRules.js
+index b7843258..b5d7663a 100644
+--- a/src/lib/generateRules.js
++++ b/src/lib/generateRules.js
+@@ -138,7 +138,7 @@ function applyVariant(variant, matches, context) {
+   }
+
+   // Register arbitrary variants
+-  if (isArbitraryValue(variant) && !context.variantMap.has(variant)) {
++  if (isArbitraryValue(variant)) {
+     let selector = normalize(variant.slice(1, -1))
+
+     if (!isValidVariantFormatString(selector)) {
+@@ -147,11 +147,13 @@ function applyVariant(variant, matches, context) {
+
+     isArbitraryVariant = true
+
+-    let fn = parseVariant(selector)
++    if (!context.variantMap.has(variant)) {
++      let fn = parseVariant(selector)
+
+-    let sort = Array.from(context.variantOrder.values()).pop() << 1n
+-    context.variantMap.set(variant, [[sort, fn]])
+-    context.variantOrder.set(variant, sort)
++      let sort = Array.from(context.variantOrder.values()).pop() << 1n
++      context.variantMap.set(variant, [[sort, fn]])
++      context.variantOrder.set(variant, sort)
++    }
+   }
+
+   if (context.variantMap.has(variant)) {
+@@ -179,6 +181,12 @@ function applyVariant(variant, matches, context) {
+           clone.walkRules((rule) => (rule.raws.originalSelector = rule.selector))
+         }
+
++        function prefixFormat(selectorFormat) {
++          return context.tailwindConfig.prefix && !isArbitraryVariant
++            ? prefixSelector(context.tailwindConfig.prefix, selectorFormat)
++            : selectorFormat
++        }
++
+         function modifySelectors(modifierFunction) {
+           prepareBackup()
+           clone.each((rule) => {
+@@ -216,7 +224,7 @@ function applyVariant(variant, matches, context) {
+             clone.append(wrapper)
+           },
+           format(selectorFormat) {
+-            collectedFormats.push(selectorFormat)
++            collectedFormats.push(prefixFormat(selectorFormat))
+           },
+           args,
+         })
+@@ -246,7 +254,7 @@ function applyVariant(variant, matches, context) {
+         }
+
+         if (typeof ruleWithVariant === 'string') {
+-          collectedFormats.push(ruleWithVariant)
++          collectedFormats.push(prefixFormat(ruleWithVariant))
+         }
+
+         if (ruleWithVariant === null) {
+@@ -287,7 +295,7 @@ function applyVariant(variant, matches, context) {
+             //      modified (by plugin): .foo .foo\\:markdown > p
+             //    rebuiltBase (internal): .foo\\:markdown > p
+             //                    format: .foo &
+-            collectedFormats.push(modified.replace(rebuiltBase, '&'))
++            collectedFormats.push(prefixFormat(modified.replace(rebuiltBase, '&')))
+             rule.selector = before
+           })
+         }
+@@ -303,7 +311,6 @@ function applyVariant(variant, matches, context) {
+             ...meta,
+             sort: variantSort | meta.sort,
+             collectedFormats: (meta.collectedFormats ?? []).concat(collectedFormats),
+-            isArbitraryVariant,
+           },
+           clone.nodes[0],
+         ]
+@@ -635,7 +642,6 @@ function* resolveMatches(candidate, context, original = candidate) {
+             base: candidate
+               .split(new RegExp(`\\${context?.tailwindConfig?.separator ?? ':'}(?![^[]*\\])`))
+               .pop(),
+-            isArbitraryVariant: match[0].isArbitraryVariant,
+
+             context,
+           })
+diff --git a/src/util/formatVariantSelector.js b/src/util/formatVariantSelector.js
+index 3c2e1f9d..89e1e91c 100644
+--- a/src/util/formatVariantSelector.js
++++ b/src/util/formatVariantSelector.js
+@@ -1,7 +1,6 @@
+ import selectorParser from 'postcss-selector-parser'
+ import unescape from 'postcss-selector-parser/dist/util/unesc'
+ import escapeClassName from '../util/escapeClassName'
+-import prefixSelector from '../util/prefixSelector'
+
+ let MERGE = ':merge'
+ let PARENT = '&'
+@@ -35,8 +34,6 @@ export function finalizeSelector(
+     selector,
+     candidate,
+     context,
+-    isArbitraryVariant,
+-
+     // Split by the separator, but ignore the separator inside square brackets:
+     //
+     // E.g.: dark:lg:hover:[paint-order:markers]
+@@ -51,11 +48,6 @@ export function finalizeSelector(
+ ) {
+   let ast = selectorParser().astSync(selector)
+
+-  // We explicitly DO NOT prefix classes in arbitrary variants
+-  if (context?.tailwindConfig?.prefix && !isArbitraryVariant) {
+-    format = prefixSelector(context.tailwindConfig.prefix, format)
+-  }
+-
+   format = format.replace(PARENT, `.${escapeClassName(candidate)}`)
+
+   let formatAst = selectorParser().astSync(format)
+diff --git a/src/util/resolveConfig.js b/src/util/resolveConfig.js
+index 5472da08..9a4845af 100644
+--- a/src/util/resolveConfig.js
++++ b/src/util/resolveConfig.js
+@@ -180,7 +180,7 @@ function resolveFunctionKeys(object) {
+         val = val[path[index++]]
+
+         let shouldResolveAsFn =
+-          isFunction(val) && (path.alpha === undefined || index < path.length - 1)
++          isFunction(val) && (path.alpha === undefined || index <= path.length - 1)
+
+         val = shouldResolveAsFn ? val(resolvePath, configUtils) : val
+       }
+# think: Reflect on implementation completeness and edge cases
+Your thought has been logged.
+# task_tracker: Mark all implementation and verification tasks done
+Task list has been updated with 5 item(s).
+$ cd /workspace/tailwindcss && git status --short && git --no-pager diff --stat
+M package-lock.json
+ M package.json
+ M src/lib/expandApplyAtRules.js
+ M src/lib/generateRules.js
+ M src/util/formatVariantSelector.js
+ M src/util/resolveConfig.js
+ package-lock.json                 | 152 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----------------------------------------------------------
+ package.json                      |   6 +++---
+ src/lib/expandApplyAtRules.js     |   8 +++++++-
+ src/lib/generateRules.js          |  26 ++++++++++++++++----------
+ src/util/formatVariantSelector.js |   8 --------
+ src/util/resolveConfig.js         |   2 +-
+ 6 files changed, 120 insertions(+), 82 deletions(-)
+# finish: Summarize completed fixes and passing verification
+Implemented the requested non-test changes in `/workspace/tailwindcss`.
+
+Summary of changes:
+- Fixed repeated arbitrary variants with configured prefixes so classes inside arbitrary variant selectors are not prefixed, even when the arbitrary variant is reused or combined with normal variants.
+- Moved variant selector prefixing to per-variant format collection so normal variants like `group-hover` still get prefixed correctly while arbitrary variant selector contents do not.
+- Fixed `theme('colors.foobar / 80%')` for two-part custom function colors by resolving path functions before the final alpha-bearing color value.
+- Fixed `@apply -h-ms-1` for dash-prefixed custom utilities in `@layer` by skipping selector-filtered empty apply clones instead of inserting `undefined` nodes.
+- Updated dependency metadata/lockfile for:
+  - `eslint`: `^8.19.0` → `^8.20.0`
+  - `prettier-plugin-tailwindcss`: `^0.1.12` → `^0.1.13`
+  - `autoprefixer`: `^10.4.7` → `^10.4.8`
+
+I did not modify any test files.
+
+Verification performed:
+- Created and ran a temporary `ts-node` reproduction script covering:
+  - repeated arbitrary variant prefix behavior,
+  - arbitrary variants mixed with normal/group variants,
+  - custom function colors with alpha in `theme()`, including no-space slash syntax,
+  - dash-prefixed custom utilities used via `@apply`, including ensuring the positive utility is not accidentally applied,
+  - package and lockfile target versions.
+- Removed the temporary reproduction script afterward to keep the repository minimal.
+- Ran focused Jest suites:
+  - `tests/arbitrary-variants.test.js`
+  - `tests/opacity.test.js`
+  - `tests/apply.test.js`
+  - `tests/format-variant-selector.test.js`
+  - `tests/prefix.test.js`
+  - `tests/prefixSelector.test.js`
+- Ran the full repository test command: `npm test -- --runInBand`
+
+All tests passed: 79 suites, 803 tests, plus lint/style completed successfully.

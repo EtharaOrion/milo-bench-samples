@@ -1,0 +1,200 @@
+func getRequestAuthType(r *http.Request) authType {
+        if isRequestSignatureV2(r) {
+                return authTypeSignedV2
+        } else if isRequestPresignedSignatureV2(r) {
+                return authTypePresignedV2
+        } else if isRequestSignStreamingV4(r) {
+                return authTypeStreamingSigned
+        } else if isRequestUnsignedStreaming(r) {
+                return authTypeStreamingUnsigned
+        } else if isRequestSignatureV4(r) {
+                return authTypeSigned
+        } else if isRequestPresignedSignatureV4(r) {
+                return authTypePresigned
+        } else if isRequestJWT(r) {
+                return authTypeJWT
+        } else if isRequestPostPolicySignatureV4(r) {
+                return authTypePostPolicy
+        switch getRequestAuthType(r) {
+        case authTypeUnknown:
+                glog.V(3).Infof("unknown auth type")
+                r.Header.Set(s3_constants.AmzAuthType, "Unknown")
+                return identity, s3err.ErrAccessDenied
+        case authTypePresignedV2, authTypeSignedV2:
+                glog.V(3).Infof("v2 auth type")
+                identity, s3Err = iam.isReqAuthenticatedV2(r)
+                authType = "SigV2"
+        case authTypeStreamingSigned, authTypeSigned, authTypePresigned:
+                glog.V(3).Infof("v4 auth type")
+                identity, s3Err = iam.reqSignatureV4Verify(r)
+                authType = "SigV4"
+        case authTypePostPolicy:
+                glog.V(3).Infof("post policy auth type")
+                r.Header.Set(s3_constants.AmzAuthType, "PostPolicy")
+                return identity, s3err.ErrNone
+        case authTypeStreamingUnsigned:
+                glog.V(3).Infof("unsigned streaming upload")
+                return identity, s3err.ErrNone
+        case authTypeJWT:
+                glog.V(3).Infof("jwt auth type")
+                r.Header.Set(s3_constants.AmzAuthType, "Jwt")
+                return identity, s3err.ErrNotImplemented
+        case authTypeAnonymous:
+                authType = "Anonymous"
+$ cd /workspace/seaweedfs && grep -R "func isRequestUnsignedStreaming\|STREAMING-UNSIGNED" -n weed/s3api
+weed/s3api/auth_signature_v4.go:61:     // http Header "x-amz-content-sha256" == "UNSIGNED-PAYLOAD" or "STREAMING-UNSIGNED-PAYLOAD-TRAILER" indicates that the
+weed/s3api/auth_signature_v4.go:64:     streamingUnsignedPayload = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+weed/s3api/chunked_reader_v4_test.go:123:       req.Header.Set("x-amz-content-sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+weed/s3api/s3api_auth.go:56:func isRequestUnsignedStreaming(r *http.Request) bool {
+$ cd /workspace/seaweedfs && sed -n '45,60p' weed/s3api/s3api_auth.go
+func isRequestPostPolicySignatureV4(r *http.Request) bool {
+        return strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") &&
+                r.Method == http.MethodPost
+}
+
+// Verify if the request has AWS Streaming Signature Version '4'. This is only valid for 'PUT' operation.
+func isRequestSignStreamingV4(r *http.Request) bool {
+        return r.Header.Get("x-amz-content-sha256") == streamingContentSHA256 &&
+                r.Method == http.MethodPut
+}
+
+func isRequestUnsignedStreaming(r *http.Request) bool {
+        return r.Header.Get("x-amz-content-sha256") == streamingUnsignedPayload &&
+                r.Method == http.MethodPut
+}
+# file_editor: View dependency review workflow
+Here's the result of running `cat -n` on /workspace/seaweedfs/.github/workflows/depsreview.yml:
+     1	name: 'Dependency Review'
+     2	on: [pull_request]
+     3	
+     4	permissions:
+     5	  contents: read
+     6	
+     7	jobs:
+     8	  dependency-review:
+     9	    runs-on: ubuntu-latest
+    10	    steps:
+    11	      - name: 'Checkout Repository'
+    12	        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+    13	      - name: 'Dependency Review'
+    14	        uses: actions/dependency-review-action@0659a74c94536054bfa5aeb92241f70d680cc78e
+    15	
+# file_editor: Bump dependency-review-action to v4.3.2
+The file /workspace/seaweedfs/.github/workflows/depsreview.yml has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/.github/workflows/depsreview.yml:
+    10	    steps:
+    11	      - name: 'Checkout Repository'
+    12	        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+    13	      - name: 'Dependency Review'
+    14	        uses: actions/dependency-review-action@v4.3.2
+    15	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && grep -R "go-version:" -n .github/workflows docker | head -50 && grep -R "golang:1\.23" -n .github docker 2>/dev/null || true
+.github/workflows/e2e.yml:29:        go-version: ^1.13
+.github/workflows/go.yml:26:        go-version: ^1.13
+$ cd /workspace/seaweedfs && perl -0pi -e "s/go-version: \^1\.13/go-version: '1.24'/g" .github/workflows/e2e.yml .github/workflows/go.yml && git diff -- .github/workflows/e2e.yml .github/workflows/go.yml .github/workflows/depsreview.yml
+diff --git a/.github/workflows/depsreview.yml b/.github/workflows/depsreview.yml
+index 443a8205e..5e7a1eae0 100644
+--- a/.github/workflows/depsreview.yml
++++ b/.github/workflows/depsreview.yml
+@@ -11,4 +11,4 @@ jobs:
+       - name: 'Checkout Repository'
+         uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633
+       - name: 'Dependency Review'
+-        uses: actions/dependency-review-action@0659a74c94536054bfa5aeb92241f70d680cc78e
++        uses: actions/dependency-review-action@v4.3.2
+diff --git a/.github/workflows/e2e.yml b/.github/workflows/e2e.yml
+index 7f2eb0f4c..7786e682b 100644
+--- a/.github/workflows/e2e.yml
++++ b/.github/workflows/e2e.yml
+@@ -26,7 +26,7 @@ jobs:
+     - name: Set up Go 1.x
+       uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v2
+       with:
+-        go-version: ^1.13
++        go-version: '1.24'
+       id: go
+
+     - name: Check out code into the Go module directory
+diff --git a/.github/workflows/go.yml b/.github/workflows/go.yml
+index 9888550be..616a8d464 100644
+--- a/.github/workflows/go.yml
++++ b/.github/workflows/go.yml
+@@ -23,7 +23,7 @@ jobs:
+     - name: Set up Go 1.x
+       uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v2
+       with:
+-        go-version: ^1.13
++        go-version: '1.24'
+       id: go
+
+     - name: Check out code into the Go module directory
+$ cd /workspace/seaweedfs && go test ./weed/topology ./weed/s3api ./weed/shell ./weed/command ./weed/filer/redis2
+ok      github.com/seaweedfs/seaweedfs/weed/topology    (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/shell       (cached)
+ok      github.com/seaweedfs/seaweedfs/weed/command     (cached)
+?       github.com/seaweedfs/seaweedfs/weed/filer/redis2        [no test files]
+# task_tracker: Update task tracker with verification results
+Task list has been updated with 5 item(s).
+$ cd /workspace/seaweedfs && git diff --stat && git status --short
+.github/workflows/depsreview.yml              |  2 +-
+ .github/workflows/e2e.yml                     |  2 +-
+ .github/workflows/go.yml                      |  2 +-
+ docker/Dockerfile.go_build                    |  2 +-
+ docker/Dockerfile.rocksdb_dev_env             |  2 +-
+ docker/Dockerfile.rocksdb_large               |  2 +-
+ weed/command/filer.go                         |  6 +++++-
+ weed/command/s3.go                            | 13 ++++++++++---
+ weed/command/scaffold/filer.toml              |  3 +++
+ weed/filer/redis2/redis_store.go              | 20 ++++++++++++++++----
+ weed/s3api/chunked_reader_v4.go               |  8 ++++++--
+ weed/s3api/s3api_object_handlers_multipart.go | 12 ++++++++++--
+ weed/s3api/s3api_object_handlers_put.go       | 10 +++++++++-
+ weed/shell/command_volume_list.go             |  2 +-
+ weed/topology/topology.go                     |  6 ++++--
+ 15 files changed, 70 insertions(+), 22 deletions(-)
+ M .github/workflows/depsreview.yml
+ M .github/workflows/e2e.yml
+ M .github/workflows/go.yml
+ M docker/Dockerfile.go_build
+ M docker/Dockerfile.rocksdb_dev_env
+ M docker/Dockerfile.rocksdb_large
+ M weed/command/filer.go
+ M weed/command/s3.go
+ M weed/command/scaffold/filer.toml
+ M weed/filer/redis2/redis_store.go
+ M weed/s3api/chunked_reader_v4.go
+ M weed/s3api/s3api_object_handlers_multipart.go
+ M weed/s3api/s3api_object_handlers_put.go
+ M weed/shell/command_volume_list.go
+ M weed/topology/topology.go
+?? weed/filer/redis2/tls.go
+# think: Review implementation coverage and risks
+Your thought has been logged.
+# task_tracker: Mark all tracked tasks complete
+Task list has been updated with 5 item(s).
+# finish: Complete implementation and verification summary
+Implemented the requested non-test changes in `/workspace/seaweedfs`.
+
+Summary of changes:
+- Fixed `Topology.ListCollections()` so `includeNormalVolumes` is respected while preserving EC collection inclusion and de-duplication.
+- Fixed S3 `aws-chunked` streaming behavior:
+  - CRC64NVME now uses the NVME polynomial instead of CRC64 ISO.
+  - unsigned streaming payload trailers are decoded for normal and multipart PUTs even when S3 auth is disabled.
+  - unsigned streaming requests with auth enabled still verify seed signatures when appropriate.
+- Fixed `volume.list` sorting by avoiding uint32 underflow in the comparator.
+- Added S3 options:
+  - `s3.ip.bind` for filer-embedded S3, falling back to `-ip.bind` when unset.
+  - `idleTimeout` / `s3.idleTimeout`, applied to the S3 HTTP server and TCP listener timeouts.
+- Added Redis2 TLS/mTLS configuration support with CA/client cert/client key path handling.
+- Updated Go 1.24 pins in Docker/CI config to match `go.mod`.
+- Bumped `actions/dependency-review-action` to `v4.3.2`.
+
+Verification performed:
+- Reproduction script `/tmp/repro_collection_list.go` now passes normal-only, EC-only, both, and neither collection-list cases.
+- CRC64NVME reproduction `/tmp/repro_crc64_nvme.go` matches the known check value for `123456789` (`ae8b14860a799888`).
+- Focused tests passed:
+  - `go test ./weed/topology ./weed/s3api ./weed/shell ./weed/command ./weed/filer/redis2`
+- Full `go test ./...` was run; it failed only in `test/s3/basic` because it expects a local S3 server at `localhost:8333` and got connection refused. Other packages shown in the run passed.
+
+No existing test files were modified.

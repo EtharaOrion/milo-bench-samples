@@ -1,0 +1,200 @@
+Saved working directory and index state WIP on (no branch): 96f9a869 release v0.17.54
+                                +++ Actual
+                                @@ -1 +1 @@
+                                -sha256-pYhw/8TGkZxk960PMMpDtjhw9YtKXUzGv6XQQaMJSh8=
+                                +sha256-asj/scPAF8jmMGj1J+YwCHps3uI57AZ78cHs0bJkML4=
+                Test:           TestApolloSandboxHandler_Integrity
+FAIL
+FAIL    github.com/99designs/gqlgen/graphql/playground  0.095s
+FAIL
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   codegen/config/binder.go
+        modified:   codegen/templates/templates.go
+        modified:   docs/content/recipes/subscriptions.md
+        modified:   go.mod
+        modified:   go.sum
+        modified:   integration/package-lock.json
+        modified:   integration/package.json
+        modified:   plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
+        modified:   plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
+        modified:   plugin/resolvergen/testdata/singlefile/out/resolver.go
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (32104f009fb57434232bf6a430f64c32613b0664)
+$ cd /workspace/gqlgen && git --no-pager diff plugin/resolvergen/testdata/singlefile/out/resolver.go
+diff --git a/plugin/resolvergen/testdata/singlefile/out/resolver.go b/plugin/resolvergen/testdata/singlefile/out/resolver.go
+index 614c66cf..2081df53 100644
+--- a/plugin/resolvergen/testdata/singlefile/out/resolver.go
++++ b/plugin/resolvergen/testdata/singlefile/out/resolver.go
+@@ -4,19 +4,18 @@ package customresolver
+
+ import (
+        "context"
+-       "fmt"
+ )
+
+ type CustomResolverType struct{}
+
+ // Resolver is the resolver for the resolver field.
+ func (r *queryCustomResolverType) Resolver(ctx context.Context) (*Resolver, error) {
+-       panic(fmt.Errorf("not implemented: Resolver - resolver"))
++       panic("not implemented")
+ }
+
+ // Name is the resolver for the name field.
+ func (r *resolverCustomResolverType) Name(ctx context.Context, obj *Resolver) (string, error) {
+-       panic(fmt.Errorf("not implemented: Name - name"))
++       panic("not implemented")
+ }
+
+ // Query returns QueryResolver implementation.
+$ cd /workspace/gqlgen && git stash && git checkout -- plugin/resolvergen/testdata && git --no-pager status --short plugin/resolvergen/ && go test ./plugin/resolvergen/ >/dev/null 2>&1; echo "test exit: $?"; git --no-pager status --short plugin/resolvergen/; git stash pop
+Saved working directory and index state WIP on (no branch): 96f9a869 release v0.17.54
+test exit: 1
+ D plugin/resolvergen/testdata/singlefile/out/resolver.go
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   codegen/config/binder.go
+        modified:   codegen/templates/templates.go
+        modified:   docs/content/recipes/subscriptions.md
+        modified:   go.mod
+        modified:   go.sum
+        modified:   integration/package-lock.json
+        modified:   integration/package.json
+        modified:   plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
+        modified:   plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
+        modified:   plugin/resolvergen/testdata/singlefile/out/resolver.go
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (995cd8901fcc3002bd3de23639d3a2c0c5dc13b2)
+$ cd /workspace/gqlgen && git checkout -- plugin/resolvergen/testdata && git --no-pager status --short plugin/resolvergen/ && echo "=== running with my changes ===" && go test ./plugin/resolvergen/ 2>&1 | tail -20; echo "exit: $?"; echo "=== testdata status after ==="; git --no-pager status --short plugin/resolvergen/
+=== running with my changes ===
+ok      github.com/99designs/gqlgen/plugin/resolvergen  1.768s
+exit: 0
+=== testdata status after ===
+ M plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
+ M plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
+ M plugin/resolvergen/testdata/singlefile/out/resolver.go
+$ cd /workspace/gqlgen && git checkout -- plugin/resolvergen/testdata && git --no-pager status --short
+M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+ M integration/package-lock.json
+ M integration/package.json
+$ cd /workspace/gqlgen && git --no-pager diff codegen/config/binder.go codegen/templates/templates.go
+diff --git a/codegen/config/binder.go b/codegen/config/binder.go
+index 3655bfa2..01c85c54 100644
+--- a/codegen/config/binder.go
++++ b/codegen/config/binder.go
+@@ -520,6 +520,12 @@ func (b *Binder) CopyModifiersFromAst(t *ast.Type, base types.Type) types.Type {
+ }
+
+ func IsNilable(t types.Type) bool {
++       if alias, isAlias := t.(*types.Alias); isAlias {
++               // Resolve aliases (e.g. `any` -> `interface{}`) before checking, so an
++               // alias of a nilable type (like an interface) is not treated as a
++               // non-nilable value and wrapped in an unnecessary pointer.
++               return IsNilable(alias.Underlying())
++       }
+        if namedType, isNamed := t.(*types.Named); isNamed {
+                return IsNilable(namedType.Underlying())
+        }
+diff --git a/codegen/templates/templates.go b/codegen/templates/templates.go
+index 5a4374f0..1c14b81c 100644
+--- a/codegen/templates/templates.go
++++ b/codegen/templates/templates.go
+@@ -493,20 +493,13 @@ func wordWalker(str string, f func(*wordInfo)) {
+                matchCommonInitial := false
+                upperWord := strings.ToUpper(word)
+                if initialisms[upperWord] {
+-                       // If the uppercase word (string(runes[w:i]) is "ID" or "IP"
+-                       // AND
+-                       // the word is the first two characters of the str
+-                       // AND
+-                       // that is not the end of the word
+-                       // AND
+-                       // the length of the string is greater than 3
+-                       // AND
+-                       // the third rune is an uppercase one
+-                       // THEN
+-                       // do NOT count this as an initialism.
++                       // If the uppercase word is "ID" or "IP" and it is the prefix of a
++                       // longer all-uppercase word (e.g. "ID" in "IDENTITY"), it should not
++                       // be treated as an initialism on its own. This holds whether the word
++                       // is the first one or any subsequent word of the identifier.
+                        switch upperWord {
+                        case "ID", "IP":
+-                               if word == str[:2] && !eow && len(str) > 3 && unicode.IsUpper(runes[3]) {
++                               if !eow && i+1 < len(runes) && unicode.IsUpper(runes[i+1]) {
+                                        continue
+                                }
+                        }
+@@ -730,6 +723,7 @@ var CommonInitialisms = map[string]bool{
+        "API":   true,
+        "ASCII": true,
+        "CPU":   true,
++       "CSP":   true,
+        "CSS":   true,
+        "CSV":   true,
+        "DNS":   true,
+$ cd /workspace/gqlgen && go test ./codegen/templates/ ./codegen/config/ ./plugin/modelgen/ ./api/ 2>&1 | tail -10 && git checkout -- plugin/resolvergen/testdata 2>/dev/null; echo "FINAL STATUS:"; git --no-pager status --short
+ok      github.com/99designs/gqlgen/codegen/templates   0.881s
+ok      github.com/99designs/gqlgen/codegen/config      0.915s
+ok      github.com/99designs/gqlgen/plugin/modelgen     2.759s
+ok      github.com/99designs/gqlgen/api 1.206s
+FINAL STATUS:
+ M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+ M integration/package-lock.json
+ M integration/package.json
+Task list has been updated with 7 item(s).
+$ cd /workspace/gqlgen && git checkout -- plugin/resolvergen/testdata 2>/dev/null; git --no-pager status --short && echo "=== build check ===" && go build ./... 2>&1 | tail -3 && echo "BUILD OK"
+M codegen/config/binder.go
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+ M integration/package-lock.json
+ M integration/package.json
+=== build check ===
+BUILD OK
+# finish: Completed all issue fixes and verified
+I have implemented all the actionable changes from the issue description in the gqlgen repository.
+
+## Summary of Changes
+
+### Issue 3 (#3302): Handle common initialisms as a non-first word
+`codegen/templates/templates.go` — In `wordWalker`, the logic that prevents `ID`/`IP` from being split off as a standalone initialism when it is actually the prefix of a longer all-uppercase word (e.g. `IDENTITY`) was hardcoded to only the first word (`word == str[:2]` / `runes[3]`). I generalized it to use the relative scan position (`runes[i+1]`), so it now applies to every word. Result: `USER_IDENTITY` → `UserIdentity` (was `UserIDEntity`), while `USER_ID` → `UserID` and `IDFoo` → `IDFoo` still behave correctly.
+
+### Issue 4 (#3303): Add CSP to common initialisms
+`codegen/templates/templates.go` — Added `"CSP": true` to `CommonInitialisms`.
+
+### Issue 5 (#3301): Extra pointer when generating arrays of type `Any`
+`codegen/config/binder.go` — `IsNilable` didn't recognize `*types.Alias` types (e.g. `any`). When an alias-of-interface reached `CopyModifiersFromAst`, it was incorrectly wrapped in a pointer, producing `[]*any` instead of `[]any`. I added alias resolution to `IsNilable`. I reproduced the bug by constructing a real `*types.Alias` and confirmed the output changed from `[]*MyAlias` to `[]MyAlias`, and verified end-to-end generation produces `FakeField []any` for `[Any]!`.
+
+### Issue 7 (#3307): Update gqlparser to v2.5.17
+`go.mod` / `go.sum` — Bumped `github.com/vektah/gqlparser/v2` to `v2.5.17`. (x/tools and its transitive deps were also bumped so the project builds under the installed Go 1.25 toolchain; the older pinned x/tools v0.24 fails to compile on Go 1.25. These updates are compatible with older Go versions as well.)
+
+### Issues 1/2/8 (#3296/#3299/#3311): JS dependency bumps in /integration
+`integration/package.json` & `integration/package-lock.json` — Bumped `vite` to `5.4.8` and `rollup` (plus all `@rollup/rollup-*` platform packages) to `4.22.4`, using correct integrity hashes fetched from the npm registry, updating both the `packages` and the legacy `dependencies` sections of the lockfile.
+
+### Issue 6 (#3305): Fix subscriptions.md indentation
+`docs/content/recipes/subscriptions.md` — Fixed the `defer close(ch)` line that used 4 spaces instead of a tab, which caused misaligned indentation in the code example.
+
+## Verification
+- `go build ./...` succeeds.
+- Tests pass for: `codegen/...` (templates, config, testservers), `plugin/modelgen`, `plugin/resolvergen`, `plugin/federation`, `api`, `graphql/*`, `internal/*`.
+- I verified the initialism fix with cases such as USER_IDENTITY→UserIdentity, USER_ID→UserID, FOO_IDENTITY→FooIdentity, CSP_HEADER→CSPHeader, IPHONE→Iphone, IDFoo→IDFoo.
+- The only failing test, `graphql/playground/TestApolloSandboxHandler_Integrity`, is a pre-existing network/CDN-content-dependent test that fails identically on the unmodified base commit, so it is unrelated to these changes.
+
+Note: the remaining test PRs in the issue description (dependabot dependency bumps and the docs change) don't have Go test logic; the Go-code fixes (#3301, #3302, #3303) and the gqlparser bump (#3307) are covered by the existing test suites which pass.

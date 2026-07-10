@@ -1,0 +1,204 @@
+diff --git a/docs/build.sh b/docs/build.sh
+index 025a03ff7ed..9ebb2e8c9b2 100755
+--- a/docs/build.sh
++++ b/docs/build.sh
+@@ -10,18 +10,15 @@ RESET='\033[0m'
+ HOST=https://gqlgen.com
+ 
+ VERSIONS_ARRAY=(
++    'v0.11.0'
++    'origin/master'
+     'v0.10.2'
+-	'master'
+     'v0.9.3'
+     'v0.8.3'
+-    'v0.7.2'
+-    'v0.6.0'
+-    'v0.5.1'
+-    'v0.4.4'
+ )
+ 
+ joinVersions() {
+-	versions=$(printf ",%s" "${VERSIONS_ARRAY[@]}")
++	versions=$(printf ",%s" "${VERSIONS_ARRAY[@]}" | sed 's/origin\/master/master/')
+ 	echo "${versions:1}"
+ }
+ 
+@@ -30,6 +27,10 @@ function version { echo "$@" | gawk -F. '{ printf("%03d%03d%03d\n", $1,$2,$3); }
+ rebuild() {
+ 	VERSION_STRING=$(joinVersions)
+ 	export CURRENT_VERSION=${1}
++	if [[ $CURRENT_VERSION == 'origin/master' ]] ; then
++	    CURRENT_VERSION="master"
++    fi
++
+ 	export VERSIONS=${VERSION_STRING}
+ 
+     hugo --quiet --destination="public/$CURRENT_VERSION" --baseURL="$HOST/$CURRENT_VERSION/"
+@@ -49,9 +50,11 @@ git fetch origin --tags
+ 
+ for version in "${VERSIONS_ARRAY[@]}" ; do
+     echo -e "$(date) $GREEN Updating docs for $version.$RESET"
+-    git checkout $version
++    rm -rf content
++    git checkout $version -- content
+     rebuild "$version"
+ done
+ 
+-git checkout -q "$currentBranch"
++rm -rf content
++git checkout "$currentBranch" -- content
+ 
+diff --git a/docs/content/recipes/federation.md b/docs/content/recipes/federation.md
+index 91e3f23a3d2..656c9b75472 100644
+--- a/docs/content/recipes/federation.md
++++ b/docs/content/recipes/federation.md
+@@ -6,7 +6,7 @@ menu: { main: { parent: 'recipes' } }
+ ---
+ 
+ In this quick guide we are going to implement the example [Apollo Federation](https://www.apollographql.com/docs/apollo-server/federation/introduction/)
+-server in gqlgen. You can find the finished result in the [examples directory](/example/federation).
++server in gqlgen. You can find the finished result in the [examples directory](https://github.com/99designs/gqlgen/tree/master/example/federation).
+ 
+ 
+ ## Create the federated servers
+diff --git a/docs/content/recipes/gin.md b/docs/content/recipes/gin.md
+index 1e680dc6471..155cc76e05e 100644
+--- a/docs/content/recipes/gin.md
++++ b/docs/content/recipes/gin.md
+@@ -17,16 +17,19 @@ $ go get github.com/gin-gonic/gin
+ ```
+ 
+ In your router file, define the handlers for the GraphQL and Playground endpoints in two different methods and tie then together in the Gin router:
++
+ ```go
+ import (
+-    "github.com/99designs/gqlgen/graphql/handler"
+-    "github.com/gin-gonic/gin"
++	"github.com/gin-gonic/gin"
++
++	"github.com/99designs/gqlgen/graphql/handler"
++	"github.com/99designs/gqlgen/graphql/playground"
+ )
+ 
+ // Defining the Graphql handler
+ func graphqlHandler() gin.HandlerFunc {
+-    // NewExecutableSchema and Config are in the generated.go file
+-    // Resolver is in the resolver.go file
++	// NewExecutableSchema and Config are in the generated.go file
++	// Resolver is in the resolver.go file
+ 	h := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: &Resolver{}}))
+ 
+ 	return func(c *gin.Context) {
+@@ -44,12 +47,13 @@ func playgroundHandler() gin.HandlerFunc {
+ }
+ 
+ func main() {
+-    // Setting up Gin  
+-    r := gin.Default()
++	// Setting up Gin
++	r := gin.Default()
+ 	r.POST("/query", graphqlHandler())
+ 	r.GET("/", playgroundHandler())
+-    r.Run()
+-}  
++	r.Run()
++}
++
+ ```
+ 
+ ## Accessing gin.Context
+@@ -96,7 +100,7 @@ func (r *resolver) Todo(ctx context.Context) (*Todo, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	
++
+ 	// ...
+ }
+ ```
+diff --git a/graphql/handler/executor.go b/graphql/handler/executor.go
+index 394d3f5619b..61593f7553c 100644
+--- a/graphql/handler/executor.go
++++ b/graphql/handler/executor.go
+@@ -119,7 +119,7 @@ func (e executor) DispatchOperation(ctx context.Context, rc *graphql.OperationCo
+ func (e executor) CreateOperationContext(ctx context.Context, params *graphql.RawParams) (*graphql.OperationContext, gqlerror.List) {
+ 	rc := &graphql.OperationContext{
+ 		DisableIntrospection: true,
+-		Recover:              graphql.DefaultRecover,
++		Recover:              e.server.recoverFunc,
+ 		ResolverMiddleware:   e.fieldMiddleware,
+ 		Stats: graphql.Stats{
+ 			Read:           params.ReadTime,
+diff --git a/graphql/recovery.go b/graphql/recovery.go
+index 5c3c1027eb0..3aa032dc5aa 100644
+--- a/graphql/recovery.go
++++ b/graphql/recovery.go
+@@ -6,8 +6,6 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"runtime/debug"
+-
+-	"github.com/vektah/gqlparser/v2/gqlerror"
+ )
+ 
+ type RecoverFunc func(ctx context.Context, err interface{}) (userMessage error)
+@@ -19,21 +17,3 @@ func DefaultRecover(ctx context.Context, err interface{}) error {
+ 
+ 	return errors.New("internal system error")
+ }
+-
+-var _ OperationContextMutator = RecoverFunc(nil)
+-
+-func (f RecoverFunc) ExtensionName() string {
+-	return "RecoverFunc"
+-}
+-
+-func (f RecoverFunc) Validate(schema ExecutableSchema) error {
+-	if f == nil {
+-		return fmt.Errorf("RecoverFunc can not be nil")
+-	}
+-	return nil
+-}
+-
+-func (f RecoverFunc) MutateOperationContext(ctx context.Context, rc *OperationContext) *gqlerror.Error {
+-	rc.Recover = f
+-	return nil
+-}
+diff --git a/graphql/version.go b/graphql/version.go
+index 22f37ce2968..abc8dcca243 100644
+--- a/graphql/version.go
++++ b/graphql/version.go
+@@ -1,3 +1,3 @@
+ package graphql
+ 
+-const Version = "v0.11.0"
++const Version = "v0.11.1"
+diff --git a/internal/rewrite/rewriter.go b/internal/rewrite/rewriter.go
+index 71f88c17ec4..98ec37e58b6 100644
+--- a/internal/rewrite/rewriter.go
++++ b/internal/rewrite/rewriter.go
+@@ -26,6 +26,9 @@ func New(importPath string) (*Rewriter, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	if len(pkgs) == 0 {
++		return nil, fmt.Errorf("package not found for importPath: %s", importPath)
++	}
+ 
+ 	return &Rewriter{
+ 		pkg:    pkgs[0],
+@@ -70,11 +73,11 @@ func (r *Rewriter) GetMethodBody(structname string, methodname string) string {
+ 			if d.Name.Name != methodname {
+ 				continue
+ 			}
+-			if d.Recv == nil || d.Recv.List == nil {
++			if d.Recv == nil || len(d.Recv.List) == 0 {
+ 				continue
+ 			}
+ 			recv := d.Recv.List[0].Type
+-			if star, isStar := d.Recv.List[0].Type.(*ast.StarExpr); isStar {
++			if star, isStar := recv.(*ast.StarExpr); isStar {
+ 				recv = star.X
+ 			}
+ 			ident, ok := recv.(*ast.Ident)

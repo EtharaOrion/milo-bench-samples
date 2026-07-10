@@ -1,0 +1,200 @@
+rich/table.py 191 107             collapse_padding (bool, optional): Enable collapsing of padding around cells. Defaults to True.
+rich/table.py 193 163             expand (bool, optional): Expand the table to fit the available space if ``True``, otherwise the table width will be auto-calcula
+rich/table.py 305 130             ratio (int, optional): Flexible ratio for the column (requires ``Table.expand`` or ``Table.width``). Defaults to None.
+rich/table.py 334 110             *renderables (None or renderable): Each cell in a row must be a renderable object (including str),
+rich/table.py 336 104             style (StyleType, optional): An optional style to apply to the entire row. Defaults to None.
+rich/table.py 369 116                     f"unable to render {type(renderable).__name__}; a string or other renderable object is required"
+rich/table.py 608 101         safe_box: bool = console.safe_box if self.safe_box is None else self.safe_box  # type: ignore
+rich/traceback.py 43 117         console (Optional[Console], optional): Console to write exception to. Default uses internal Console instance.
+rich/traceback.py 47 113         theme (Optional[str], optional): Pygments theme to use in traceback. Defaults to ``None`` which will pick
+rich/traceback.py 119 103         trace (Trace, optional): A `Trace` object produced from `extract`. Defaults to None, which uses
+rich/traceback.py 277 104                         "\n[i]The above exception was the direct cause of the following exception:\n\n",
+rich/traceback.py 281 103                         "\n[i]During handling of the above exception, another exception occurred:\n\n",
+# file_editor: Inspect RichHandler emit block
+Here's the result of running `cat -n` on /workspace/rich/rich/logging.py:
+    97	    def emit(self, record: LogRecord) -> None:
+    98	        """Invoked by logging."""
+    99	        path = Path(record.pathname).name
+   100	        log_style = f"logging.level.{record.levelname.lower()}"
+   101	        traceback = None
+   102	        if self.rich_tracebacks and record.exc_info:
+   103	            exc_info = record.exc_info
+   104	            exc_text = record.exc_text
+   105	            record.exc_info = None
+   106	            record.exc_text = None
+   107	            try:
+   108	                message = self.format(record)
+   109	            finally:
+   110	                record.exc_info = exc_info
+   111	                record.exc_text = exc_text
+   112	            exc_type, exc_value, exc_traceback = exc_info
+   113	            if exc_type is not None and exc_value is not None and exc_traceback is not None:
+   114	                from .traceback import Traceback
+   115	
+   116	                traceback = Traceback.from_exception(
+   117	                    exc_type,
+   118	                    exc_value,
+   119	                    exc_traceback,
+   120	                    width=self.tracebacks_width,
+   121	                    extra_lines=self.tracebacks_extra_lines,
+   122	                    theme=self.tracebacks_theme,
+   123	                    word_wrap=self.tracebacks_word_wrap,
+   124	                    line_numbers=self.tracebacks_line_numbers,
+   125	                )
+   126	        else:
+   127	            message = self.format(record)
+   128	        time_format = None if self.formatter is None else self.formatter.datefmt
+   129	        log_time = datetime.fromtimestamp(record.created)
+   130	
+# file_editor: Wrap long RichHandler traceback condition
+The file /workspace/rich/rich/logging.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/logging.py:
+   110	                record.exc_info = exc_info
+   111	                record.exc_text = exc_text
+   112	            exc_type, exc_value, exc_traceback = exc_info
+   113	            if (
+   114	                exc_type is not None
+   115	                and exc_value is not None
+   116	                and exc_traceback is not None
+   117	            ):
+   118	                from .traceback import Traceback
+   119	
+   120	                traceback = Traceback.from_exception(
+   121	                    exc_type,
+   122	                    exc_value,
+   123	                    exc_traceback,
+   124	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && PYTHONDONTWRITEBYTECODE=1 python - <<'PY'
+$ import io, logging
+$ from rich.console import Console
+$ from rich.table import Table
+$ from rich.logging import RichHandler
+$ 
+$ console = Console(record=True, width=40)
+$ console.print('┏ unicode ┓')
+$ assert '<meta charset="UTF-8">' in console.export_html()
+$ 
+$ out = io.StringIO()
+$ console = Console(file=out, width=20, legacy_windows=False, color_system=None)
+$ table = Table('A', title='T', caption='C', title_justify='left', caption_justify='right')
+$ table.add_row('x')
+$ console.print(table)
+$ lines = out.getvalue().splitlines()
+$ assert lines[0].startswith('T') and lines[-1].endswith('C')
+$ 
+$ console = Console(file=io.StringIO(), color_system=None)
+$ with console.capture() as capture:
+$     console.print('captured')
+$ assert capture.get() == 'captured\n' and console.file.getvalue() == ''
+$ 
+$ stream = io.StringIO()
+$ console = Console(file=stream, width=80, legacy_windows=False, color_system=None)
+$ handler = RichHandler(console=console, enable_link_path=False, rich_tracebacks=True, tracebacks_extra_lines=0)
+$ logger = logging.getLogger('rich-smoke')
+$ logger.handlers[:] = [handler]
+$ logger.propagate = False
+$ logger.setLevel(logging.ERROR)
+$ try:
+$     1 / 0
+$ except ZeroDivisionError:
+$     logger.exception('boom')
+$ assert 'ZeroDivisionError' in stream.getvalue() and 'Traceback' in stream.getvalue()
+$ 
+$ console = Console(file=io.StringIO(), width=100, legacy_windows=False, color_system=None)
+$ try:
+$     try:
+$         int('x')
+$     except ValueError as error:
+$         raise RuntimeError('wrapped') from error
+$ except RuntimeError:
+$     console.print_exception(extra_lines=0, line_numbers=False)
+$ assert 'direct cause' in console.file.getvalue()
+$ print('smoke ok')
+$ PY
+cd /workspace/rich && PYTHONDONTWRITEBYTECODE=1 python - <<'PY'
+import io, logging
+from rich.console import Console
+from rich.table import Table
+from rich.logging import RichHandler
+console = Console(record=True, width=40)
+console.print('┏ unicode ┓')
+assert '<meta charset="UTF-8">' in console.export_html()
+out = io.StringIO()
+console = Console(file=out, width=20, legacy_windows=False, color_system=None)
+table = Table('A', title='T', caption='C', title_justify='left', caption_justify='right')
+table.add_row('x')
+console.print(table)
+lines = out.getvalue().splitlines()
+assert lines[0].startswith('T') and lines[-1].endswith('C')
+console = Console(file=io.StringIO(), color_system=None)
+with console.capture() as capture:
+    console.print('captured')
+assert capture.get() == 'captured\n' and console.file.getvalue() == ''
+stream = io.StringIO()
+
+console = Console(file=stream, width=80, legacy_windows=False, color_system=None)
+handler = RichHandler(console=console, enable_link_path=False, rich_tracebacks=True, tracebacks_extra_lines=0)
+logger = logging.getLogger('rich-smoke')
+logger.handlers[:] = [handler]
+logger.propagate = False
+logger.setLevel(logging.ERROR)
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.exception('boom')
+assert 'ZeroDivisionError' in stream.getvalue() and 'Traceback' in stream.getvalue()
+console = Console(file=io.StringIO(), width=100, legacy_windows=False, color_system=None)
+try:
+    try:
+        int('x')
+    except ValueError as error:
+        raise RuntimeError('wrapped') from error
+except RuntimeError:
+    console.print_exception(extra_lines=0, line_numbers=False)
+assert 'direct cause' in console.file.getvalue()
+print('smoke ok')
+PY
+┏ unicode ┓
+smoke ok
+$ cd /workspace/rich && find . -type d -name __pycache__ -o -name '*.pyc' -o -name '.pytest_cache' | sed -n '1,80p' && git status --short
+M docs/source/console.rst
+ M docs/source/tables.rst
+ M docs/source/text.rst
+ M examples/table.py
+ M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/traceback.py
+$ cd /workspace/rich && git --no-pager diff --check
+# task_tracker: Mark all tasks completed
+Task list has been updated with 5 item(s).
+# finish: Finish with implementation and verification summary
+Implemented the requested Rich changes in non-test files only.
+
+Summary of changes:
+- Added `<meta charset="UTF-8">` to exported/saved HTML.
+- Added `Console.capture()` / `Capture` support with `Capture.get()` and `CaptureError`.
+- Added `title_justify` and `caption_justify` to `Table`, preserving centered defaults.
+- Fixed `caption_style` assignment in `Table`.
+- Added rich traceback rendering support to `RichHandler`, including `rich_tracebacks=True` plus compatibility aliases (`handle_tracebacks`, `width`, `extra_lines`, `theme`, `word_wrap`).
+- Improved traceback handling for:
+  - explicit `raise ... from ...` direct-cause messages,
+  - suppressed contexts via `raise ... from None`,
+  - `line_numbers=False` plumbing.
+- Fixed `Syntax.line_range` behavior when `line_numbers=False`.
+- Updated relevant docs/examples and fixed small typos.
+
+Verification performed:
+- Created and ran a temporary reproduction script before changes: confirmed failures.
+- Extended that script for edge cases; after changes all checks passed.
+- Removed the temporary script and caches afterward.
+- Ran an inline smoke test covering HTML charset, capture, table justification, RichHandler tracebacks, and direct-cause tracebacks: passed.
+- Ran `python -m py_compile` on modified Python files: passed.
+- Ran `git diff --check`: passed.
+
+Test suite note:
+- `python -m pytest -q` ran: 285 passed, 10 failed.
+- The failures are exact-output fixture mismatches from the repository’s current checked-in tests, including the newly required HTML charset line and environment-sensitive ANSI/Pygments rendering snapshots. I did not modify tests, per your instruction.
+- `python -m black ...` could not run because `black` is not installed in the environment (`No module named black`).

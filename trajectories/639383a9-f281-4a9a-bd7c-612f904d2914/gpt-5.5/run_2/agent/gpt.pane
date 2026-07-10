@@ -1,0 +1,200 @@
+632-                column.footer_style
+633-            )
+634-            _append((footer_style, column.footer))
+635-
+636-        if any_padding:
+637-            _Padding = Padding
+638-            for first, last, (style, renderable) in loop_first_last(raw_cells):
+639-                yield _Cell(style, _Padding(renderable, get_padding(first, last)))
+640-        else:
+641-            for (style, renderable) in raw_cells:
+642-                yield _Cell(style, renderable)
+643-
+644-    def _get_padding_width(self, column_index: int) -> int:
+645-        """Get extra width from padding."""
+646-        _, pad_right, _, pad_left = self.padding
+647-        if self.collapse_padding:
+648-            if column_index > 0:
+649-                pad_left = max(0, pad_left - pad_right)
+--
+652:    def _measure_column(
+653-        self,
+654-        console: "Console",
+655-        options: "ConsoleOptions",
+656-        column: Column,
+657-    ) -> Measurement:
+658-        """Get the minimum and maximum width of the column."""
+659-
+660-        max_width = options.max_width
+661-        if max_width < 1:
+662-            return Measurement(0, 0)
+663-
+664-        padding_width = self._get_padding_width(column._index)
+665-
+666-        if column.width is not None:
+667-            # Fixed width column
+668-            return Measurement(
+669-                column.width + padding_width, column.width + padding_width
+670-            ).with_maximum(max_width)
+671-        # Flexible column, we need to measure contents
+672-        min_widths: List[int] = []
+673-        max_widths: List[int] = []
+674-        append_min = min_widths.append
+675-        append_max = max_widths.append
+676-        get_render_width = Measurement.get
+677-        for cell in self._get_cells(console, column._index, column):
+678-            _min, _max = get_render_width(console, options, cell.renderable)
+679-            append_min(_min)
+680-            append_max(_max)
+681-
+682-        measurement = Measurement(
+683-            max(min_widths) if min_widths else 1,
+684-            max(max_widths) if max_widths else max_width,
+685-        ).with_maximum(max_width)
+686-        measurement = measurement.clamp(
+687-            None if column.min_width is None else column.min_width + padding_width,
+688-            None if column.max_width is None else column.max_width + padding_width,
+689-        )
+690-        return measurement
+691-
+692-    def _render(
+693-        self, console: "Console", options: "ConsoleOptions", widths: List[int]
+694-    ) -> "RenderResult":
+695-        table_style = console.get_style(self.style or "")
+696-
+697-        border_style = table_style + console.get_style(self.border_style or "")
+698-        _column_cells = (
+699-            self._get_cells(console, column_index, column)
+700-            for column_index, column in enumerate(self.columns)
+701-        )
+702-        row_cells: List[Tuple[_Cell, ...]] = list(zip(*_column_cells))
+703-        _box = (
+704-            self.box.substitute(
+705-                options, safe=pick_bool(self.safe_box, console.safe_box)
+706-            )
+707-            if self.box
+708-            else None
+709-        )
+710-
+711-        # _box = self.box
+712-        new_line = Segment.line()
+713-
+714-        columns = self.columns
+715-        show_header = self.show_header
+716-        show_footer = self.show_footer
+717-        show_edge = self.show_edge
+718-        show_lines = self.show_lines
+719-        leading = self.leading
+720-
+721-        _Segment = Segment
+722-        if _box:
+$ cd /workspace/rich && grep -n "def render_str" -A80 rich/console.py
+1306:    def render_str(
+1307-        self,
+1308-        text: str,
+1309-        *,
+1310-        style: Union[str, Style] = "",
+1311-        justify: Optional[JustifyMethod] = None,
+1312-        overflow: Optional[OverflowMethod] = None,
+1313-        emoji: Optional[bool] = None,
+1314-        markup: Optional[bool] = None,
+1315-        highlight: Optional[bool] = None,
+1316-        highlighter: Optional[HighlighterType] = None,
+1317-    ) -> "Text":
+1318-        """Convert a string to a Text instance. This is is called automatically if
+1319-        you print or log a string.
+1320-
+1321-        Args:
+1322-            text (str): Text to render.
+1323-            style (Union[str, Style], optional): Style to apply to rendered text.
+1324-            justify (str, optional): Justify method: "default", "left", "center", "full", or "right". Defaults to ``None``.
+1325-            overflow (str, optional): Overflow method: "crop", "fold", or "ellipsis". Defaults to ``None``.
+1326-            emoji (Optional[bool], optional): Enable emoji, or ``None`` to use Console default.
+1327-            markup (Optional[bool], optional): Enable markup, or ``None`` to use Console default.
+1328-            highlight (Optional[bool], optional): Enable highlighting, or ``None`` to use Console default.
+1329-            highlighter (HighlighterType, optional): Optional highlighter to apply.
+1330-        Returns:
+1331-            ConsoleRenderable: Renderable object.
+1332-
+1333-        """
+1334-        emoji_enabled = emoji or (emoji is None and self._emoji)
+1335-        markup_enabled = markup or (markup is None and self._markup)
+1336-        highlight_enabled = highlight or (highlight is None and self._highlight)
+1337-
+1338-        if markup_enabled:
+1339-            rich_text = render_markup(
+1340-                text,
+1341-                style=style,
+1342-                emoji=emoji_enabled,
+1343-                emoji_variant=self._emoji_variant,
+1344-            )
+1345-            rich_text.justify = justify
+1346-            rich_text.overflow = overflow
+1347-        else:
+1348-            rich_text = Text(
+1349-                _emoji_replace(text, default_variant=self._emoji_variant)
+1350-                if emoji_enabled
+1351-                else text,
+1352-                justify=justify,
+1353-                overflow=overflow,
+1354-                style=style,
+1355-            )
+1356-
+1357-        _highlighter = (highlighter or self.highlighter) if highlight_enabled else None
+1358-        if _highlighter is not None:
+1359-            highlight_text = _highlighter(str(rich_text))
+1360-            highlight_text.copy_styles(rich_text)
+1361-            return highlight_text
+1362-
+1363-        return rich_text
+1364-
+1365-    def get_style(
+1366-        self, name: Union[str, Style], *, default: Optional[Union[Style, str]] = None
+1367-    ) -> Style:
+1368-        """Get a Style instance by it's theme name or parse a definition.
+1369-
+1370-        Args:
+1371-            name (str): The name of a style or a style definition.
+1372-
+1373-        Returns:
+1374-            Style: A Style object.
+1375-
+1376-        Raises:
+1377-            MissingStyle: If no style could be parsed from name.
+1378-
+1379-        """
+1380-        if isinstance(name, Style):
+1381-            return name
+1382-
+1383-        try:
+1384-            style = self._theme_stack.get(name)
+1385-            if style is None:
+1386-                style = Style.parse(name)
+# finish: Finish with implementation and verification summary
+Implemented the requested non-test changes in `/workspace/rich`.
+
+What changed:
+- Added dynamic progress-bar example: `examples/dynamic_progress.py`.
+- Fixed ANSI-preformatted `Text` width/rendering:
+  - Added `Text.from_ansi(...)`.
+  - Updated `Text(...)` to decode ANSI escapes when no explicit spans are supplied, so tables measure visible width instead of raw escape-sequence length.
+- Added `TaskProgressColumn` and switched default progress percentage columns to use it, stabilizing the percentage column width.
+- Improved live/console thread safety:
+  - Serialized `Console.print`, `Console.log`, and `Console.control` buffer writes with the console lock.
+  - Avoided holding the `Live` lock while refreshing/printing live output.
+- Documentation/example updates:
+  - Monospaced the `python -m rich.live` command in `docs/source/live.rst` via an RST literal block.
+  - Fixed Portuguese README typos.
+  - Fixed obvious Swiss German README typos.
+- Bumped Black from `21.10b0` to `21.11b1` in `pyproject.toml` and `poetry.lock`, including updated Black hashes and regex minimum.
+
+Verification performed:
+- Created and ran a temporary reproduction script before and after the fix; it reproduced the ANSI-width failure before and passed after, including added ANSI edge cases. The temporary script was removed afterward.
+- Ran the new dynamic progress example successfully.
+- Ran syntax compilation successfully:
+  - `python -m py_compile rich/text.py rich/progress.py rich/live.py rich/console.py examples/dynamic_progress.py`
+- Ran targeted tests successfully:
+  - `PYTHONPATH=/workspace/rich pytest -q tests/test_text.py tests/test_ansi.py tests/test_table.py tests/test_progress.py tests/test_live.py tests/test_logging.py tests/test_console.py`
+  - Result: `200 passed`
+- Ran `git diff --check` successfully.
+- Ran the full suite with `PYTHONPATH=/workspace/rich pytest -q`; it completed but has 16 environment/golden-output failures unrelated to these changes, mainly Python 3.12 / Pygments / inspect-output differences. No tests were modified.

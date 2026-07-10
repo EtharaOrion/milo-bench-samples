@@ -1,0 +1,128 @@
+diff --git a/codegen/testserver/panics_test.go b/codegen/testserver/panics_test.go
+index 85235864f0a..68903391496 100644
+--- a/codegen/testserver/panics_test.go
++++ b/codegen/testserver/panics_test.go
+@@ -2,11 +2,15 @@ package testserver
+ 
+ import (
+ 	"context"
++	"fmt"
+ 	"testing"
+ 
++	"github.com/99designs/gqlgen/graphql"
++
+ 	"github.com/99designs/gqlgen/client"
+ 	"github.com/99designs/gqlgen/graphql/handler"
+ 	"github.com/stretchr/testify/require"
++	"github.com/vektah/gqlparser/v2/gqlerror"
+ )
+ 
+ func TestPanics(t *testing.T) {
+@@ -21,33 +25,45 @@ func TestPanics(t *testing.T) {
+ 		return []MarshalPanic{MarshalPanic("aa"), MarshalPanic("bb")}, nil
+ 	}
+ 
+-	c := client.New(handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolvers})))
++	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolvers}))
++	srv.SetRecoverFunc(func(ctx context.Context, err interface{}) (userMessage error) {
++		return fmt.Errorf("panic: %v", err)
++	})
++
++	srv.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
++		return &gqlerror.Error{
++			Message: "presented: " + err.Error(),
++			Path:    graphql.GetFieldContext(ctx).Path(),
++		}
++	})
++
++	c := client.New(srv)
+ 
+ 	t.Run("panics in marshallers will not kill server", func(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { fieldScalarMarshal } }`, &resp)
+ 
+-		require.EqualError(t, err, "http 422: {\"errors\":[{\"message\":\"internal system error\"}],\"data\":null}")
++		require.EqualError(t, err, "http 422: {\"errors\":[{\"message\":\"presented: panic: BOOM\"}],\"data\":null}")
+ 	})
+ 
+ 	t.Run("panics in unmarshalers will not kill server", func(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { argUnmarshal(u: ["aa", "bb"]) } }`, &resp)
+ 
+-		require.EqualError(t, err, "[{\"message\":\"internal system error\",\"path\":[\"panics\",\"argUnmarshal\"]}]")
++		require.EqualError(t, err, "[{\"message\":\"presented: panic: BOOM\",\"path\":[\"panics\",\"argUnmarshal\"]}]")
+ 	})
+ 
+ 	t.Run("panics in funcs unmarshal return errors", func(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { fieldFuncMarshal(u: ["aa", "bb"]) } }`, &resp)
+ 
+-		require.EqualError(t, err, "[{\"message\":\"internal system error\",\"path\":[\"panics\",\"fieldFuncMarshal\"]}]")
++		require.EqualError(t, err, "[{\"message\":\"presented: panic: BOOM\",\"path\":[\"panics\",\"fieldFuncMarshal\"]}]")
+ 	})
+ 
+ 	t.Run("panics in funcs marshal return errors", func(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { fieldFuncMarshal(u: []) } }`, &resp)
+ 
+-		require.EqualError(t, err, "http 422: {\"errors\":[{\"message\":\"internal system error\"}],\"data\":null}")
++		require.EqualError(t, err, "http 422: {\"errors\":[{\"message\":\"presented: panic: BOOM\"}],\"data\":null}")
+ 	})
+ }
+diff --git a/internal/rewrite/rewriter_test.go b/internal/rewrite/rewriter_test.go
+index e30142c6532..763eaa2768c 100644
+--- a/internal/rewrite/rewriter_test.go
++++ b/internal/rewrite/rewriter_test.go
+@@ -8,11 +8,12 @@ import (
+ )
+ 
+ func TestRewriter(t *testing.T) {
+-	r, err := New("github.com/99designs/gqlgen/internal/rewrite/testdata")
+-	require.NoError(t, err)
++	t.Run("default", func(t *testing.T) {
++		r, err := New("github.com/99designs/gqlgen/internal/rewrite/testdata")
++		require.NoError(t, err)
+ 
+-	body := r.GetMethodBody("Foo", "Method")
+-	require.Equal(t, `
++		body := r.GetMethodBody("Foo", "Method")
++		require.Equal(t, `
+ 	// leading comment
+ 
+ 	// field comment
+@@ -21,16 +22,23 @@ func TestRewriter(t *testing.T) {
+ 	// trailing comment
+ `, body)
+ 
+-	imps := r.ExistingImports("testdata/example.go")
+-	require.Len(t, imps, 2)
+-	assert.Equal(t, []Import{
+-		{
+-			Alias:      "",
+-			ImportPath: "fmt",
+-		},
+-		{
+-			Alias:      "lol",
+-			ImportPath: "bytes",
+-		},
+-	}, imps)
++		imps := r.ExistingImports("testdata/example.go")
++		require.Len(t, imps, 2)
++		assert.Equal(t, []Import{
++			{
++				Alias:      "",
++				ImportPath: "fmt",
++			},
++			{
++				Alias:      "lol",
++				ImportPath: "bytes",
++			},
++		}, imps)
++
++	})
++
++	t.Run("out of scope dir", func(t *testing.T) {
++		_, err := New("../../../out-of-gomod/package")
++		require.Error(t, err)
++	})
+ }

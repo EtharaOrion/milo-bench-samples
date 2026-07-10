@@ -1,0 +1,1054 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 49d432b082..035dcb8b31 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## [7.1.0] - 2020-09-26
++
++### Added
++
++- Added Console.begin_capture, Console.end_capture and Console.capture
++- Added Table.title_justify and Table.caption_justify https://github.com/willmcgugan/rich/issues/301
++
++### Changed
++
++- Improved formatting of exceptions
++- Enabled Rich exceptions in logging https://github.com/taliraj
++- UTF-8 encoding is now mentioned in HTML head section
++
++### Removed
++
++- Removed line_numbers argument from traceback.install, which was undocumented and did nothing
++
+ ## [7.0.0] - 2020-09-18
+ 
+ ### Added
+diff --git a/README.md b/README.md
+index 56d7d5e6ca..a4c6c4341b 100644
+--- a/README.md
++++ b/README.md
+@@ -5,7 +5,7 @@
+ [![Rich blog](https://img.shields.io/badge/blog-rich%20news-yellowgreen)](https://www.willmcgugan.com/tag/rich/)
+ [![Twitter Follow](https://img.shields.io/twitter/follow/willmcgugan.svg?style=social)](https://twitter.com/willmcgugan)
+ 
+-[中文 readme](https://github.com/willmcgugan/rich/blob/master/README.cn.md)
++[中文 readme](https://github.com/willmcgugan/rich/blob/master/README.cn.md) • [lengua española readme](https://github.com/willmcgugan/rich/blob/master/README.es.md)
+ 
+ Rich is a Python library for _rich_ text and beautiful formatting in the terminal.
+ 
+@@ -54,6 +54,15 @@ Rich can be installed in the Python REPL, so that any data structures will be pr
+ 
+ ![REPL](https://github.com/willmcgugan/rich/raw/master/imgs/repl.png)
+ 
++## Rich Inspect
++
++Rich has an [inspect](https://rich.readthedocs.io/en/latest/reference/init.html?highlight=inspect#rich.inspect) function which can produce a report on any Python object, such as class, instance, or builtin.
++
++```python
++>>> from rich import inspect
++>>> inspect(str, methods=True)
++```
++
+ ## Using the Console
+ 
+ For more control over rich terminal content, import and construct a [Console](https://rich.readthedocs.io/en/latest/reference/console.html#rich.console.Console) object.
+diff --git a/docs/source/console.rst b/docs/source/console.rst
+index ca92670985..3373ac7111 100644
+--- a/docs/source/console.rst
++++ b/docs/source/console.rst
+@@ -42,48 +42,6 @@ You can set ``color_system`` to one of the following values:
+     Be careful when setting a color system, if you set a higher color system than your terminal supports, your text may be unreadable.
+ 
+ 
+-File output
+------------
+-
+-The Console object will write to standard output (i.e. the terminal). You can also tell the Console object to write to another file by setting the ``file`` argument on the constructor -- which should be a file-like object opened for writing text. One use of this capability is to create a Console for writing to standard error by setting file to ``sys.stderr``. Here's an example::
+-
+-    import sys
+-    from rich.console import Console
+-    error_console = Console(file=sys.stderr)
+-    error_console.print("[bold red]This is an error!")
+-
+-
+-Capturing output
+-----------------
+-
+-There may be situations where you want to capture the output from a Console rather than writing it directly to the terminal. You can do this by setting the ``file`` argument to a :py:class:`io.StringIO` instance. Here's an example::
+-
+-    from io import StringIO
+-    from rich.console import Console
+-    console = Console(file=StringIO())
+-    console.print("[bold red]Hello[/] World")
+-    str_output = console.file.getvalue()
+-
+-You may also want to set ``force_terminal=True`` on the Console constructor if you want control codes for colour and style in the resulting string.
+-
+-Terminal detection
+-------------------
+-
+-If Rich detects that it is not writing to a terminal it will strip control codes from the output. If you want to write control codes to a regular file then set ``force_terminal=True`` on the constructor.
+-
+-Letting Rich auto-detect terminals is useful as it will write plain text when you pipe output to a file or other application.
+-
+-
+-Environment variables
+----------------------
+-
+-Rich respects some standard environment variables.
+-
+-Setting the environment variable ``TERM`` to ``"dumb"`` or ``"unknown"`` will disable color/style and some features that require moving the cursor, such as progress bars.
+-
+-If the environment variable ``NO_COLOR`` is set, Rich will disable all color in the output.
+-
+-
+ Printing
+ --------
+ 
+@@ -220,3 +178,52 @@ The Console class can export anything written to it as either text or html. To e
+ After you have written content, you can call :meth:`~rich.console.Console.export_text` or :meth:`~rich.console.Console.export_html` to get the console output as a string. You can also call :meth:`~rich.console.Console.save_text` or :meth:`~rich.console.Console.save_html` to write the contents directly to disk.
+ 
+ For examples of the html output generated by Rich Console, see :ref:`appendix-colors`.
++
++
++File output
++-----------
++
++The Console object will write to standard output (i.e. the terminal). You can also tell the Console object to write to another file by setting the ``file`` argument on the constructor -- which should be a file-like object opened for writing text. One use of this capability is to create a Console for writing to standard error by setting file to ``sys.stderr``. Here's an example::
++
++    import sys
++    from rich.console import Console
++    error_console = Console(file=sys.stderr)
++    error_console.print("[bold red]This is an error!")
++
++
++Capturing output
++----------------
++
++There may be situations where you want to *capture* the output from a Console rather than writing it directly to the terminal. You can do this with the :meth:`~rich.console.Console.capture` method which returns a context manager. On exit from this context manager, call :meth:`~rich.console.Capture.get` to return the string that would have been written to the terminal. Here's an example::
++
++    from rich.console import Console
++    console = Console()
++    with console.capture() as capture:
++        console.print("[bold red]Hello[/] World")
++    str_output = capture.get()
++
++An alternative way of capturing output is to set the Console file to a :py:class:`io.StringIO`. This is the recommended method if you are testing console output in unit tests. Here's an example::
++
++    from io import StringIO
++    from rich.console import Console
++    console = Console(file=StringIO())
++    console.print("[bold red]Hello[/] World")
++    str_output = console.file.getvalue()
++
++
++Terminal detection
++------------------
++
++If Rich detects that it is not writing to a terminal it will strip control codes from the output. If you want to write control codes to a regular file then set ``force_terminal=True`` on the constructor.
++
++Letting Rich auto-detect terminals is useful as it will write plain text when you pipe output to a file or other application.
++
++
++Environment variables
++---------------------
++
++Rich respects some standard environment variables.
++
++Setting the environment variable ``TERM`` to ``"dumb"`` or ``"unknown"`` will disable color/style and some features that require moving the cursor, such as progress bars.
++
++If the environment variable ``NO_COLOR`` is set, Rich will disable all color in the output.
+diff --git a/docs/source/logging.rst b/docs/source/logging.rst
+index 2d0cc4f0f7..1986c3b162 100644
+--- a/docs/source/logging.rst
++++ b/docs/source/logging.rst
+@@ -20,4 +20,17 @@ Rich logs won't render :ref:`console_markup` in logging by default as most libra
+ 
+     log.error("[bold red blink]Server is shutting down![/]", extra={"markup": True})
+ 
+-There are a number of options you can use to configure logging output, see the :class:`~rich.logging.RichHandler` reference for details.
++
++Handle exceptions
++-------------------
++
++The :class:`~rich.logging.RichHandler` class may be configured to ues Rich's :class:`~rich.traceback.Traceback` class to format exceptions, which provides more context than a builtin exception. To get beautiful exceptions in your logs set ``rich_tracebacks=True`` on the handler constructor::
++
++    handler = RichHandler(rich_tracebacks=True)
++
++    try:
++        1 / 0
++    except ZeroDivisionError:
++        log.exception("Exception message")
++
++There are a number of other options you can use to configure logging output, see the :class:`~rich.logging.RichHandler` reference for details.
+diff --git a/docs/source/padding.rst b/docs/source/padding.rst
+index 1a5c5c1981..a72dcbf9d5 100644
+--- a/docs/source/padding.rst
++++ b/docs/source/padding.rst
+@@ -6,7 +6,7 @@ The :class:`~rich.padding.Padding` class may be used to add whitespace around te
+     from rich import print
+     from rich.padding import Padding
+     test = Padding("Hello", 1)
+-    print(text)
++    print(test)
+ 
+ You can specify the padding on a more granular level by using a tuple of values rather than a single value. A tuple of 2 values sets the top/bottom and left/right padding, whereas a tuple of 4 values sets the padding for top, right, bottom, and left sides. You may recognize this scheme if you are familiar with CSS.
+ 
+diff --git a/imgs/traceback.png b/imgs/traceback.png
+index 460f4248b4..06ca532094 100644
+Binary files a/imgs/traceback.png and b/imgs/traceback.png differ
+diff --git a/pyproject.toml b/pyproject.toml
+index 642d0ab312..62dd26ba09 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -2,7 +2,7 @@
+ name = "rich"
+ homepage = "https://github.com/willmcgugan/rich"
+ documentation = "https://rich.readthedocs.io/en/latest/"
+-version = "7.0.0"
++version = "7.1.0"
+ description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
+ authors = ["Will McGugan <willmcgugan@gmail.com>"]
+ license = "MIT"
+diff --git a/rich/color.py b/rich/color.py
+index 4dffe6e2d7..4d6398edf4 100644
+--- a/rich/color.py
++++ b/rich/color.py
+@@ -508,7 +508,7 @@ def blend_rgb(
+ if __name__ == "__main__":  # pragma: no cover
+ 
+     from .console import Console
+-    from .table import Column, Table
++    from .table import Table
+     from .text import Text
+     from . import box
+ 
+diff --git a/rich/color_triplet.py b/rich/color_triplet.py
+index d4da6fdb2c..75c03d2aca 100644
+--- a/rich/color_triplet.py
++++ b/rich/color_triplet.py
+@@ -22,7 +22,7 @@ def rgb(self) -> str:
+         """The color in RGB format.
+ 
+         Returns:
+-            str: An rgb color, e.g. ``"rgb(100, 23, 255)"``.
++            str: An rgb color, e.g. ``"rgb(100,23,255)"``.
+         """
+         red, green, blue = self
+         return f"rgb({red},{green},{blue})"
+diff --git a/rich/console.py b/rich/console.py
+index adf62a25a1..e7a8495734 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -56,6 +56,7 @@
+ CONSOLE_HTML_FORMAT = """\
+ <!DOCTYPE html>
+ <head>
++<meta charset="UTF-8">
+ <style>
+ {stylesheet}
+ body {{
+@@ -149,6 +150,38 @@ def __rich_console__(
+ _null_highlighter = NullHighlighter()
+ 
+ 
++class CaptureError(Exception):
++    """An error in the Capture context manager."""
++
++
++class Capture:
++    """Context manager to capture the result of printing to the console.
++    See :meth:`~rich.console.Console.capture` for how to use.
++
++    Args:
++        console (Console): A console instance to capture output.
++    """
++
++    def __init__(self, console: "Console") -> None:
++        self._console = console
++        self._result: Optional[str] = None
++
++    def __enter__(self) -> "Capture":
++        self._console.begin_capture()
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
++        self._result = self._console.end_capture()
++
++    def get(self) -> str:
++        """Get the result of the capture."""
++        if self._result is None:
++            raise CaptureError(
++                "Capture result is not available until context manager exits."
++            )
++        return self._result
++
++
+ class RenderGroup:
+     """Takes a group of renderables and returns a renderable object that renders the group.
+ 
+@@ -450,6 +483,21 @@ def __exit__(self, exc_type, exc_value, traceback) -> None:
+         """Exit buffer context."""
+         self._exit_buffer()
+ 
++    def begin_capture(self) -> None:
++        """Begin capturing console output. Call :meth:`end_capture` to exit capture mode and return output."""
++        self._enter_buffer()
++
++    def end_capture(self) -> str:
++        """End capture mode and return captured string.
++
++        Returns:
++            str: Console output.
++        """
++        render_result = self._render_buffer()
++        del self._buffer[:]
++        self._exit_buffer()
++        return render_result
++
+     @property
+     def color_system(self) -> Optional[str]:
+         """Get color system string.
+@@ -540,6 +588,23 @@ def width(self) -> int:
+         width, _ = self.size
+         return width
+ 
++    def capture(self) -> Capture:
++        """A context manager to *capture* the result of print() or log() in a string,
++        rather than writing it to the console.
++
++        Example:
++            >>> from rich.console import Console
++            >>> console = Console()
++            >>> with console.capture() as capture:
++            ...     console.print("[bold magenta]Hello World[/]")
++            >>> print(capture.get())
++
++        Returns:
++            Capture: Context manager which will contain the attribute `result` on exit.
++        """
++        capture = Capture(self)
++        return capture
++
+     def line(self, count: int = 1) -> None:
+         """Write new line(s).
+ 
+@@ -919,7 +984,7 @@ def print_exception(
+         """Prints a rich render of the last exception and traceback.
+ 
+         Args:
+-            code_width (Optional[int], optional): Number of characters used to render code. Defaults to 88.
++            width (Optional[int], optional): Number of characters used to render code. Defaults to 88.
+             extra_lines (int, optional): Additional lines of code to render. Defaults to 3.
+             theme (str, optional): Override pygments theme used in traceback
+             word_wrap (bool, optional): Enable word wrapping of long lines. Defaults to False.
+@@ -1084,13 +1149,19 @@ def input(
+         Returns:
+             str: Text read from stdin.
+         """
++        prompt_str = ""
+         if prompt:
+-            self.print(prompt, markup=markup, emoji=emoji, end="")
+-        result = (
+-            getpass("", stream=stream)
+-            if password
+-            else (stream.readline() if stream else input())
+-        )
++            with self.capture() as capture:
++                self.print(prompt, markup=markup, emoji=emoji, end="")
++            prompt_str = capture.get()
++        if password:
++            result = getpass(prompt_str, stream=stream)
++        else:
++            if stream:
++                self.file.write(prompt_str)
++                result = stream.readline()
++            else:
++                result = input(prompt_str)
+         return result
+ 
+     def export_text(self, *, clear: bool = True, styles: bool = False) -> str:
+diff --git a/rich/containers.py b/rich/containers.py
+index 17c24ceb50..8329889385 100644
+--- a/rich/containers.py
++++ b/rich/containers.py
+@@ -156,7 +156,7 @@ def justify(
+                     tokens.append(word)
+                     if index < len(spaces):
+                         if next_word is None:
+-                            space_style = Style()
++                            space_style = Style.empty()
+                         else:
+                             style = word.get_style_at_offset(console, -1)
+                             next_style = next_word.get_style_at_offset(console, 0)
+diff --git a/rich/default_styles.py b/rich/default_styles.py
+index 80be12be71..8125b116aa 100644
+--- a/rich/default_styles.py
++++ b/rich/default_styles.py
+@@ -92,10 +92,10 @@
+     "table.cell": Style(),
+     "table.title": Style(italic=True),
+     "table.caption": Style(italic=True, dim=True),
++    "traceback.border.syntax_error": Style(color="bright_red"),
++    "traceback.border": Style(color="red"),
+     "traceback.text": Style(),
+-    "traceback.filename": Style(color="green"),
+-    "traceback.lineno": Style(bold=True, color="cyan"),
+-    "traceback.name": Style(color="yellow"),
++    "traceback.title": Style(color="red", bold=True),
+     "traceback.exc_type": Style(color="bright_red", bold=True),
+     "traceback.exc_value": Style(),
+     "traceback.offset": Style(color="bright_red", bold=True),
+diff --git a/rich/logging.py b/rich/logging.py
+index e5ea5cdcfd..4f58c6a715 100644
+--- a/rich/logging.py
++++ b/rich/logging.py
+@@ -9,6 +9,7 @@
+ from .console import Console
+ from .highlighter import Highlighter, ReprHighlighter
+ from .text import Text
++from .traceback import Traceback
+ 
+ 
+ class RichHandler(Handler):
+@@ -29,6 +30,11 @@ class RichHandler(Handler):
+         enable_link_path (bool, optional): Enable terminal link of path column to file. Defaults to True.
+         highlighter (Highlighter, optional): Highlighter to style log messages, or None to use ReprHighlighter. Defaults to None.
+         markup (bool, optional): Enable console markup in log messages. Defaults to False.
++        rich_tracebacks (bool, optional): Enable rich tracebacks with syntax highlighting and formatting. Defaults to False.
++        tracebacks_width (Optional[int], optional): Number of characters used to render tracebacks code. Defaults to 88.
++        tracebacks_extra_lines (int, optional): Additional lines of code to render tracebacks, or None for full width. Defaults to None.
++        tracebacks_theme (str, optional): Override pygments theme used in traceback.
++        tracebacks_word_wrap (bool, optional): Enable word wrapping of long tracebacks lines. Defaults to False.
+ 
+     """
+ 
+@@ -55,6 +61,11 @@ def __init__(
+         enable_link_path: bool = True,
+         highlighter: Highlighter = None,
+         markup: bool = False,
++        rich_tracebacks: bool = False,
++        tracebacks_width: Optional[int] = 88,
++        tracebacks_extra_lines: int = 3,
++        tracebacks_theme: Optional[str] = None,
++        tracebacks_word_wrap: bool = True,
+     ) -> None:
+         super().__init__(level=level)
+         self.console = console or get_console()
+@@ -64,6 +75,11 @@ def __init__(
+         )
+         self.enable_link_path = enable_link_path
+         self.markup = markup
++        self.rich_tracebacks = rich_tracebacks
++        self.tracebacks_width = tracebacks_width
++        self.tracebacks_extra_lines = tracebacks_extra_lines
++        self.tracebacks_theme = tracebacks_theme
++        self.tracebacks_word_wrap = tracebacks_word_wrap
+ 
+     def emit(self, record: LogRecord) -> None:
+         """Invoked by logging."""
+@@ -76,6 +92,26 @@ def emit(self, record: LogRecord) -> None:
+         level = Text()
+         level.append(record.levelname, log_style)
+ 
++        traceback = None
++        if (
++            self.rich_tracebacks
++            and record.exc_info
++            and record.exc_info != (None, None, None)
++        ):
++            exc_type, exc_value, exc_traceback = record.exc_info
++            assert exc_type is not None
++            assert exc_value is not None
++            traceback = Traceback.from_exception(
++                exc_type,
++                exc_value,
++                exc_traceback,
++                width=self.tracebacks_width,
++                extra_lines=self.tracebacks_extra_lines,
++                theme=self.tracebacks_theme,
++                word_wrap=self.tracebacks_word_wrap,
++            )
++            message = record.getMessage()
++
+         use_markup = (
+             getattr(record, "markup") if hasattr(record, "markup") else self.markup
+         )
+@@ -92,7 +128,7 @@ def emit(self, record: LogRecord) -> None:
+         self.console.print(
+             self._log_render(
+                 self.console,
+-                [message_text],
++                [message_text] if not traceback else [message_text, traceback],
+                 log_time=log_time,
+                 time_format=time_format,
+                 level=level,
+@@ -112,7 +148,7 @@ def emit(self, record: LogRecord) -> None:
+         level="NOTSET",
+         format=FORMAT,
+         datefmt="[%X]",
+-        handlers=[RichHandler()],
++        handlers=[RichHandler(rich_tracebacks=True)],
+     )
+     log = logging.getLogger("rich")
+ 
+diff --git a/rich/markup.py b/rich/markup.py
+index 841541211c..61fb103e19 100644
+--- a/rich/markup.py
++++ b/rich/markup.py
+@@ -31,6 +31,7 @@ def __str__(self) -> str:
+ 
+     @property
+     def markup(self) -> str:
++        """Get the string representation of this tag."""
+         return (
+             f"[{self.name}]"
+             if self.parameters is None
+diff --git a/rich/progress.py b/rich/progress.py
+index b614b3e468..72ec5e7b81 100644
+--- a/rich/progress.py
++++ b/rich/progress.py
+@@ -205,7 +205,7 @@ def __init__(
+         self.highlighter = highlighter
+         super().__init__()
+ 
+-    def render(self, task: "Task"):
++    def render(self, task: "Task") -> Text:
+         _text = self.text_format.format(task=task)
+         if self.markup:
+             text = Text.from_markup(_text, style=self.style, justify=self.justify)
+diff --git a/rich/style.py b/rich/style.py
+index 5ec1824ae3..f0a9562252 100644
+--- a/rich/style.py
++++ b/rich/style.py
+@@ -162,6 +162,21 @@ def _make_color(color: Union[Color, str]) -> Color:
+             )
+         )
+ 
++    @classmethod
++    def empty(cls) -> "Style":
++        """Create an 'empty' style, equivalent to Style(), but more performant."""
++        style = cls.__new__(Style)
++        style._ansi = None
++        style._style_definition = None
++        style._color = None
++        style._bgcolor = None
++        style._attributes = 0
++        style._set_attributes = 0
++        style._link = None
++        style._link_id = None
++        style._hash = hash((None, None, 0, 0, None))
++        return style
++
+     bold = _Bit(0)
+     dim = _Bit(1)
+     italic = _Bit(2)
+@@ -532,7 +547,6 @@ def render(
+             rendered = (
+                 f"\x1b]8;id={self._link_id};{self._link}\x1b\\{rendered}\x1b]8;;\x1b\\"
+             )
+-
+         return rendered
+ 
+     def test(self, text: Optional[str] = None) -> None:
+diff --git a/rich/syntax.py b/rich/syntax.py
+index 88d1a54b87..46eeddc750 100644
+--- a/rich/syntax.py
++++ b/rich/syntax.py
+@@ -136,7 +136,7 @@ def get_style_for_token(self, token_type: TokenType) -> Style:
+             try:
+                 pygments_style = self._pygments_style_class.style_for_token(token_type)
+             except KeyError:
+-                style = Style()
++                style = Style.empty()
+             else:
+                 color = pygments_style["color"]
+                 bgcolor = pygments_style["bgcolor"]
+@@ -159,8 +159,8 @@ class ANSISyntaxTheme(SyntaxTheme):
+ 
+     def __init__(self, style_map: Dict[TokenType, Style]) -> None:
+         self.style_map = style_map
+-        self._missing_style = Style()
+-        self._background_style = Style()
++        self._missing_style = Style.empty()
++        self._background_style = Style.empty()
+         self._style_cache: Dict[TokenType, Style] = {}
+ 
+     def get_style_for_token(self, token_type: TokenType) -> Style:
+@@ -208,6 +208,18 @@ class Syntax(JupyterMixin):
+     _pygments_style_class: Type[PygmentsStyle]
+     _theme: SyntaxTheme
+ 
++    @classmethod
++    def get_theme(cls, name: Union[str, SyntaxTheme]) -> SyntaxTheme:
++        """Get a syntax theme instance."""
++        if isinstance(name, SyntaxTheme):
++            return name
++        theme: SyntaxTheme
++        if name in RICH_SYNTAX_THEMES:
++            theme = ANSISyntaxTheme(RICH_SYNTAX_THEMES[name])
++        else:
++            theme = PygmentsSyntaxTheme(name)
++        return theme
++
+     def __init__(
+         self,
+         code: str,
+@@ -236,12 +248,7 @@ def __init__(
+         self.word_wrap = word_wrap
+         self.background_color = background_color
+ 
+-        if isinstance(theme, SyntaxTheme):
+-            self._theme = theme
+-        elif theme in RICH_SYNTAX_THEMES:
+-            self._theme = ANSISyntaxTheme(RICH_SYNTAX_THEMES[theme])
+-        else:
+-            self._theme = PygmentsSyntaxTheme(theme)
++        self._theme = self.get_theme(theme)
+ 
+     @classmethod
+     def from_path(
+@@ -397,7 +404,7 @@ def _get_number_styles(self, console: Console) -> Tuple[Style, Style, Style]:
+         """Get background, number, and highlight styles for line numbers."""
+         background_style = self._get_base_style()
+         if background_style.transaprent_background:
+-            return Style(), Style(dim=True), Style()
++            return Style.empty(), Style(dim=True), Style.empty()
+         if console.color_system in ("256", "truecolor"):
+             number_style = Style.chain(
+                 background_style,
+diff --git a/rich/table.py b/rich/table.py
+index b5458af242..78015bb987 100644
+--- a/rich/table.py
++++ b/rich/table.py
+@@ -108,6 +108,8 @@ class Table(JupyterMixin):
+         border_style (Union[str, Style], optional): Style of the border. Defaults to None.
+         title_style (Union[str, Style], optional): Style of the title. Defaults to None.
+         caption_style (Union[str, Style], optional): Style of the caption. Defaults to None.
++        title_justify (str, optional): Justify method for title. Defaults to "center".
++        caption_justify (str, optional): Justify method for caption. Defaults to "center".
+     """
+ 
+     columns: List[Column]
+@@ -136,6 +138,8 @@ def __init__(
+         border_style: StyleType = None,
+         title_style: StyleType = None,
+         caption_style: StyleType = None,
++        title_justify: "JustifyMethod" = "center",
++        caption_justify: "JustifyMethod" = "center",
+     ) -> None:
+ 
+         self.columns: List[Column] = []
+@@ -167,6 +171,8 @@ def __init__(
+         self.border_style = border_style
+         self.title_style = title_style
+         self.caption_style = title_style
++        self.title_justify = title_justify
++        self.caption_justify = caption_justify
+         self._row_count = 0
+         self.row_styles = list(row_styles or [])
+ 
+@@ -229,7 +235,7 @@ def get_row_style(self, index: int) -> StyleType:
+         """Get the current row style."""
+         if self.row_styles:
+             return self.row_styles[index % len(self.row_styles)]
+-        return Style()
++        return Style.empty()
+ 
+     def __rich_measure__(self, console: "Console", max_width: int) -> Measurement:
+         if self.width is not None:
+@@ -380,23 +386,28 @@ def __rich_console__(
+ 
+         render_options = options.update(width=table_width)
+ 
+-        def render_annotation(text: TextType, style: StyleType) -> "RenderResult":
++        def render_annotation(
++            text: TextType, style: StyleType, justify: "JustifyMethod" = "center"
++        ) -> "RenderResult":
+             render_text = (
+                 console.render_str(text, style=style) if isinstance(text, str) else text
+             )
+             return console.render(
+-                render_text, options=render_options.update(justify="center")
++                render_text, options=render_options.update(justify=justify)
+             )
+ 
+         if self.title:
+             yield from render_annotation(
+-                self.title, style=Style.pick_first(self.title_style, "table.title")
++                self.title,
++                style=Style.pick_first(self.title_style, "table.title"),
++                justify=self.title_justify,
+             )
+         yield from self._render(console, render_options, widths)
+         if self.caption:
+             yield from render_annotation(
+                 self.caption,
+                 style=Style.pick_first(self.caption_style, "table.caption"),
++                justify=self.caption_justify,
+             )
+ 
+     def _calculate_column_widths(self, console: "Console", max_width: int) -> List[int]:
+@@ -643,7 +654,7 @@ def _render(
+             max_height = 1
+             cells: List[List[List[Segment]]] = []
+             if header_row or footer_row:
+-                row_style = Style()
++                row_style = Style.empty()
+             else:
+                 row_style = get_style(
+                     get_row_style(index - 1 if show_header else index)
+diff --git a/rich/tabulate.py b/rich/tabulate.py
+index 79c8b22a89..2966948fb0 100644
+--- a/rich/tabulate.py
++++ b/rich/tabulate.py
+@@ -1,5 +1,7 @@
+ from collections.abc import Mapping
++from typing import Optional
+ 
++from rich.console import JustifyMethod
+ 
+ from . import box
+ from .highlighter import ReprHighlighter
+@@ -7,18 +9,38 @@
+ from .table import Table
+ 
+ 
+-def tabulate_mapping(mapping: Mapping, title: str = None) -> Table:
++def tabulate_mapping(
++    mapping: Mapping,
++    title: str = None,
++    caption: str = None,
++    title_justify: Optional[JustifyMethod] = None,
++    caption_justify: Optional[JustifyMethod] = None,
++) -> Table:
+     """Generate a simple table from a mapping.
+ 
+     Args:
+         mapping (Mapping): A mapping object (e.g. a dict);
+         title (str, optional): Optional title to be displayed over the table.
++        caption (str, optional): Optional caption to be displayed below the table.
++        title_justify (str, optional): Justify method for title. Defaults to None.
++        caption_justify (str, optional): Justify method for caption. Defaults to None.
+ 
+     Returns:
+         Table: A table instance which may be rendered by the Console.
+     """
+-    table = Table(show_header=False, title=title, box=box.ROUNDED, border_style="blue")
++    table = Table(
++        show_header=False,
++        title=title,
++        caption=caption,
++        box=box.ROUNDED,
++        border_style="blue",
++    )
+     table.title = title
++    table.caption = caption
++    if title_justify is not None:
++        table.title_justify = title_justify
++    if caption_justify is not None:
++        table.caption_justify = caption_justify
+     highlighter = ReprHighlighter()
+     for key, value in mapping.items():
+         table.add_row(
+@@ -28,10 +50,9 @@ def tabulate_mapping(mapping: Mapping, title: str = None) -> Table:
+ 
+ 
+ if __name__ == "__main__":  # pragma: no cover
+-
+     from rich import print
+ 
+-    def test(foo, bar):
++    def test(foo, bar, tjustify=None, cjustify=None):
+         list_of_things = [1, 2, 3, None, 4, True, False, "Hello World"]
+         dict_of_things = {
+             "version": "1.1",
+@@ -39,8 +60,16 @@ def test(foo, bar):
+             "params": [["apple", "orange", "mangoes", "pomelo"], 1.123],
+             "id": "194521489",
+         }
+-        print(tabulate_mapping(locals()))
++        print(
++            tabulate_mapping(
++                locals(),
++                title="locals()",
++                title_justify=tjustify,
++                caption="__main__.test",
++                caption_justify=cjustify,
++            )
++        )
+ 
+     print()
+-    test(20.3423, 3.1427)
++    test(20.3423, 3.1427, cjustify="right")
+     print()
+diff --git a/rich/text.py b/rich/text.py
+index 93f7a21631..3098ad5da7 100644
+--- a/rich/text.py
++++ b/rich/text.py
+@@ -522,7 +522,7 @@ def render(self, console: "Console", end: str = "") -> Iterable["Segment"]:
+         """
+ 
+         text = self.plain
+-        null_style = Style()
++        null_style = Style.empty()
+         enumerated_spans = list(enumerate(self._spans, 1))
+         get_style = partial(console.get_style, default=null_style)
+         style_map = {index: get_style(span.style) for index, span in enumerated_spans}
+diff --git a/rich/traceback.py b/rich/traceback.py
+index 5dab2cec1b..5fa384c60a 100644
+--- a/rich/traceback.py
++++ b/rich/traceback.py
+@@ -5,9 +5,11 @@
+ from dataclasses import dataclass, field
+ from traceback import extract_tb
+ from types import TracebackType
+-from typing import Callable, List, Optional, Type
++from typing import Callable, Dict, List, Optional, Type
+ 
+-from ._loop import loop_last
++from pygments.token import Token, String, Name, Number
++
++from ._loop import loop_first, loop_last
+ from .console import (
+     Console,
+     ConsoleOptions,
+@@ -20,6 +22,7 @@
+ from .padding import Padding
+ from .panel import Panel
+ from .syntax import Syntax
++from .style import Style
+ from .text import Text
+ 
+ WINDOWS = platform.system() == "Windows"
+@@ -29,7 +32,6 @@ def install(
+     *,
+     console: Console = None,
+     width: Optional[int] = 100,
+-    line_numbers: bool = True,
+     extra_lines: int = 3,
+     theme: Optional[str] = None,
+     word_wrap: bool = False,
+@@ -42,14 +44,13 @@ def install(
+     Args:
+         console (Optional[Console], optional): Console to write exception to. Default uses internal Console instance.
+         width (Optional[int], optional): Width (in characters) of traceback. Defaults to 100.
+-        line_numbers (bool, optional): Enable line numbers.
+         extra_lines (int, optional): Extra lines of code. Defaults to 3.
+         theme (Optional[str], optional): Pygments theme to use in traceback. Defaults to ``None`` which will pick
+             a theme appropriate for the platform.
+         word_wrap(bool, optional): Enable word wrapping of long lines. Defaults to False.
+ 
+     Returns:
+-        Callable: The previous exception handler that was replaced
++        Callable: The previous exception handler that was replaced.
+ 
+     """
+     traceback_console = Console(file=sys.stderr) if console is None else console
+@@ -107,7 +108,7 @@ class Trace:
+ 
+ 
+ class PathHighlighter(RegexHighlighter):
+-    highlights = [r'"(?P<dim>.*/)(?P<_>.+)"']
++    highlights = [r"(?P<dim>.*/)(?P<bold>.+)"]
+ 
+ 
+ class Traceback:
+@@ -140,20 +141,34 @@ def __init__(
+         self.trace = trace
+         self.width = width
+         self.extra_lines = extra_lines
+-        self.theme = theme
++        self.theme = Syntax.get_theme(theme or "ansi_dark")
+         self.word_wrap = word_wrap
+ 
+     @classmethod
+     def from_exception(
+         cls,
+-        exc_type: Type[BaseException],
++        exc_type: Type,
+         exc_value: BaseException,
+-        traceback: TracebackType,
++        traceback: Optional[TracebackType],
+         width: Optional[int] = 100,
+         extra_lines: int = 3,
+         theme: Optional[str] = None,
+         word_wrap: bool = False,
+     ) -> "Traceback":
++        """Create a traceback from exception info
++
++        Args:
++            exc_type (Type[BaseException]): Exception type.
++            exc_value (BaseException): Exception value.
++            traceback (TracebackType): Python Traceback object.
++            width (Optional[int], optional): Number of characters used to traceback. Defaults to 100.
++            extra_lines (int, optional): Additional lines of code to render. Defaults to 3.
++            theme (str, optional): Override pygments theme used in traceback.
++            word_wrap (bool, optional): Enable word wrapping of long lines. Defaults to False.
++
++        Returns:
++            Traceback: A Traceback instance that may be printed.
++        """
+         rich_traceback = cls.extract(exc_type, exc_value, traceback)
+         return Traceback(
+             rich_traceback,
+@@ -168,7 +183,7 @@ def extract(
+         cls,
+         exc_type: Type[BaseException],
+         exc_value: BaseException,
+-        traceback: TracebackType,
++        traceback: Optional[TracebackType],
+     ) -> Trace:
+         """Extrace traceback information.
+ 
+@@ -209,7 +224,8 @@ def extract(
+                 exc_type = cause.__class__
+                 exc_value = cause
+                 traceback = cause.__traceback__
+-                continue
++                if traceback:
++                    continue
+             # No cover, code is reached but coverage doesn't recognize it.
+             break  # pragma: no cover
+ 
+@@ -219,68 +235,94 @@ def extract(
+     def __rich_console__(
+         self, console: Console, options: ConsoleOptions
+     ) -> RenderResult:
++        theme = self.theme
++        background_style = theme.get_background_style()
++
++        styles = {
++            "text": theme.get_style_for_token(Token),
++            "string": theme.get_style_for_token(String),
++            "function": theme.get_style_for_token(Name.Function),
++            "number": theme.get_style_for_token(Number),
++        }
+         highlighter = ReprHighlighter()
+         for last, stack in loop_last(reversed(self.trace.stacks)):
+             if stack.frames:
+-                yield Text.from_markup("[b]Traceback[/b] [dim](most recent call last):")
+                 stack_renderable: ConsoleRenderable = Panel(
+-                    self._render_stack(stack), style="blue", expand=False
++                    self._render_stack(stack, styles),
++                    title="[traceback.title]Traceback [dim](most recent call last)",
++                    style=background_style,
++                    border_style="traceback.border.syntax_error",
++                    expand=False,
++                    padding=(0, 1),
+                 )
+                 stack_renderable = Constrain(stack_renderable, self.width)
+                 yield stack_renderable
+             if stack.syntax_error is not None:
+                 yield Constrain(
+                     Panel(
+-                        self._render_syntax_error(stack.syntax_error),
+-                        style="red",
++                        self._render_syntax_error(stack.syntax_error, styles),
++                        style=background_style,
++                        border_style="traceback.border",
+                         expand=False,
++                        padding=(0, 1),
+                     ),
+                     self.width,
+                 )
+                 yield Text.assemble(
+-                    (f"{stack.exc_type}: ", "traceback.exc_type"), end=""
++                    (f"{stack.exc_type}: ", "traceback.exc_type"),
++                    highlighter(stack.syntax_error.msg),
+                 )
+-                yield highlighter(stack.syntax_error.msg)
+             else:
+                 yield Text.assemble(
+-                    (f"{stack.exc_type}: ", "traceback.exc_type"), end=""
++                    (f"{stack.exc_type}: ", "traceback.exc_type"),
++                    highlighter(stack.exc_value),
+                 )
+-                yield highlighter(stack.exc_value)
++
+             if not last:
+                 yield Text.from_markup(
+-                    "\n[i]During handling of the above exception, another exception occurred:\n\n",
++                    "\n[i]During handling of the above exception, another exception occurred:\n",
+                 )
+ 
+     @render_group()
+-    def _render_syntax_error(self, syntax_error: _SyntaxError) -> RenderResult:
++    def _render_syntax_error(
++        self, syntax_error: _SyntaxError, styles: Dict[str, Style]
++    ) -> RenderResult:
+         highlighter = ReprHighlighter()
+         path_highlighter = PathHighlighter()
+-        text = Text.assemble(
+-            (" File ", "traceback.text"),
+-            (f'"{syntax_error.filename}"', "traceback.filename"),
+-            (", line ", "traceback.text"),
+-            (str(syntax_error.lineno), "traceback.lineno"),
+-        )
+-        yield path_highlighter(text)
+-        yield highlighter("   " + syntax_error.line)
+-        yield Text.from_markup(
+-            "   " + " " * (syntax_error.offset - 1) + "[traceback.offset]▲[/]\n"
++        if syntax_error.filename != "<stdin>":
++            text = Text.assemble(
++                (f" {syntax_error.filename}", styles["string"]),
++                (":", styles["text"]),
++                (str(syntax_error.lineno), styles["number"]),
++                style=styles["text"],
++            )
++            yield path_highlighter(text)
++        syntax_error_text = highlighter(syntax_error.line.rstrip())
++        syntax_error_text.no_wrap = True
++        offset = min(syntax_error.offset - 1, len(syntax_error_text))
++        syntax_error_text.stylize("bold underline", offset, offset + 1)
++        syntax_error_text += Text.from_markup(
++            "\n" + " " * offset + "[traceback.offset]▲[/]",
++            style=styles["text"],
+         )
++        yield syntax_error_text
+ 
+     @render_group()
+-    def _render_stack(self, stack: Stack) -> RenderResult:
++    def _render_stack(self, stack: Stack, styles: Dict[str, Style]) -> RenderResult:
+         path_highlighter = PathHighlighter()
+-        theme = self.theme or ("fruity" if WINDOWS else "monokai")
+-        for frame in stack.frames:
++        theme = self.theme
++        for first, frame in loop_first(stack.frames):
+             text = Text.assemble(
+-                (" File ", "traceback.text"),
+-                (f'"{frame.filename}"', "traceback.filename"),
+-                (", line ", "traceback.text"),
+-                (str(frame.lineno), "traceback.lineno"),
+-                (", in ", "traceback.text"),
+-                (frame.name, "traceback.name"),
++                path_highlighter(Text(frame.filename, style=styles["string"])),
++                (":", styles["text"]),
++                (str(frame.lineno), styles["number"]),
++                " in ",
++                (frame.name, styles["function"]),
++                style=styles["text"],
+             )
+-            yield path_highlighter(text)
++            if not frame.filename.startswith("<") and not first:
++                yield ""
++            yield text
+             if frame.filename.startswith("<"):
+                 continue
+             try:
+@@ -295,10 +337,11 @@ def _render_stack(self, stack: Stack) -> RenderResult:
+                     highlight_lines={frame.lineno},
+                     word_wrap=self.word_wrap,
+                 )
++                yield ""
+             except Exception:
+                 pass
+             else:
+-                yield Padding.indent(syntax, 2)
++                yield syntax
+ 
+ 
+ if __name__ == "__main__":  # pragma: no cover

@@ -1,0 +1,79 @@
+diff --git a/codegen/config/binder_test.go b/codegen/config/binder_test.go
+index 9670c6afabc..9fa5eccadbb 100644
+--- a/codegen/config/binder_test.go
++++ b/codegen/config/binder_test.go
+@@ -1,6 +1,8 @@
+ package config
+ 
+ import (
++	"fmt"
++	"go/token"
+ 	"go/types"
+ 	"testing"
+ 
+@@ -264,3 +266,40 @@ func TestEnumBinding(t *testing.T) {
+ 	require.Equal(t, bazTwo, baz.EnumValues[1].Object)
+ 	require.Equal(t, cf.Schema.Types["Baz"].EnumValues[1], baz.EnumValues[1].Definition)
+ }
++
++func createTypeAlias(name string, t types.Type) *types.Alias {
++	var nopos token.Pos
++	return types.NewAlias(types.NewTypeName(nopos, nil, name, nil), t)
++}
++
++func TestIsNilable(t *testing.T) {
++	type aTest struct {
++		input    types.Type
++		expected bool
++	}
++
++	theTests := []aTest{
++		{types.Universe.Lookup("any").Type(), true},
++		{types.Universe.Lookup("rune").Type(), false},
++		{types.Universe.Lookup("byte").Type(), false},
++		{types.Universe.Lookup("error").Type(), true},
++		{types.Typ[types.Int], false},
++		{types.Typ[types.String], false},
++		{types.NewChan(types.SendOnly, types.Typ[types.Int]), true},
++		{types.NewPointer(types.Typ[types.Int]), true},
++		{types.NewPointer(types.Typ[types.String]), true},
++		{types.NewMap(types.Typ[types.Int], types.Typ[types.Int]), true},
++		{types.NewSlice(types.Typ[types.Int]), true},
++		{types.NewInterfaceType(nil, nil), true},
++		{createTypeAlias("interfaceAlias", types.NewInterfaceType(nil, nil)), true},
++		{createTypeAlias("interfaceNestedAlias", createTypeAlias("interfaceAlias", types.NewInterfaceType(nil, nil))), true},
++		{createTypeAlias("intAlias", types.Typ[types.Int]), false},
++		{createTypeAlias("intNestedAlias", createTypeAlias("intAlias", types.Typ[types.Int])), false},
++	}
++
++	for _, at := range theTests {
++		t.Run(fmt.Sprintf("nilable-%s", at.input.String()), func(t *testing.T) {
++			require.Equal(t, at.expected, IsNilable(at.input))
++		})
++	}
++}
+diff --git a/codegen/templates/templates_test.go b/codegen/templates/templates_test.go
+index 6ca3d824842..c282f01ec53 100644
+--- a/codegen/templates/templates_test.go
++++ b/codegen/templates/templates_test.go
+@@ -53,6 +53,9 @@ func TestToGo(t *testing.T) {
+ 	require.Equal(t, "Identities", ToGo("identities"))
+ 	require.Equal(t, "Iphone", ToGo("IPHONE"))
+ 	require.Equal(t, "IPhone", ToGo("iPHONE"))
++	require.Equal(t, "UserIdentity", ToGo("USER_IDENTITY"))
++	require.Equal(t, "UserIdentity", ToGo("UserIdentity"))
++	require.Equal(t, "UserIdentity", ToGo("userIdentity"))
+ }
+ 
+ func TestToGoPrivate(t *testing.T) {
+@@ -300,6 +303,10 @@ func Test_wordWalker(t *testing.T) {
+ 			input:    makeInput("RelatedUrls"),
+ 			expected: []*wordInfo{{Word: "Related"}, {WordOffset: 1, Word: "Urls"}},
+ 		},
++		{
++			input:    makeInput("USER_IDENTITY"),
++			expected: []*wordInfo{{Word: "USER"}, {WordOffset: 1, Word: "IDENTITY"}},
++		},
+ 		{
+ 			input:    makeInput("ITicket"),
+ 			expected: []*wordInfo{{Word: "ITicket"}},

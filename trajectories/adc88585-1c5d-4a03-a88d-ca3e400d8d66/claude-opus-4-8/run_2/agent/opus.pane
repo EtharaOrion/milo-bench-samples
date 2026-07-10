@@ -1,0 +1,200 @@
+--- a/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
++++ b/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
+@@ -122,10 +122,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+     public List<Post> listPostBy(Integer categoryId) {
+         Assert.notNull(categoryId, "Category id must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryId(categoryId);
+-
+-        return postRepository.findAllById(postIds);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllById(findAllPostIdsBy(categoryId));
+     }
+
+     @Override
+@@ -133,11 +131,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(categoryId, "Category id must not be null");
+         Assert.notNull(status, "Post status must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(categoryId, status);
+-
+-        return postRepository.findAllById(postIds);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllById(findAllPostIdsBy(categoryId, status));
+     }
+
+     @Override
+@@ -145,11 +140,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(categoryId, "Category id must not be null");
+         Assert.notNull(status, "Post status must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(categoryId, status);
+-
+-        return postRepository.findAllById(postIds);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllById(findAllPostIdsBy(categoryId, status));
+     }
+
+     @Override
+@@ -163,10 +155,7 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+             throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+         }
+
+-        Set<Integer> postsIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(category.getId(), status);
+-
+-        return postRepository.findAllById(postsIds);
++        return postRepository.findAllById(findAllPostIdsBy(category.getId(), status));
+     }
+
+     @Override
+@@ -180,10 +169,7 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+             throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+         }
+
+-        Set<Integer> postsIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(category.getId(), status);
+-
+-        return postRepository.findAllById(postsIds);
++        return postRepository.findAllById(findAllPostIdsBy(category.getId(), status));
+     }
+
+     @Override
+@@ -191,10 +177,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(categoryId, "Category id must not be null");
+         Assert.notNull(pageable, "Page info must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryId(categoryId);
+-
+-        return postRepository.findAllByIdIn(postIds, pageable);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllByIdIn(findAllPostIdsBy(categoryId), pageable);
+     }
+
+     @Override
+@@ -203,11 +187,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(status, "Post status must not be null");
+         Assert.notNull(pageable, "Page info must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(categoryId, status);
+-
+-        return postRepository.findAllByIdIn(postIds, pageable);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllByIdIn(findAllPostIdsBy(categoryId, status), pageable);
+     }
+
+     @Override
+@@ -216,11 +197,73 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(status, "Post status must not be null");
+         Assert.notNull(pageable, "Page info must not be null");
+
+-        // Find all post ids
+-        Set<Integer> postIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(categoryId, status);
++        // Find all post ids including the posts in subcategories
++        return postRepository.findAllByIdIn(findAllPostIdsBy(categoryId, status), pageable);
++    }
+
+-        return postRepository.findAllByIdIn(postIds, pageable);
++    /**
++     * Finds all post ids belonging to the given category and its descendant categories.
++     *
++     * @param categoryId category id must not be null
++     * @return a set of post ids
++     */
++    @NonNull
++    private Set<Integer> findAllPostIdsBy(@NonNull Integer categoryId) {
++        List<Integer> categoryIds = listAllCategoryIdsBy(categoryId);
++        if (CollectionUtils.isEmpty(categoryIds)) {
++            return Collections.emptySet();
++        }
++        return postCategoryRepository.findAllPostIdsByCategoryIdList(categoryIds);
++    }
++
++    /**
++     * Finds all post ids belonging to the given category and its descendant categories with the
++     * given status.
++     *
++     * @param categoryId category id must not be null
++     * @param status post status must not be null
++     * @return a set of post ids
++     */
++    @NonNull
++    private Set<Integer> findAllPostIdsBy(@NonNull Integer categoryId, @NonNull PostStatus status) {
++        List<Integer> categoryIds = listAllCategoryIdsBy(categoryId);
++        if (CollectionUtils.isEmpty(categoryIds)) {
++            return Collections.emptySet();
++        }
++        return postCategoryRepository.findAllPostIdsByCategoryIdList(categoryIds, status);
++    }
++
++    /**
++     * Finds all post ids belonging to the given category and its descendant categories with the
++     * given statuses.
++     *
++     * @param categoryId category id must not be null
++     * @param status post status collection must not be null
++     * @return a set of post ids
++     */
++    @NonNull
++    private Set<Integer> findAllPostIdsBy(@NonNull Integer categoryId,
++        @NonNull Set<PostStatus> status) {
++        List<Integer> categoryIds = listAllCategoryIdsBy(categoryId);
++        if (CollectionUtils.isEmpty(categoryIds)) {
++            return Collections.emptySet();
++        }
++        return postCategoryRepository.findAllPostIdsByCategoryIdList(categoryIds, status);
++    }
++
++    /**
++     * Lists the given category id and all of its descendant category ids.
++     *
++     * @param categoryId category id must not be null
++     * @return a list of category ids including the given one and its descendants
++     */
++    @NonNull
++    private List<Integer> listAllCategoryIdsBy(@NonNull Integer categoryId) {
++        Assert.notNull(categoryId, "Category id must not be null");
++        // listAllByParentId returns the category itself and all of its descendants
++        return categoryService.listAllByParentId(categoryId).stream()
++            .map(Category::getId)
++            .collect(Collectors.toList());
+     }
+
+     @Override
+# finish: Completed all five cherry-pick fixes
+I implemented the five functional cherry-pick fixes from the issue description. All changes compile cleanly and the runnable unit tests pass.
+
+## Changes made
+
+**Issue #2225 — `/install` redirects to 404 after initialization**
+`controller/content/MainController.java`: `installation()` now always redirects to the admin install page instead of returning an empty body once installed (which produced a 404). Removed the now-unused `PrimaryProperties` import.
+
+**Issue #2285/#2282 — empty `meta_description` on post detail page**
+`controller/content/model/PostModel.java`: After re-fetching the post with `getById`, its content was not loaded, so `post.getContent().getContent()` was empty when generating `meta_description`. The content is now populated via `postService.getContentById(...)` before description generation.
+
+**Issue #2332/#2317 — batch delete fails when files were already removed from upstream storage**
+`service/impl/AttachmentServiceImpl.java`: `removePermanently(Integer id)` now catches `FileOperationException` from `fileHandlers.delete(...)` and logs a warning, so an already-removed upstream file no longer aborts deletion of the remaining attachments.
+
+**Issue #2336/#2331 — Qiniu OSS cannot upload non-image attachments**
+`handler/file/QiniuOssFileHandler.java`: The upload `returnBody` requested `imageInfo.width/height`, which fails for non-image files. It now only includes `imageInfo` for image types; non-images use a body without it.
+
+**Issue #2407/#2405 — `getPostBy()` does not return posts in subcategories**
+- `repository/PostCategoryRepository.java`: Added `findAllPostIdsByCategoryIdList` overloads (no status / single status / status set) that query across a collection of category ids.
+- `service/impl/PostCategoryServiceImpl.java`: Added `listAllCategoryIdsBy` (using `categoryService.listAllByParentId`, which returns the category plus all descendants) and `findAllPostIdsBy` helpers (with empty-collection guards consistent with existing code), and updated all `listPostBy`/`pagePostBy` methods so they now include posts from subcategories.
+
+## Verification
+- `./gradlew compileJava compileTestJava` succeed.
+- `CategoryServiceTest` (1) and `AttachmentServiceImplTest` (4) pass with 0 failures.
+- `CategoryIntegrationTest` fails to load its Spring context due to a pre-existing Flyway migration error (`Table "OPTIONS" not found`) in this environment — I confirmed the identical failure occurs on the unmodified base commit, so it is unrelated to my changes (it affects all `@SpringBootTest` tests).
+
+## Note on Issue #6 (release: 1.5.5)
+This is a release/changelog PR bundling the above fixes; the project version in `gradle.properties` is a CI-managed `-SNAPSHOT`, so no functional code change is required for it. I did not modify any test files, per your instructions.

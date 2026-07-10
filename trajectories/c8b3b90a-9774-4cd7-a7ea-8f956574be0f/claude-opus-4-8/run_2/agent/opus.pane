@@ -1,0 +1,200 @@
+   148	query findTodos {
+   149	    todos {
+   150	      text
+   151	      done
+   152	      user {
+   153	        name
+   154	      }
+   155	    }
+   156	}
+   157	```
+   158	
+   159	### Dont eagerly fetch the user
+   160	
+   161	This example is great, but in the real world fetching most objects is expensive. We dont want to load the User on the
+   162	todo unless the user actually asked for it. So lets replace the generated `Todo` model with something slightly more
+   163	realistic.
+   164	
+   165	Create a new file called `graph/model/todo.go`
+   166	```go
+   167	package model
+   168	
+   169	type Todo struct {
+   170		ID     string `json:"id"`
+   171		Text   string `json:"text"`
+   172		Done   bool   `json:"done"`
+   173		UserID string `json:"user"`
+   174	}
+   175	```
+   176	
+   177	> Note
+   178	>
+   179	> By default gqlgen will use any models in the model directory that match on name, this can be configured in `gqlgen.yml`.
+   180	
+   181	And run `go run github.com/99designs/gqlgen generate`.
+   182	
+   183	Now if we look in `graph/schema.resolvers.go` we can see a new resolver, lets implement it and fix `CreateTodo`.
+   184	```go
+   185	func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
+   186		todo := &model.Todo{
+   187			Text:   input.Text,
+   188			ID:     fmt.Sprintf("T%d", rand.Int()),
+   189			UserID: input.UserID, // fix this line
+   190		}
+   191		r.todos = append(r.todos, todo)
+   192		return todo, nil
+   193	}
+   194	
+   195	func (r *todoResolver) User(ctx context.Context, obj *model.Todo) (*model.User, error) {
+   196		return &model.User{ID: obj.UserID, Name: "user " + obj.UserID}, nil
+   197	}
+   198	```
+   199	
+   200	## Finishing touches
+   201	
+   202	At the top of our `resolver.go`, between `package` and `import`, add the following line:
+   203	
+   204	```go
+   205	//go:generate go run github.com/99designs/gqlgen
+   206	```
+   207	
+   208	This magic comment tells `go generate` what command to run when we want to regenerate our code.  To run go generate recursively over your entire project, use this command:
+   209	
+   210	```go
+   211	go generate ./...
+   212	```
+   213	
+# file_editor: Fix 'priortizes' typo in README
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+     7	[gqlgen](https://github.com/99designs/gqlgen) is a Go library for building GraphQL servers without any fuss.<br/> 
+     8	
+     9	- **gqlgen is based on a Schema first approach** — You get to Define your API using the GraphQL [Schema Definition Language](http://graphql.org/learn/schema/).
+    10	- **gqlgen prioritizes Type safety** — You should never see `map[string]interface{}` here.
+    11	- **gqlgen enables Codegen** — We generate the boring bits, so you can focus on building your app quickly.
+    12	
+    13	Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go graphql [implementations](https://gqlgen.com/feature-comparison/)
+    14	
+    15	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix 'comand' typo in README
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    13	Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go graphql [implementations](https://gqlgen.com/feature-comparison/)
+    14	
+    15	## Getting Started
+    16	- To install gqlgen run the command `go get github.com/99designs/gqlgen` in your project directory.<br/> 
+    17	- You could initialize a new project using the recommended folder structure by running this command `go run github.com/99designs/gqlgen init`.
+    18	
+    19	You could find a more comprehensive guide to help you get started [here](https://gqlgen.com/getting-started/).<br/>
+    20	We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to GraphQL applicatons with **gqlgen** seamlessly,
+    21	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix 'applicatons' typo and grammar in README
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+    17	- You could initialize a new project using the recommended folder structure by running this command `go run github.com/99designs/gqlgen init`.
+    18	
+    19	You could find a more comprehensive guide to help you get started [here](https://gqlgen.com/getting-started/).<br/>
+    20	We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to build GraphQL applications with **gqlgen** seamlessly,
+    21	You can see these [examples](https://github.com/99designs/gqlgen/tree/master/example) here or visit [godoc](https://godoc.org/github.com/99designs/gqlgen).
+    22	
+    23	## Reporting Issues
+    24	
+    25	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix 'isnt' typo in README
+The file /workspace/gqlgen/README.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/README.md:
+   103	- Generating models based on schema
+   104	- As arguments in resolvers
+   105	
+   106	There isn't any way around this, gqlgen has no way to know what you want in a given context.
+   107	
+   108	## Other Resources
+   109	
+   110	- [Christopher Biscardi @ Gophercon UK 2018](https://youtu.be/FdURVezcdcw)
+   111	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Fix capitalization typo in getting-started.md
+The file /workspace/gqlgen/docs/content/getting-started.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gqlgen/docs/content/getting-started.md:
+   133	go run server.go
+   134	```
+   135	
+   136	then open http://localhost:8080 in a browser. Here are some queries to try:
+   137	```graphql
+   138	mutation createTodo {
+   139	  createTodo(input:{text:"todo", userId:"1"}) {
+   140	    user {
+   141	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && go test ./graphql/... ./codegen/testserver/... 2>&1 | grep -E "FAIL|^ok" | grep -v "no test files"; echo "=== full diff stat ==="; git --no-pager diff --stat
+ok      github.com/99designs/gqlgen/graphql     (cached)
+ok      github.com/99designs/gqlgen/graphql/executor    (cached)
+ok      github.com/99designs/gqlgen/graphql/handler     (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/apollotracing       (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/extension   (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/transport   (cached)
+ok      github.com/99designs/gqlgen/graphql/introspection       (cached)
+ok      github.com/99designs/gqlgen/codegen/testserver  (cached)
+=== full diff stat ===
+ README.md                                                |    8 ++---
+ codegen/field.gotpl                                      |    1 +
+ codegen/testserver/generated.go                          | 1719 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ docs/content/getting-started.md                          |    2 +-
+ example/chat/generated.go                                |  387 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------
+ example/config/generated.go                              |  387 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------
+ example/dataloader/generated.go                          |  441 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----------------------------------------------------------------------------------------------------------
+ example/federation/accounts/graph/generated/generated.go |  369 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------------------------------------------------------------------------------------
+ example/federation/products/graph/generated/generated.go |  378 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------------------------------------------------------------------------------------
+ example/federation/reviews/graph/generated/generated.go  |  414 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------------
+ example/fileupload/generated.go                          |  387 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------
+ example/scalars/generated.go                             |  450 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------------------------------------------------------------------------------------
+ example/selection/generated.go                           |  387 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------
+ example/starwars/generated/exec.go                       |  648 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ example/todo/generated.go                                |  378 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------------------------------------------------------------------------------------------
+ example/type-system-extension/generated.go               |  369 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------------------------------------------------------------------------------------
+ graphql/context_field.go                                 |    2 ++
+ graphql/context_field_input.go                           |   43 ++++++++++++++++++++----
+ graphql/error.go                                         |    7 +++-
+ integration/generated.go                                 |  414 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++----------------------------------------------------------------------------------------------------
+ 20 files changed, 4011 insertions(+), 3180 deletions(-)
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && git --no-pager diff example/todo/generated.go | grep -E "^\+" | grep -v "^+++" | grep -vE "IsResolver:|Object:|Field:|Args:|IsMethod:" | head -20; echo "=== (above should be empty if only expected changes) ==="
+=== (above should be empty if only expected changes) ===
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && for f in $(git diff --name-only -- '*generated*.go' 'example/starwars/generated/exec.go' integration/generated.go); do extra=$(git --no-pager diff "$f" | grep -E "^\+" | grep -v "^+++" | grep -vE "IsResolver:|Object:|Field:|Args:|IsMethod:" | wc -l); echo "$extra  $f"; done
+0  codegen/testserver/generated.go
+0  example/chat/generated.go
+0  example/config/generated.go
+0  example/dataloader/generated.go
+0  example/federation/accounts/graph/generated/generated.go
+0  example/federation/products/graph/generated/generated.go
+0  example/federation/reviews/graph/generated/generated.go
+0  example/fileupload/generated.go
+0  example/scalars/generated.go
+0  example/selection/generated.go
+0  example/starwars/generated/exec.go
+0  example/todo/generated.go
+0  example/type-system-extension/generated.go
+0  integration/generated.go
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && go build ./... 2>&1 | grep -v "permission denied"; echo "BUILD EXIT ${PIPESTATUS[0]}"
+BUILD EXIT 0
+# finish: Completed all actionable issue fixes
+I implemented the changes for the actionable issues in the description.
+
+## Issue #1315 — Add `IsResolver` to `FieldContext`
+- `graphql/context_field.go`: added `IsResolver bool` to the `FieldContext` struct.
+- `codegen/field.gotpl`: emit `IsResolver: {{ $field.IsResolver }},` in the generated `FieldContext` literal.
+- Regenerated all committed `generated.go`/`exec.go` files so each field's `IsResolver` is populated.
+  - Note: `go generate ./...` cannot run in this environment because the pinned `golang.org/x/tools` is incompatible with Go 1.25 (`internal error: package "..." without types was imported`). This breakage is pre-existing (fails identically on the clean base commit). I therefore applied the exact template-equivalent edit to the generated files programmatically and ran `gofmt`, producing the same output go generate would. I verified every generated diff contains only the `IsResolver` additions plus gofmt's struct-field realignment — no logic changes.
+- Verified at runtime: a root field (`shapes`) reports `IsResolver=true`, while a Go-method field (`Circle.area`) reports `IsResolver=false`.
+
+## Issue #1291 — INPUT_FIELD_DEFINITION directive errors were clobbered
+Root cause: `WrapErrorWithInputPath` ran non-`*gqlerror.Error` errors through `gqlerror.WrapPath`, which built a fresh error copying only the message — destroying the original error type/extensions before the (custom) error presenter ran.
+- `graphql/context_field_input.go`: introduced an internal `inputPathError` wrapper that preserves the original error (`Unwrap()` so `errors.As`/type assertions work, and delegates `Extensions()` for `ExtendedError`s) while carrying the input `ast.Path`. `WrapErrorWithInputPath` now wraps with this type and keeps the most specific path for nested inputs.
+- `graphql/error.go`: `DefaultErrorPresenter` reads the path from `inputPathError` so input paths stay correct.
+- Verified: a custom error (with extensions) returned from an input-field directive is recoverable via `errors.As`, retains its extensions, and gets the correct GraphQL path. All existing directive/input/panics tests still pass (e.g. nested paths like `["directiveInputNullable","arg","inner"]`).
+
+## Issues #1295 / #1324 — Documentation typos
+- `README.md`: fixed `priortizes`→`prioritizes`, `comand`→`command`, `applicatons`→`applications` (and the surrounding clause), `isnt`→`isn't`.
+- `docs/content/getting-started.md`: fixed sentence-start capitalization `here are some queries`→`Here are some queries`.
+
+## Testing
+- `go build ./...` succeeds.
+- `./graphql/...` and `./codegen/testserver/...` (including `TestDirectives`, `TestInput`, `TestErrorInsideMutationArgument`, `TestPanics`) and all `./example/...` tests pass.
+- The only failing packages (`codegen/config`, `internal/code`, `internal/rewrite`, `plugin/federation`, `plugin/modelgen`, `plugin/resolvergen`) fail identically on the unmodified base commit due to the same pre-existing `x/tools`/Go-1.25 package-loading incompatibility — not caused by my changes.

@@ -1,0 +1,200 @@
+   333		if (!src) {
+   334			return UT64_MAX;
+   335		}
+   336		const ut8 *s = ((const ut8*)src) + offset;
+   337		return r_read_me64 (s);
+   338	}
+   339	
+   340	static inline void r_write_me64(void *dest, ut64 val) {
+   341		r_write_me32 (dest, (ut32)val);
+   342		r_write_at_me32 (dest, val >> 32, sizeof (ut32));
+   343	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/radare2 && sed -n '1,40p' libr/include/r_endian.h
+#ifndef R_ENDIAN_H
+#define R_ENDIAN_H
+
+#include <r_types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Endian agnostic functions working on single byte. */
+
+static inline ut8 r_read_ble8(const void *src) {
+        if (!src) {
+                return UT8_MAX;
+        }
+        return *(const ut8 *)src;
+}
+
+static inline ut8 r_read_at_ble8(const void *src, size_t offset) {
+        return r_read_ble8 (((const ut8*)src) + offset);
+}
+
+static inline void r_write_ble8(void *dest, ut8 val) {
+        *(ut8 *)dest = val;
+}
+
+static inline void r_write_at_ble8(void *dest, ut8 val, size_t offset) {
+        ut8 *d = (ut8*)dest + offset;
+        r_write_ble8 (d, val);
+}
+
+/* Big Endian functions. */
+
+static inline ut8 r_read_be8(const void *src) {
+        return r_read_ble8 (src);
+}
+
+static inline ut8 r_read_at_be8(const void *src, size_t offset) {
+        return r_read_at_ble8 (src, offset);
+}
+# file_editor: Create endian NULL-safety test program
+File created successfully at: /tmp/test_endian.c
+$ cd /workspace/radare2 && gcc -I libr/include /tmp/test_endian.c -o /tmp/test_endian 2>&1 | head -20 && /tmp/test_endian
+In file included from libr/include/r_endian.h:4,
+                 from /tmp/test_endian.c:1:
+libr/include/r_types.h:10:10: fatal error: r_userconf.h: No such file or directory
+   10 | #include "r_userconf.h"
+      |          ^~~~~~~~~~~~~~
+compilation terminated.
+bash: /tmp/test_endian: No such file or directory
+$ cd /workspace/radare2 && find . -name r_userconf.h 2>/dev/null
+$ cd /workspace/radare2 && ls libr/include/r_userconf.h.acr 2>/dev/null; grep -rl "define R2_VERSION" libr/include/ 2>/dev/null | head; head -30 libr/include/r_types.h
+libr/include/r_userconf.h.acr
+libr/include/r_version.h.in
+#ifndef R2_TYPES_H
+#define R2_TYPES_H
+
+#undef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+
+// defines like isdigit, etc'
+#include "r_types_base.h"
+#include "r_util/r_str_util.h"
+#include "r_userconf.h"
+#include <stddef.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <stdint.h> // required for uint64_t
+#include <inttypes.h> // required for PRIx64
+
+// TODO: fix this to make it crosscompile-friendly: R_SYS_OSTYPE ?
+/* operating system */
+#undef R2__BSD__
+#undef __KFBSD__
+#undef R2__UNIX__
+#undef R2__WINDOWS__
+
+#define R_MODE_PRINT 0x000
+#define R_MODE_RADARE 0x001
+#define R_MODE_SET 0x002
+#define R_MODE_SIMPLE 0x004
+#define R_MODE_JSON 0x008
+#define R_MODE_ARRAY 0x010
+#define R_MODE_SIMPLEST 0x020
+$ cd /workspace/radare2 && mkdir -p /tmp/incstub && echo '#define HAVE_FORK 0' > /tmp/incstub/r_userconf.h && gcc -I/tmp/incstub -Ilibr/include /tmp/test_endian.c -o /tmp/test_endian 2>&1 | head -20 && /tmp/test_endian
+All endian NULL-safety tests passed
+$ cd /workspace/radare2 && grep -rl "r_read_be\|r_read_le\|r_endian" test/ 2>/dev/null | head; ls test/unit/ 2>/dev/null | grep -i endian
+test/unit/test_reg.c
+$ rm -f /tmp/test_endian /tmp/test_endian.c && cd /workspace/radare2 && export GIT_PAGER=cat && git diff --stat
+libr/include/r_endian.h | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+$ cd /workspace/radare2 && export GIT_PAGER=cat && git diff
+diff --git a/libr/include/r_endian.h b/libr/include/r_endian.h
+index 3884ba7de1..8660233584 100644
+--- a/libr/include/r_endian.h
++++ b/libr/include/r_endian.h
+@@ -48,11 +48,17 @@ static inline void r_write_at_be8(void *dest, ut8 val, size_t offset) {
+ }
+
+ static inline ut16 r_read_be16(const void *src) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut16)s[0]) << 8) | (((ut16)s[1]) << 0);
+ }
+
+ static inline ut16 r_read_at_be16(const void *src, size_t offset) {
++       if (!src) {
++               return UT16_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be16 (s);
+ }
+@@ -68,12 +74,18 @@ static inline void r_write_at_be16(void *dest, ut16 val, size_t offset) {
+ }
+
+ static inline ut32 r_read_be32(const void *src) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src;
+        return (((ut32)s[0]) << 24) | (((ut32)s[1]) << 16) |
+                (((ut32)s[2]) << 8) | (((ut32)s[3]) << 0);
+ }
+
+ static inline ut32 r_read_at_be32(const void *src, size_t offset) {
++       if (!src) {
++               return UT32_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be32 (s);
+ }
+@@ -96,12 +108,18 @@ static inline void r_write_at_be32(void *dest, ut32 val, size_t offset) {
+ }
+
+ static inline ut64 r_read_be64(const void *src) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        ut64 val = ((ut64)(r_read_be32 (src))) << 32;
+        val |= r_read_at_be32 (src, sizeof (ut32));
+        return val;
+ }
+
+ static inline ut64 r_read_at_be64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = (const ut8*)src + offset;
+        return r_read_be64 (s);
+ }
+@@ -312,6 +330,9 @@ static inline ut64 r_read_me64(const void *src) {
+ }
+
+ static inline ut64 r_read_at_me64(const void *src, size_t offset) {
++       if (!src) {
++               return UT64_MAX;
++       }
+        const ut8 *s = ((const ut8*)src) + offset;
+        return r_read_me64 (s);
+ }
+# finish: Summary of endian NULL-check fix
+I implemented the fix for the Big-Endian NULL-check inconsistency described in Issue #25208 ("Missing NULL checks in Big Endian read functions").
+
+## Problem
+The `r_read_be*` family of inline functions in `libr/include/r_endian.h` lacked NULL pointer checks, while their Little-Endian counterparts (`r_read_le*`) handled NULL inputs gracefully. This caused the unified `r_read_ble*` wrappers to crash on NULL input when `big_endian = true`, even though `RAnalOp.bytes` is documented as nullable and several arch plugins pass it directly to these readers.
+
+## Changes (`libr/include/r_endian.h`)
+Added NULL checks (returning the appropriate `UT*_MAX` sentinel, matching the LE behavior) to:
+- `r_read_be16()` → returns `UT16_MAX`
+- `r_read_at_be16()` → returns `UT16_MAX`
+- `r_read_be32()` → returns `UT32_MAX`
+- `r_read_at_be32()` → returns `UT32_MAX`
+- `r_read_be64()` → returns `UT64_MAX`
+- `r_read_at_be64()` → returns `UT64_MAX`
+- `r_read_at_me64()` → returns `UT64_MAX`
+
+This exactly matches the suggested fix in the issue and makes the `r_read_ble*` wrappers consistent for both endiannesses.
+
+## Verification
+I wrote a standalone C test that includes `r_endian.h` and confirmed (via gcc compilation) that:
+- All BE/ME read functions now return the correct `UT*_MAX` sentinel on NULL input instead of dereferencing the pointer.
+- The `r_read_ble*` / `r_read_at_ble*` wrappers are now safe for both `big_endian = true` and `big_endian = false`.
+- Normal reads with real data still produce correct big-endian values (e.g. `r_read_be32` of `01 02 03 04` == `0x01020304`).
+
+All tests passed. The change is minimal and header-only, with no behavioral change for non-NULL inputs.

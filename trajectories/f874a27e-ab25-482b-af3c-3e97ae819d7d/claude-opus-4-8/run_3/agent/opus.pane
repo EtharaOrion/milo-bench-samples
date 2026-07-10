@@ -1,0 +1,200 @@
+$ )
+$ 
+$ func main() {
+$ 	// reversed poly candidate for CRC-64/NVME
+$ 	for _, poly := range []uint64{0x9a6c9329ac4bc9b5} {
+$ 		t := crc64.MakeTable(poly)
+$ 		c := crc64.Checksum([]byte("123456789"), t)
+$ 		fmt.Printf("poly=%#x check=%#x (want 0xae8b14860a799888)\n", poly, c)
+$ 	}
+$ 	// ISO for comparison
+$ 	c := crc64.Checksum([]byte("123456789"), crc64.MakeTable(crc64.ISO))
+$ 	fmt.Printf("ISO check=%#x\n", c)
+$ }
+$ EOF
+$ go run crctest.go
+cd /tmp && cat > crctest.go << 'EOF'
+package main
+import (
+"fmt"
+"hash/crc64"
+)
+func main() {
+// reversed poly candidate for CRC-64/NVME
+for _, poly := range []uint64{0x9a6c9329ac4bc9b5} {
+
+.git/               .github/            .gitignore          CODE_OF_CONDUCT.md  LICENSE             Makefile            README.md           backers.md          docker/             go.mod              go.sum              k8s/                note/               other/              snap/               test/               unmaintained/       util/               weed/
+t := crc64.MakeTable(poly)
+
+.git/               .github/            .gitignore          CODE_OF_CONDUCT.md  LICENSE             Makefile            README.md           backers.md          docker/             go.mod              go.sum              k8s/                note/               other/              snap/               test/               unmaintained/       util/               weed/
+c := crc64.Checksum([]byte("123456789"), t)
+
+.git/               .github/            .gitignore          CODE_OF_CONDUCT.md  LICENSE             Makefile            README.md           backers.md          docker/             go.mod              go.sum              k8s/                note/               other/              snap/               test/               unmaintained/       util/               weed/
+fmt.Printf("poly=%#x check=%#x (want 0xae8b14860a799888)\n", poly, c)
+}
+// ISO for comparison
+c := crc64.Checksum([]byte("123456789"), crc64.MakeTable(crc64.ISO))
+fmt.Printf("ISO check=%#x\n", c)
+}
+EOF
+
+
+
+go run crctest.go
+$ cd /tmp && go run crctest.go 2>&1
+poly=0x9a6c9329ac4bc9b5 check=0xae8b14860a799888 (want 0xae8b14860a799888)
+ISO check=0xb90956c775a41001
+# file_editor: Use correct CRC64 NVMe polynomial
+The file /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go:
+   673			return crc32.NewIEEE()
+   674		case ChecksumAlgorithmCRC32C:
+   675			return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+   676		case ChecksumAlgorithmCRC64NVMe:
+   677			// AWS uses the CRC-64/NVME polynomial (reflected form 0x9a6c9329ac4bc9b5),
+   678			// not the ISO polynomial provided by the standard library.
+   679			return crc64.New(crc64.MakeTable(crc64NVMePolynomial))
+   680		case ChecksumAlgorithmSHA1:
+   681			return sha1.New()
+   682		case ChecksumAlgorithmSHA256:
+   683			return sha256.New()
+   684	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && grep -n "ChecksumAlgorithmNone ChecksumAlgorithm = iota\|const maxLineLength" weed/s3api/chunked_reader_v4.go
+139:const maxLineLength = 4 * humanize.KiByte // assumed <= bufio.defaultBufSize 4KiB
+643:    ChecksumAlgorithmNone ChecksumAlgorithm = iota
+# file_editor: Add CRC64 NVMe polynomial constant
+The file /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/seaweedfs/weed/s3api/chunked_reader_v4.go:
+   136		return cred, newSignature, region, date, s3err.ErrNone
+   137	}
+   138	
+   139	const maxLineLength = 4 * humanize.KiByte // assumed <= bufio.defaultBufSize 4KiB
+   140	
+   141	// crc64NVMePolynomial is the reflected form of the CRC-64/NVME polynomial used by AWS S3.
+   142	const crc64NVMePolynomial = 0x9a6c9329ac4bc9b5
+   143	
+   144	// lineTooLong is generated as chunk header is bigger than 4KiB.
+   145	var errLineTooLong = errors.New("header line too long")
+   146	
+   147	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/seaweedfs && go build ./weed/s3api/ && go test ./weed/s3api/ -run ChunkedReader 2>&1 | tail
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       0.014s
+$ cd /workspace/seaweedfs && grep -rn "newChunkedReader\|streamingUnsignedPayload\|StreamingUnsigned\|aws-chunked\|getRequestDataReader\|newSignV4ChunkedReader\|X-Amz-Content-Sha256\|X-Amz-Content-Sha256" weed/s3api/*.go | grep -v _test
+weed/s3api/auth_credentials.go:367:     case authTypeStreamingUnsigned:
+weed/s3api/auth_credentials.go:420:     case authTypeStreamingUnsigned:
+weed/s3api/auth_signature_v4.go:64:     streamingUnsignedPayload = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+weed/s3api/auth_signature_v4.go:90:             // X-Amz-Content-Sha256, if not set in presigned requests, checksum
+weed/s3api/auth_signature_v4.go:93:             v, ok = r.URL.Query()["X-Amz-Content-Sha256"]
+weed/s3api/auth_signature_v4.go:95:                     v, ok = r.Header["X-Amz-Content-Sha256"]
+weed/s3api/auth_signature_v4.go:98:             // X-Amz-Content-Sha256, if not set in signed requests, checksum
+weed/s3api/auth_signature_v4.go:101:            v, ok = r.Header["X-Amz-Content-Sha256"]
+weed/s3api/auth_signature_v4.go:104:    // We found 'X-Amz-Content-Sha256' return the captured value.
+weed/s3api/auth_signature_v4.go:109:    // We couldn't find 'X-Amz-Content-Sha256'.
+weed/s3api/auth_signature_v4.go:414:    if req.URL.Query().Get("X-Amz-Content-Sha256") != "" {
+weed/s3api/auth_signature_v4.go:415:            query.Set("X-Amz-Content-Sha256", hashedPayload)
+weed/s3api/auth_signature_v4.go:472:    if req.URL.Query().Get("X-Amz-Content-Sha256") != "" {
+weed/s3api/auth_signature_v4.go:473:            if req.URL.Query().Get("X-Amz-Content-Sha256") != query.Get("X-Amz-Content-Sha256") {
+weed/s3api/chunked_reader_v4.go:63:     contentSha256Header := req.Header.Get("X-Amz-Content-Sha256")
+weed/s3api/chunked_reader_v4.go:69:     case streamingUnsignedPayload:
+weed/s3api/chunked_reader_v4.go:150:// newChunkedReader returns a new s3ChunkedReader that translates the data read from r
+weed/s3api/chunked_reader_v4.go:153:func (iam *IdentityAccessManagement) newChunkedReader(req *http.Request) (io.ReadCloser, s3err.ErrorCode) {
+weed/s3api/chunked_reader_v4.go:154:    glog.V(3).Infof("creating a new newSignV4ChunkedReader")
+weed/s3api/chunked_reader_v4.go:156:    contentSha256Header := req.Header.Get("X-Amz-Content-Sha256")
+weed/s3api/chunked_reader_v4.go:172:    case streamingUnsignedPayload:
+weed/s3api/s3api_auth.go:57:    return r.Header.Get("x-amz-content-sha256") == streamingUnsignedPayload &&
+weed/s3api/s3api_auth.go:72:    authTypeStreamingUnsigned
+weed/s3api/s3api_auth.go:87:            return authTypeStreamingUnsigned
+weed/s3api/s3api_object_handlers_multipart.go:238:                      dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
+weed/s3api/s3api_object_handlers_put.go:55:             case authTypeStreamingSigned, authTypeStreamingUnsigned:
+weed/s3api/s3api_object_handlers_put.go:56:                     dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
+$ cd /workspace/seaweedfs && go test ./weed/topology/ ./weed/shell/ ./weed/s3api/ 2>&1 | tail -20
+ok      github.com/seaweedfs/seaweedfs/weed/topology    0.014s
+ok      github.com/seaweedfs/seaweedfs/weed/shell       0.180s
+ok      github.com/seaweedfs/seaweedfs/weed/s3api       1.024s
+$ cd /workspace/seaweedfs && head -5 go.mod && echo "---" && grep -rn "go 1.2" go.mod
+module github.com/seaweedfs/seaweedfs
+
+go 1.24
+
+toolchain go1.24.1
+---
+3:go 1.24
+$ cd /workspace/seaweedfs && grep -rn "crc64.ISO\|crc64.MakeTable\|MakeTable(crc64" weed/ | grep -v _test
+weed/s3api/chunked_reader_v4.go:682:            return crc64.New(crc64.MakeTable(crc64NVMePolynomial))
+$ cd /workspace/seaweedfs && rm -f /tmp/crctest.go && go build ./weed/... 2>&1 | tail && echo "BUILD OK"
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/seaweedfs/seaweedfs: permission denied
+BUILD OK
+$ cd /workspace/seaweedfs && git --no-pager diff
+diff --git a/weed/s3api/chunked_reader_v4.go b/weed/s3api/chunked_reader_v4.go
+index a69319500..78dbb1133 100644
+--- a/weed/s3api/chunked_reader_v4.go
++++ b/weed/s3api/chunked_reader_v4.go
+@@ -138,6 +138,9 @@ func (iam *IdentityAccessManagement) calculateSeedSignature(r *http.Request) (cr
+
+ const maxLineLength = 4 * humanize.KiByte // assumed <= bufio.defaultBufSize 4KiB
+
++// crc64NVMePolynomial is the reflected form of the CRC-64/NVME polynomial used by AWS S3.
++const crc64NVMePolynomial = 0x9a6c9329ac4bc9b5
++
+ // lineTooLong is generated as chunk header is bigger than 4KiB.
+ var errLineTooLong = errors.New("header line too long")
+
+@@ -674,7 +677,9 @@ func getCheckSumWriter(checksumAlgorithm ChecksumAlgorithm) hash.Hash {
+        case ChecksumAlgorithmCRC32C:
+                return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+        case ChecksumAlgorithmCRC64NVMe:
+-               return crc64.New(crc64.MakeTable(crc64.ISO))
++               // AWS uses the CRC-64/NVME polynomial (reflected form 0x9a6c9329ac4bc9b5),
++               // not the ISO polynomial provided by the standard library.
++               return crc64.New(crc64.MakeTable(crc64NVMePolynomial))
+        case ChecksumAlgorithmSHA1:
+                return sha1.New()
+        case ChecksumAlgorithmSHA256:
+diff --git a/weed/shell/command_volume_list.go b/weed/shell/command_volume_list.go
+index 99fd1420b..208ef727d 100644
+--- a/weed/shell/command_volume_list.go
++++ b/weed/shell/command_volume_list.go
+@@ -190,7 +190,7 @@ func (c *commandVolumeList) writeDiskInfo(writer io.Writer, t *master_pb.DiskInf
+                diskType = types.HddType
+        }
+        slices.SortFunc(t.VolumeInfos, func(a, b *master_pb.VolumeInformationMessage) int {
+-               return int(a.Id - b.Id)
++               return int(a.Id) - int(b.Id)
+        })
+        volumeInfosFound := false
+        for _, vi := range t.VolumeInfos {
+diff --git a/weed/topology/topology.go b/weed/topology/topology.go
+index 8e55d33a9..8df7414cb 100644
+--- a/weed/topology/topology.go
++++ b/weed/topology/topology.go
+@@ -270,8 +270,11 @@ func (t *Topology) GetVolumeLayout(collectionName string, rp *super_block.Replic
+ func (t *Topology) ListCollections(includeNormalVolumes, includeEcVolumes bool) (ret []string) {
+
+        mapOfCollections := make(map[string]bool)
+-       for _, c := range t.collectionMap.Items() {
+-               mapOfCollections[c.(*Collection).Name] = true
++
++       if includeNormalVolumes {
++               for _, c := range t.collectionMap.Items() {
++                       mapOfCollections[c.(*Collection).Name] = true
++               }
+        }
+
+        if includeEcVolumes {
+# finish: Summarize the three bug fixes applied
+I analyzed the repository against the issue list and found that several of the listed PRs were already merged at the base commit (e.g., Go 1.24 in `go.mod`, STREAMING-UNSIGNED-PAYLOAD-TRAILER wiring in the put/multipart handlers). The remaining items that were still actual, reproducible bugs in the current code have been fixed with minimal changes:
+
+1. Issue #6715 — `master_pb.CollectionList` RPC ignored `include_normal_volumes`.
+   - `weed/topology/topology.go`: `ListCollections()` now only adds normal-volume collections when `includeNormalVolumes` is true, so the parameter is properly evaluated.
+
+2. Issue #6713 — S3 streaming upload "payload checksum does not match" for CRC64NVME.
+   - `weed/s3api/chunked_reader_v4.go`: the CRC64NVMe checksum writer was using `crc64.ISO`, which is the wrong polynomial. AWS uses the CRC-64/NVME polynomial. I added the constant `crc64NVMePolynomial = 0x9a6c9329ac4bc9b5` (the reflected form, verified to produce the correct check value `0xae8b14860a799888` for "123456789") and use it in `getCheckSumWriter`.
+
+3. Issue #6737 — `volume.list` output not in order due to integer overflow.
+   - `weed/shell/command_volume_list.go`: changed the sort comparator from `int(a.Id - b.Id)` (underflows for uint32) to `int(a.Id) - int(b.Id)`.
+
+Verification:
+- `go build ./weed/...` succeeds.
+- `go test ./weed/topology/ ./weed/shell/ ./weed/s3api/` all pass, including the existing chunked-reader streaming tests.
+
+The other items in the list are either already implemented at this commit, are larger feature requests (e.g., `s3.ip.bind`, `s3.idleTimeout`, Redis mTLS, Graylog logging), CI/dependency bumps, or unrelated older reports, so they were left untouched to keep the change set minimal and focused.

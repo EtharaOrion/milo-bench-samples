@@ -1,0 +1,482 @@
+diff --git a/src/handlers/GraphQLHandler.test.ts b/src/handlers/GraphQLHandler.test.ts
+index 6e3f30d7a..4847eccbb 100644
+--- a/src/handlers/GraphQLHandler.test.ts
++++ b/src/handlers/GraphQLHandler.test.ts
+@@ -1,7 +1,7 @@
+ /**
+  * @jest-environment jsdom
+  */
+-import { parse } from 'graphql'
++import { OperationTypeNode, parse } from 'graphql'
+ import { Headers } from 'headers-utils/lib'
+ import { context } from '..'
+ import { createMockedRequest } from '../../test/support/utils'
+@@ -70,7 +70,12 @@ const LOGIN = `
+ 
+ describe('info', () => {
+   test('exposes request handler information for query', () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+ 
+     expect(handler.info.header).toEqual('query GetUser (origin: *)')
+     expect(handler.info.operationType).toEqual('query')
+@@ -78,7 +83,12 @@ describe('info', () => {
+   })
+ 
+   test('exposes request handler information for mutation', () => {
+-    const handler = new GraphQLHandler('mutation', 'Login', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.MUTATION,
++      'Login',
++      '*',
++      resolver,
++    )
+ 
+     expect(handler.info.header).toEqual('mutation Login (origin: *)')
+     expect(handler.info.operationType).toEqual('mutation')
+@@ -94,7 +104,12 @@ describe('info', () => {
+       }
+     `)
+ 
+-    const handler = new GraphQLHandler('query', node, '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      node,
++      '*',
++      resolver,
++    )
+ 
+     expect(handler.info).toHaveProperty('header', 'query GetUser (origin: *)')
+     expect(handler.info).toHaveProperty('operationType', 'query')
+@@ -109,7 +124,12 @@ describe('info', () => {
+         }
+       }
+     `)
+-    const handler = new GraphQLHandler('mutation', node, '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.MUTATION,
++      node,
++      '*',
++      resolver,
++    )
+ 
+     expect(handler.info).toHaveProperty('header', 'mutation Login (origin: *)')
+     expect(handler.info).toHaveProperty('operationType', 'mutation')
+@@ -125,7 +145,9 @@ describe('info', () => {
+       }
+     `)
+ 
+-    expect(() => new GraphQLHandler('query', node, '*', resolver)).toThrow(
++    expect(
++      () => new GraphQLHandler(OperationTypeNode.QUERY, node, '*', resolver),
++    ).toThrow(
+       'Failed to create a GraphQL handler: provided a DocumentNode with a mismatched operation type (expected "query", but got "mutation").',
+     )
+   })
+@@ -134,7 +156,12 @@ describe('info', () => {
+ describe('parse', () => {
+   describe('query', () => {
+     test('parses a query without variables (GET)', () => {
+-      const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.QUERY,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createGetGraphQLRequest({
+         query: GET_USER,
+       })
+@@ -147,7 +174,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a query with variables (GET)', () => {
+-      const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.QUERY,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createGetGraphQLRequest({
+         query: GET_USER,
+         variables: {
+@@ -165,7 +197,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a query without variables (POST)', () => {
+-      const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.QUERY,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createPostGraphQLRequest({
+         query: GET_USER,
+       })
+@@ -178,7 +215,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a query with variables (POST)', () => {
+-      const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.QUERY,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createPostGraphQLRequest({
+         query: GET_USER,
+         variables: {
+@@ -198,7 +240,12 @@ describe('parse', () => {
+ 
+   describe('mutation', () => {
+     test('parses a mutation without variables (GET)', () => {
+-      const handler = new GraphQLHandler('mutation', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.MUTATION,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createGetGraphQLRequest({
+         query: LOGIN,
+       })
+@@ -211,7 +258,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a mutation with variables (GET)', () => {
+-      const handler = new GraphQLHandler('mutation', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.MUTATION,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createGetGraphQLRequest({
+         query: LOGIN,
+         variables: {
+@@ -229,7 +281,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a mutation without variables (POST)', () => {
+-      const handler = new GraphQLHandler('mutation', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.MUTATION,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createPostGraphQLRequest({
+         query: LOGIN,
+       })
+@@ -242,7 +299,12 @@ describe('parse', () => {
+     })
+ 
+     test('parses a mutation with variables (POST)', () => {
+-      const handler = new GraphQLHandler('mutation', 'GetUser', '*', resolver)
++      const handler = new GraphQLHandler(
++        OperationTypeNode.MUTATION,
++        'GetUser',
++        '*',
++        resolver,
++      )
+       const request = createPostGraphQLRequest({
+         query: LOGIN,
+         variables: {
+@@ -263,7 +325,12 @@ describe('parse', () => {
+ 
+ describe('predicate', () => {
+   test('respects operation type', () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: GET_USER,
+     })
+@@ -278,7 +345,12 @@ describe('predicate', () => {
+   })
+ 
+   test('respects operation name', () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: GET_USER,
+     })
+@@ -316,7 +388,7 @@ describe('predicate', () => {
+ 
+   test('respects custom endpoint', () => {
+     const handler = new GraphQLHandler(
+-      'query',
++      OperationTypeNode.QUERY,
+       'GetUser',
+       'https://api.github.com/graphql',
+       resolver,
+@@ -340,7 +412,12 @@ describe('predicate', () => {
+ 
+ describe('test', () => {
+   test('respects operation type', () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: GET_USER,
+     })
+@@ -353,7 +430,12 @@ describe('test', () => {
+   })
+ 
+   test('respects operation name', () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: GET_USER,
+     })
+@@ -373,7 +455,7 @@ describe('test', () => {
+ 
+   test('respects custom endpoint', () => {
+     const handler = new GraphQLHandler(
+-      'query',
++      OperationTypeNode.QUERY,
+       'GetUser',
+       'https://api.github.com/graphql',
+       resolver,
+@@ -395,7 +477,12 @@ describe('test', () => {
+ 
+ describe('run', () => {
+   test('returns a mocked response given a matching query', async () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: GET_USER,
+       variables: {
+@@ -428,7 +515,12 @@ describe('run', () => {
+   })
+ 
+   test('returns null given a non-matching query', async () => {
+-    const handler = new GraphQLHandler('query', 'GetUser', '*', resolver)
++    const handler = new GraphQLHandler(
++      OperationTypeNode.QUERY,
++      'GetUser',
++      '*',
++      resolver,
++    )
+     const request = createPostGraphQLRequest({
+       query: LOGIN,
+     })
+diff --git a/src/utils/handleRequest.test.ts b/src/utils/handleRequest.test.ts
+index 46fa411cd..321642278 100644
+--- a/src/utils/handleRequest.test.ts
++++ b/src/utils/handleRequest.test.ts
+@@ -92,7 +92,10 @@ test('reports request as unhandled when it has no matching request handlers', as
+     ['request:unhandled', request],
+     ['request:end', request],
+   ])
+-  expect(options.onUnhandledRequest).toHaveBeenNthCalledWith(1, request)
++  expect(options.onUnhandledRequest).toHaveBeenNthCalledWith(1, request, {
++    warning: expect.any(Function),
++    error: expect.any(Function),
++  })
+   expect(callbacks.onBypassResponse).toHaveBeenNthCalledWith(1, request)
+   expect(callbacks.onMockedResponse).not.toHaveBeenCalled()
+   expect(callbacks.onMockedResponseSent).not.toHaveBeenCalled()
+diff --git a/src/utils/request/onUnhandledRequest.test.ts b/src/utils/request/onUnhandledRequest.test.ts
+index d3f0ae0d3..9ffc31b4b 100644
+--- a/src/utils/request/onUnhandledRequest.test.ts
++++ b/src/utils/request/onUnhandledRequest.test.ts
+@@ -1,4 +1,7 @@
+-import { onUnhandledRequest } from './onUnhandledRequest'
++import {
++  onUnhandledRequest,
++  UnhandledRequestCallback,
++} from './onUnhandledRequest'
+ import { createMockedRequest } from '../../../test/support/utils'
+ import { RestHandler, RESTMethods } from '../../handlers/RestHandler'
+ import { ResponseResolver } from '../../handlers/RequestHandler'
+@@ -83,12 +86,57 @@ test('supports the "error" request strategy', () => {
+   expect(console.error).toHaveBeenCalledWith(fixtures.errorWithoutSuggestions)
+ })
+ 
+-test('supports custom callback function', () => {
+-  const handleRequest = jest.fn()
+-  const request = createMockedRequest()
+-  onUnhandledRequest(request, [], handleRequest)
++test('supports a custom callback function', () => {
++  const callback = jest.fn<void, Parameters<UnhandledRequestCallback>>(
++    (request) => {
++      console.warn(`callback: ${request.method} ${request.url.href}`)
++    },
++  )
++  const request = createMockedRequest({
++    url: new URL('/user', 'http://localhost:3000'),
++  })
++  onUnhandledRequest(request, [], callback)
++
++  expect(callback).toHaveBeenCalledTimes(1)
++  expect(callback).toHaveBeenCalledWith(request, {
++    warning: expect.any(Function),
++    error: expect.any(Function),
++  })
++
++  // Check that the custom logic in the callback was called.
++  expect(console.warn).toHaveBeenCalledWith(
++    `callback: GET http://localhost:3000/user`,
++  )
++})
++
++test('supports calling default strategies from the custom callback function', () => {
++  const callback = jest.fn<void, Parameters<UnhandledRequestCallback>>(
++    (request, print) => {
++      console.warn(`custom callback: ${request.id}`)
+ 
+-  expect(handleRequest).toHaveBeenCalledWith(request)
++      // Call the default "error" strategy.
++      print.error()
++    },
++  )
++  const request = createMockedRequest({
++    id: 'request-1',
++    url: new URL('http://localhost/api'),
++  })
++  expect(() => onUnhandledRequest(request, [], callback)).toThrow(
++    `[MSW] Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.`,
++  )
++
++  expect(callback).toHaveBeenCalledTimes(1)
++  expect(callback).toHaveBeenCalledWith(request, {
++    warning: expect.any(Function),
++    error: expect.any(Function),
++  })
++
++  // Check that the custom logic in the callback was called.
++  expect(console.warn).toHaveBeenCalledWith('custom callback: request-1')
++
++  // Check that the default strategy was called.
++  expect(console.error).toHaveBeenCalledWith(fixtures.errorWithoutSuggestions)
+ })
+ 
+ test('does not print any suggestions given no handlers to suggest', () => {
+diff --git a/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.mocks.ts b/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.mocks.ts
+new file mode 100644
+index 000000000..4dbb4a319
+--- /dev/null
++++ b/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.mocks.ts
+@@ -0,0 +1,20 @@
++import { setupWorker, rest } from 'msw'
++
++const worker = setupWorker(
++  rest.get('/user', (req, res, ctx) => {
++    return res(ctx.json({ firstName: 'John' }))
++  }),
++)
++
++worker.start({
++  onUnhandledRequest(req, print) {
++    console.log(`Oops, unhandled ${req.method} ${req.url.href}`)
++
++    if (req.url.pathname.includes('/use-warn')) {
++      // Using "print" allows you to execute the default strategy.
++      print.warning()
++    } else {
++      print.error()
++    }
++  },
++})
+diff --git a/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.test.ts b/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.test.ts
+new file mode 100644
+index 000000000..85012d6eb
+--- /dev/null
++++ b/test/msw-api/setup-worker/start/on-unhandled-request/callback-print.test.ts
+@@ -0,0 +1,64 @@
++import * as path from 'path'
++import { pageWith } from 'page-with'
++
++test('executes a default "warn" strategy in a custom callback', async () => {
++  const { request, consoleSpy } = await pageWith({
++    example: path.resolve(__dirname, 'callback-print.mocks.ts'),
++  })
++
++  const res = await request('https://mswjs.io/use-warn')
++  const status = res.status()
++
++  // Request is performed as-is.
++  expect(status).toBe(404)
++
++  // Custom callback executed.
++  expect(consoleSpy.get('log')).toContain(
++    'Oops, unhandled GET https://mswjs.io/use-warn',
++  )
++  expect(consoleSpy.get('error')).toBeUndefined()
++
++  // Prints the unhandled request warning upon `print.warning()`.
++  expect(consoleSpy.get('warning')).toEqual(
++    expect.arrayContaining([
++      expect.stringContaining(`\
++[MSW] Warning: captured a request without a matching request handler:
++
++  • GET https://mswjs.io/use-warn
++
++If you still wish to intercept this unhandled request, please create a request handler for it.
++Read more: https://mswjs.io/docs/getting-started/mocks`),
++    ]),
++  )
++})
++
++test('executes a default "error" strategy in a custom callback', async () => {
++  const { request, consoleSpy } = await pageWith({
++    example: path.resolve(__dirname, 'callback-print.mocks.ts'),
++  })
++
++  const res = await request('https://mswjs.io/use-error')
++  const status = res.status()
++
++  // Request is performed as-is.
++  expect(status).toBe(500)
++
++  // Custom callback executed.
++  expect(consoleSpy.get('log')).toContain(
++    'Oops, unhandled GET https://mswjs.io/use-error',
++  )
++  expect(consoleSpy.get('warning')).toBeUndefined()
++
++  // Prints the unhandled request error upon `print.error()`.
++  expect(consoleSpy.get('error')).toEqual(
++    expect.arrayContaining([
++      expect.stringContaining(`\
++[MSW] Error: captured a request without a matching request handler:
++
++  • GET https://mswjs.io/use-error
++
++If you still wish to intercept this unhandled request, please create a request handler for it.
++Read more: https://mswjs.io/docs/getting-started/mocks`),
++    ]),
++  )
++})

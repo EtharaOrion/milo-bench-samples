@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ C-c
+$ grep -rn "func (ec \*executionContext) Recover" /workspace/gqlgen
+$ q
+git diff
+diff --git a/docs/content/recipes/federation.md b/docs/content/recipes/federation.md
+index 91e3f23..656c9b7 100644
+--- a/docs/content/recipes/federation.md
++++ b/docs/content/recipes/federation.md
+@@ -6,7 +6,7 @@ menu: { main: { parent: 'recipes' } }
+ ---
+
+ In this quick guide we are going to implement the example [Apollo Federation](https://www.apollographql.com/docs/apollo-server/federation/introduction/)
+-server in gqlgen. You can find the finished result in the [examples directory](/example/federation).
++server in gqlgen. You can find the finished result in the [examples directory](https://github.com/99designs/gqlgen/tree/master/example/federation).
+
+
+ ## Create the federated servers
+diff --git a/docs/content/recipes/gin.md b/docs/content/recipes/gin.md
+index 1e680dc..41e0345 100644
+--- a/docs/content/recipes/gin.md
++++ b/docs/content/recipes/gin.md
+@@ -20,6 +20,7 @@ In your router file, define the handlers for the GraphQL and Playground endpoint
+ ```go
+ import (
+     "github.com/99designs/gqlgen/graphql/handler"
++    "github.com/99designs/gqlgen/graphql/playground"
+     "github.com/gin-gonic/gin"
+ )
+
+diff --git a/graphql/handler/executor.go b/graphql/handler/executor.go
+index 394d3f5..61593f7 100644
+--- a/graphql/handler/executor.go
++++ b/graphql/handler/executor.go
+@@ -119,7 +119,7 @@ func (e executor) DispatchOperation(ctx context.Context, rc *graphql.OperationCo
+ func (e executor) CreateOperationContext(ctx context.Context, params *graphql.RawParams) (*graphql.OperationContext, gqlerror.List) {
+        rc := &graphql.OperationContext{
+                DisableIntrospection: true,
+-               Recover:              graphql.DefaultRecover,
++               Recover:              e.server.recoverFunc,
+                ResolverMiddleware:   e.fieldMiddleware,
+                Stats: graphql.Stats{
+                        Read:           params.ReadTime,
+diff --git a/internal/rewrite/rewriter.go b/internal/rewrite/rewriter.go
+index 71f88c1..63e7752 100644
+--- a/internal/rewrite/rewriter.go
++++ b/internal/rewrite/rewriter.go
+@@ -27,6 +27,10 @@ func New(importPath string) (*Rewriter, error) {
+                return nil, err
+        }
+
++       if len(pkgs) == 0 {
++               return nil, fmt.Errorf("package: %s not found", importPath)
++       }
++
+        return &Rewriter{
+                pkg:    pkgs[0],
+                files:  map[string]string{},
+@@ -70,7 +74,7 @@ func (r *Rewriter) GetMethodBody(structname string, methodname string) string {
+                        if d.Name.Name != methodname {
+                                continue
+                        }
+-                       if d.Recv == nil || d.Recv.List == nil {
++                       if d.Recv == nil || len(d.Recv.List) == 0 {
+                                continue
+                        }
+                        recv := d.Recv.List[0].Type
+$ grep -rn "func (ec \*executionContext) Recover" /workspace/gqlgen
+$ grep -rn "func (ec \*executionContext)" /workspace/gqlgen/codegen/testserver/generated.go | grep Recover
+$ grep -rn "type executionContext struct" /workspace/gqlgen/codegen
+/workspace/gqlgen/codegen/testserver/generated.go:1666:type executionContext struct {
+/workspace/gqlgen/codegen/generated!.gotpl:190:type executionContext struct {
+$ cat -n /workspace/gqlgen/codegen/generated!.gotpl | sed -n '190,200p'
+190  type executionContext struct {
+   191          *graphql.OperationContext
+   192          *executableSchema
+   193  }
+   194
+   195  func (ec *executionContext) introspectSchema() (*introspection.Schema, error) {
+   196          if ec.DisableIntrospection {
+   197                  return nil, errors.New("introspection disabled")
+   198          }
+   199          return introspection.WrapSchema(parsedSchema), nil
+   200  }
+I have implemented the necessary fixes for all 4 issues mentioned in the description.
+
+1. **Issue 1 (#1038): check slice length**:
+   I fixed the `index out of range [0] with length 0` panic by adding a length check for `pkgs` when loading `importPath` using `packages.Load` in `internal/rewrite/rewriter.go`. Now it will properly error with `"package: <name> not found"` if the package pattern returns no packages, rather than throwing a slice bounds out of range panic. I also fixed a potential panic by adding a length check for `len(d.Recv.List) == 0` when retrieving receiver lists.
+   
+2. **Issue 2 (#1039): Fix link to examples directory in Federation docs**:
+   I fixed the broken markdown link pointing to `/example/federation` in the `docs/content/recipes/federation.md` file, redirecting it properly to `https://github.com/99designs/gqlgen/tree/master/example/federation`.
+
+3. **Issue 3 (#1043): Ensure panic handlers get applied**:
+   I updated `graphql/handler/executor.go` to assign `e.server.recoverFunc` to `OperationContext.Recover` upon operation context creation. Previously it was statically assigned to `graphql.DefaultRecover` without propagating the custom panic handler setup using `SetRecoverFunc`.
+
+4. **Issue 4 (#1046): docs(gin): missing import playground**:
+   I added the missing `github.com/99designs/gqlgen/graphql/playground` import to the router example in `docs/content/recipes/gin.md`.

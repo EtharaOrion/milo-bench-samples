@@ -1,0 +1,200 @@
+     3	All notable changes to this project will be documented in this file.
+     4	
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [10.14.0] - 2021-11-16
+     9	
+    10	### Fixed
+    11	
+    12	- Fixed progress speed not updating when total doesn't change
+    13	- Fixed superfluous new line in Status https://github.com/willmcgugan/rich/issues/1662
+    14	- Fixed Windows legacy width again
+    15	- Fixed infinite loop in set_cell_size https://github.com/willmcgugan/rich/issues/1682
+    16	
+    17	### Added
+    18	
+    19	- Added file protocol to URL highlighter https://github.com/willmcgugan/rich/issues/1681
+    20	- Added rich.protocol.rich_cast
+    21	
+    22	### Changed
+    23	
+    24	- Allowed `__rich__` to work recursively
+    25	- Allowed Text classes to work with sep in print https://github.com/willmcgugan/rich/issues/1689
+# file_editor: Update CHANGELOG with from_ansi and example
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     3	All notable changes to this project will be documented in this file.
+     4	
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [Unreleased]
+     9	
+    10	### Added
+    11	
+    12	- Added `Text.from_ansi` to facilitate constructing Text instances from ANSI encoded strings https://github.com/willmcgugan/rich/issues/1670
+    13	- Added an example that demonstrates a dynamic group of progress bars
+    14	
+    15	## [10.14.0] - 2021-11-16
+    16	
+    17	### Fixed
+    18	
+    19	- Fixed progress speed not updating when total doesn't change
+    20	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && grep -rn "from_markup" docs/source/text.rst
+$ cd /workspace/rich && grep -n "def test_from_markup\|def test_styled\|import" tests/test_text.py | head
+1:from io import StringIO
+2:import pytest
+4:from rich.console import Console
+5:from rich.text import Span, Text
+6:from rich.measure import Measurement
+7:from rich.style import Style
+92:def test_from_markup():
+553:def test_styled():
+# file_editor: /workspace/rich/tests/test_text.py
+Here's the result of running `cat -n` on /workspace/rich/tests/test_text.py:
+    92	def test_from_markup():
+    93	    text = Text.from_markup("Hello, [bold]World![/bold]")
+    94	    assert str(text) == "Hello, World!"
+    95	    assert text._spans == [Span(7, 13, "bold")]
+    96	
+    97	
+    98	def test_copy():
+    99	    test = Text()
+   100	    test.append("Hello", "bold")
+   101	    test.append(" ")
+   102	    test.append("World", "italic")
+   103	    test_copy = test.copy()
+   104	    assert test == test_copy
+   105	    assert test is not test_copy
+   106	
+   107	
+   108	def test_rstrip():
+   109	    test = Text("Hello, World!    ")
+   110	    test.rstrip()
+# file_editor: Add test for from_ansi
+The file /workspace/rich/tests/test_text.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/tests/test_text.py:
+    89	    assert test._spans == [Span(0, 5, "bold")]
+    90	
+    91	
+    92	def test_from_markup():
+    93	    text = Text.from_markup("Hello, [bold]World![/bold]")
+    94	    assert str(text) == "Hello, World!"
+    95	    assert text._spans == [Span(7, 13, "bold")]
+    96	
+    97	
+    98	def test_from_ansi():
+    99	    text = Text.from_ansi("Hello, \033[1mWorld!\033[0m")
+   100	    assert str(text) == "Hello, World!"
+   101	    assert text.cell_len == 13
+   102	    assert text._spans == [Span(7, 13, Style(bold=True))]
+   103	
+   104	
+   105	def test_copy():
+   106	    test = Text()
+   107	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python -m pytest tests/test_text.py::test_from_ansi tests/test_text.py tests/test_ansi.py -q 2>&1 | tail -10
+........................................................................ [ 87%]
+..........                                                               [100%]
+82 passed in 0.16s
+$ cd /workspace/rich && python -c "
+$ from rich.text import Text
+$ t = Text.from_ansi('line1\nline2')
+$ print(repr(str(t)))
+$ print('cell_len', t.cell_len)
+$ # empty
+$ e = Text.from_ansi('')
+$ print(repr(str(e)))
+$ "
+'line1\nline2'
+cell_len 10
+''
+$ cd /workspace/rich && python -m pytest tests/test_text.py tests/test_ansi.py tests/test_progress.py tests/test_live.py tests/test_console.py tests/test_table.py tests/test_status.py -q 2>&1 | tail -10
+........................................................................ [ 36%]
+........................................................................ [ 72%]
+........................................................                 [100%]
+200 passed in 2.78s
+$ cd /workspace/rich && git stash list; python -m pytest tests/test_syntax.py::test_python_render -q 2>&1 | grep -i "pygments\|version\|highlight" | head; echo "---"; python -c "import pygments; print('pygments', pygments.__version__)"
+---
+pygments 2.20.0
+$ cd /workspace/rich && git --no-pager diff --stat && echo "=== untracked ===" && git status --short
+CHANGELOG.md         |  7 +++++++
+ docs/source/live.rst |  2 +-
+ pyproject.toml       |  2 +-
+ rich/text.py         | 38 ++++++++++++++++++++++++++++++++++++++
+ tests/test_text.py   |  7 +++++++
+ 5 files changed, 54 insertions(+), 2 deletions(-)
+=== untracked ===
+ M CHANGELOG.md
+ M docs/source/live.rst
+ M pyproject.toml
+ M rich/text.py
+ M tests/test_text.py
+?? examples/dynamic_progress.py
+$ cd /workspace/rich && black --check rich/text.py examples/dynamic_progress.py tests/test_text.py 2>&1 | tail
+bash: black: command not found
+$ cd /workspace/rich && python -m black --check rich/text.py examples/dynamic_progress.py tests/test_text.py 2>&1 | tail; echo "exit: $?"
+/usr/local/bin/python: No module named black
+exit: 0
+$ cd /workspace/rich && python -c "
+$ from rich.box import ASCII
+$ from rich.console import Console
+$ from rich.table import Table
+$ from rich.text import Text
+$ text = '\033[48;5;28m\033[38;5;186mthis is test text\033[0m'
+$ table = Table(box=ASCII)
+$ table.add_column('column')
+$ table.add_row(Text.from_ansi(text))
+$ Console().print(table)
+$ " && python -m pytest tests/test_text.py tests/test_ansi.py -q 2>&1 | tail -3
++-------------------+
+| column            |
+|-------------------|
+| this is test text |
++-------------------+
+........................................................................ [ 87%]
+..........                                                               [100%]
+82 passed in 0.09s
+# finish: Summarize implemented changes and test results
+I reviewed all 9 items in the issue description and implemented the concrete, code-level changes. Many of the listed items are documentation/translation proofreading PRs (Swiss German, Portuguese, etc.) for which exact upstream diffs aren't determinable, but the substantive, testable changes are addressed:
+
+## Changes made
+
+### Issue 4 (#1670) — [BUG] Text objects pre-formatted with ANSI escapes miscalculate their width  ✅ (primary code fix)
+The root cause: passing a raw ANSI-encoded string into `Text(...)` keeps the escape codes as part of the plain text, so width/length calculations counted the invisible escape bytes (e.g. width 39 instead of 17), breaking table layout.
+
+- Added a new `Text.from_ansi(...)` classmethod in `rich/text.py` that decodes ANSI escape sequences (via `AnsiDecoder`) into a properly styled `Text` instance, so cell widths are computed only from the visible characters. It supports `style`, `justify`, `overflow`, `no_wrap`, `end`, and `tab_size`, and handles multi-line and empty input.
+- Added `test_from_ansi` in `tests/test_text.py` verifying the plain text, correct `cell_len`, and the parsed style span.
+
+Reproduction now renders correctly:
+```
++-------------------+
+| column            |
+|-------------------|
+| this is test text |
++-------------------+
+```
+
+### Issue 1 (#1504) — example with a dynamic group of progress bars  ✅
+- Added `examples/dynamic_progress.py` showing an "overall" progress panel rendered alongside per-job progress bars inside a `Live` group.
+
+### Issue 3 (#1698) — Improve formatting of live command in docs  ✅
+- Fixed `docs/source/live.rst` so the `python -m rich.live` command is in a monospaced reStructuredText code block (`::`).
+
+### Issue 5 (#1707) — Bump black  ✅
+- Bumped `black` from `^21.10b0` to `^21.11b1` in `pyproject.toml`.
+
+### Housekeeping
+- Updated `CHANGELOG.md` with the new `Text.from_ansi` API and the example.
+
+## Notes on the remaining items
+- Issue 8 (#1721, percentage flickering): the `ProgressColumn.max_refresh` caching mechanism that mitigates flicker is already present and `test_progress_max_refresh` passes.
+- Issue 7 (#1722): the `sequece`→`sequence` typo is not present in this code version (it was introduced/fixed later).
+- Issues 2 & 6 (Swiss German / Portuguese README proofreading) and Issue 9 (#1530 thread-safety) are translation/behavioral PRs without determinable exact diffs in this snapshot; no reliable, testable change could be made for them without guessing.
+
+## Test results
+All targeted test suites pass: `tests/test_text.py`, `tests/test_ansi.py`, `tests/test_progress.py`, `tests/test_live.py`, `tests/test_console.py`, `tests/test_table.py`, `tests/test_status.py` (200 passed). 
+
+The only failing tests in the full suite are pre-existing and unrelated to my changes — they live in `test_syntax.py`, `test_markdown*.py`, `test_inspect.py`, `test_card.py`, `test_pretty.py` and fail because the environment has newer `pygments` (2.20.0) / `attrs` versions that produce different expected output strings. None of those files were touched by my changes.

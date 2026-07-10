@@ -1,0 +1,200 @@
+   238			return reconcile.Result{}, errors.Wrap(err, errFetchTags)
+   239		}
+   240	
+   241		vs := []*semver.Version{}
+   242		for _, r := range tags {
+   243			v, err := semver.NewVersion(r)
+   244			if err != nil {
+   245				// We skip any tags that are not valid semantic versions.
+   246				continue
+   247			}
+   248			vs = append(vs, v)
+   249		}
+   250	
+   251		sort.Sort(semver.Collection(vs))
+   252		var addVer string
+   253		for _, v := range vs {
+   254			if c.Check(v) {
+   255				addVer = v.Original()
+   256			}
+   257		}
+   258	
+   259		// NOTE(hasheddan): consider creating event on package revision
+   260		// dictating constraints.
+   261		if addVer == "" {
+   262			log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+   263			return reconcile.Result{Requeue: false}, nil
+   264		}
+   265	
+   266		var pack v1.Package
+   267		switch dep.Type {
+   268		case v1beta1.ConfigurationPackageType:
+   269			pack = &v1.Configuration{}
+   270		case v1beta1.ProviderPackageType:
+   271			pack = &v1.Provider{}
+   272		default:
+   273			log.Debug(errInvalidPackageType)
+   274			return reconcile.Result{Requeue: false}, nil
+   275		}
+   276	
+   277		// NOTE(hasheddan): packages are currently created with default
+   278		// settings. This means that a dependency must be publicly available as
+   279		// no packagePullSecrets are set. Settings can be modified manually
+   280		// after dependency creation to address this.
+   281		pack.SetName(xpkg.ToDNSLabel(ref.Context().RepositoryStr()))
+   282		pack.SetSource(fmt.Sprintf(packageTagFmt, ref.String(), addVer))
+   283	
+   284		// NOTE(hasheddan): consider making the lock the controller of packages
+   285		// it creates.
+   286		if err := r.client.Create(ctx, pack); err != nil {
+   287			log.Debug(errCreateDependency, "error", err)
+   288			return reconcile.Result{}, errors.Wrap(err, errCreateDependency)
+   289		}
+   290	
+   291		return reconcile.Result{Requeue: false}, nil
+   292	}
+$ cd /workspace/crossplane && git --no-pager log --oneline -3 -- internal/controller/pkg/resolver/reconciler_test.go && git --no-pager diff f60d10f28905082fe8e5537f17ed74d0117de532 HEAD -- internal/controller/pkg/resolver/ | head -100
+a0daaea35 Use exponential retries where possible
+4cee13fba Switch to the crossplane-runtime pkg/errors library
+7d950b07e Update resolver controller to use v1beta1 Lock types
+$ cd /workspace/crossplane && git status && grep -n "Identifier\|errInvalidDependency\|errMissingDependencyFmt" internal/controller/pkg/resolver/reconciler.go
+HEAD detached at f60d10f28
+nothing to commit, working tree clean
+60:     errMissingDependencyFmt = "missing package (%s) is not a dependency"
+62:     errInvalidDependency    = "dependency package is not valid"
+218:            log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, dep.Identifier()))
+228:            log.Debug(errInvalidDependency, "error", err)
+262:            log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+$ cd /workspace/crossplane && grep -n "Identifier\|not a dependency\|panic\|implied" internal/controller/pkg/resolver/reconciler_test.go
+12:WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$ cd /workspace/crossplane && grep -rn "Identifier()" internal/dag/*.go apis/ 2>/dev/null | head
+internal/dag/dag.go:25: Identifier() string
+internal/dag/dag.go:63:         if n.Identifier() == identifier {
+internal/dag/dag.go:93:                 node.Identifier(): node.Neighbors(),
+internal/dag/dag.go:115:        if _, ok := d.nodes[node.Identifier()]; ok {
+internal/dag/dag.go:118:        d.nodes[node.Identifier()] = node
+internal/dag/dag.go:126:                d.nodes[node.Identifier()] = node
+internal/dag/dag.go:161:                if _, ok := tree[n.Identifier()]; ok {
+internal/dag/dag.go:164:                tree[n.Identifier()] = n
+internal/dag/dag.go:165:                if err := d.traceNode(n.Identifier(), tree); err != nil {
+internal/dag/dag.go:203:        if _, ok := d.nodes[to.Identifier()]; !ok {
+# file_editor: Fix nil pointer panic in dependency log
+The file /workspace/crossplane/internal/controller/pkg/resolver/reconciler.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/crossplane/internal/controller/pkg/resolver/reconciler.go:
+   213		// modifies the Lock. We only create the first implied node as we will
+   214		// be requeued when it adds itself to the Lock, at which point we will
+   215		// check for missing nodes again.
+   216		dep, ok := implied[0].(*v1beta1.Dependency)
+   217		if !ok {
+   218			log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, implied[0].Identifier()))
+   219			return reconcile.Result{Requeue: false}, nil
+   220		}
+   221		c, err := semver.NewConstraint(dep.Constraints)
+   222		if err != nil {
+   223			log.Debug(errInvalidConstraint, "error", err)
+   224			return reconcile.Result{Requeue: false}, nil
+   225	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Add missing error key for logger
+The file /workspace/crossplane/internal/controller/pkg/resolver/reconciler.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/crossplane/internal/controller/pkg/resolver/reconciler.go:
+   259		// NOTE(hasheddan): consider creating event on package revision
+   260		// dictating constraints.
+   261		if addVer == "" {
+   262			log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+   263			return reconcile.Result{Requeue: false}, nil
+   264		}
+   265	
+   266		var pack v1.Package
+   267	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/crossplane && grep -rn "log.Debug\|log.Info" --include="*.go" internal/ cmd/ | grep -i "errors.Errorf\|errors.New\|err)" | grep -v '"error"' | grep -v "test" | head -40
+$ cd /workspace/crossplane && grep -rn "log.Debug\|log.Info" --include="*.go" internal/ cmd/ | grep -vE '"[a-z]+",' | grep -vE '\(err[A-Za-z]*\)$' | grep -v "_test.go" | head -40
+internal/controller/apiextensions/claim/reconciler.go:325:      log.Debug("Reconciling")
+internal/controller/apiextensions/claim/reconciler.go:396:              log.Debug("Successfully deleted composite resource")
+internal/controller/apiextensions/claim/reconciler.go:406:              log.Debug("Successfully deleted composite resource claim")
+internal/controller/apiextensions/claim/reconciler.go:450:      log.Debug("Successfully applied composite resource")
+internal/controller/apiextensions/claim/reconciler.go:461:              log.Debug("Composite resource is not yet ready")
+internal/controller/apiextensions/claim/reconciler.go:470:      log.Debug("Successfully bound composite resource")
+internal/controller/apiextensions/claim/reconciler.go:482:              log.Debug("Successfully propagated connection details from composite resource")
+internal/controller/apiextensions/composite/reconciler.go:389:  log.Debug("Reconciling")
+internal/controller/apiextensions/composite/reconciler.go:423:          log.Debug("Successfully deleted composite resource")
+internal/controller/apiextensions/composite/reconciler.go:604:          log.Debug("Composite resource spec or metadata was patched - terminating reconcile early")
+internal/controller/apiextensions/composite/reconciler.go:619:          log.Debug("Successfully published connection details")
+internal/controller/apiextensions/composition/reconciler.go:126:        log.Debug("Reconciling")
+internal/controller/apiextensions/composition/reconciler.go:192:                log.Debug("No new revision needed.", "current-revision", existingRev)
+internal/controller/apiextensions/definition/reconciler.go:240: log.Debug("Reconciling")
+internal/controller/apiextensions/definition/reconciler.go:299:                 log.Debug("Stopped composite resource controller")
+internal/controller/apiextensions/definition/reconciler.go:343:                 log.Debug(waitCRDelete)
+internal/controller/apiextensions/definition/reconciler.go:351:         log.Debug("Stopped composite resource controller")
+internal/controller/apiextensions/definition/reconciler.go:360:         log.Debug("Deleted composite resource CustomResourceDefinition")
+internal/controller/apiextensions/definition/reconciler.go:385:         log.Debug(waitCRDEstablish)
+internal/controller/apiextensions/definition/reconciler.go:398:         log.Debug("Referenceable version changed; stopped composite resource controller",
+internal/controller/apiextensions/offered/reconciler.go:242:    log.Debug("Reconciling")
+internal/controller/apiextensions/offered/reconciler.go:299:                    log.Debug("Stopped composite resource claim controller")
+internal/controller/apiextensions/offered/reconciler.go:346:                    log.Debug(waitCRDelete)
+internal/controller/apiextensions/offered/reconciler.go:354:            log.Debug("Stopped composite resource claim controller")
+internal/controller/apiextensions/offered/reconciler.go:363:            log.Debug("Deleted composite resource claim CustomResourceDefinition")
+internal/controller/apiextensions/offered/reconciler.go:389:            log.Debug(waitCRDEstablish)
+internal/controller/apiextensions/offered/reconciler.go:426:            log.Debug("Referenceable version changed; stopped composite resource claim controller",
+internal/controller/pkg/manager/reconciler.go:238:      log.Debug("Reconciling")
+internal/controller/pkg/resolver/reconciler.go:157:     log.Debug("Reconciling")
+internal/controller/pkg/revision/reconciler.go:330:     log.Debug("Reconciling")
+internal/controller/rbac/definition/reconciler.go:154:  log.Debug("Reconciling")
+internal/controller/rbac/definition/reconciler.go:185:                  log.Debug("Skipped no-op RBAC ClusterRole apply")
+internal/controller/rbac/definition/reconciler.go:194:          log.Debug("Applied RBAC ClusterRole")
+internal/controller/rbac/provider/binding/reconciler.go:136:    log.Debug("Reconciling")
+internal/controller/rbac/provider/binding/reconciler.go:213:    log.Debug("Applied system ClusterRoleBinding")
+internal/controller/rbac/provider/roles/reconciler.go:214:      log.Debug("Reconciling")
+internal/controller/rbac/provider/roles/reconciler.go:287:                      log.Debug("Skipped no-op RBAC ClusterRole apply")
+internal/controller/rbac/provider/roles/reconciler.go:296:              log.Debug("Applied RBAC ClusterRole")
+internal/controller/rbac/namespace/reconciler.go:156:   log.Debug("Reconciling")
+internal/controller/rbac/namespace/reconciler.go:201:                   log.Debug("Skipped no-op RBAC Role apply")
+$ cd /workspace/crossplane && go build ./internal/controller/pkg/resolver/ && go test ./internal/controller/pkg/resolver/ 2>&1 | tail -20
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       0.014s
+$ cd /workspace/crossplane && go vet ./internal/controller/pkg/resolver/ && go build ./... 2>&1 | tail -5
+$ cd /workspace/crossplane && git --no-pager diff
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca88..c1be8ece6 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -215,7 +215,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // check for missing nodes again.
+        dep, ok := implied[0].(*v1beta1.Dependency)
+        if !ok {
+-               log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, dep.Identifier()))
++               log.Debug(errInvalidDependency, "error", errors.Errorf(errMissingDependencyFmt, implied[0].Identifier()))
+                return reconcile.Result{Requeue: false}, nil
+        }
+        c, err := semver.NewConstraint(dep.Constraints)
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+$ cd /workspace/crossplane && go test ./internal/controller/pkg/... 2>&1 | tail -15
+?       github.com/crossplane/crossplane/internal/controller/pkg        [no test files]
+?       github.com/crossplane/crossplane/internal/controller/pkg/controller     [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/manager        0.015s
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/revision       0.021s
+# finish: Completed logger panic fix in resolver
+I implemented the substantive code fixes for the backport described in the issue (#3105 / #3103: "Fix logger panic in dependency resolution and guard against future logger panic bugs").
+
+## Changes made
+File: `internal/controller/pkg/resolver/reconciler.go`
+
+1. **Nil pointer dereference panic (line 218):** In the branch handling a failed type assertion `implied[0].(*v1beta1.Dependency)`, the code logged `dep.Identifier()` where `dep` was `nil` (the zero value of the failed assertion), causing a panic. Changed it to use `implied[0].Identifier()`, which is valid because `implied[0]` is a `dag.Node` that implements `Identifier()`.
+
+2. **Odd key/value pairs passed to the structured logger (line 262):** `log.Debug(errNoValidVersion, errors.Errorf(...))` passed the error as a bare key with no value, which can panic the logger (structured loggers expect alternating key/value pairs). Added the missing `"error"` key to match every other log call in the file.
+
+## Verification
+- `go build ./...` — passes
+- `go vet ./internal/controller/pkg/resolver/` — clean
+- `go test ./internal/controller/pkg/...` — all pass (resolver, manager, revision)
+
+## Note on Issue 2 (#3108)
+The second issue ("Cut v1.7.2 Release on May 26, 2022") is a release-process/checklist tracking issue with all items already checked off. It does not correspond to any source-code change in the repository, so no code modifications were required for it.
+
+These are the minimal, focused changes needed to resolve the logger panic bug in dependency resolution while keeping logging usage consistent and safe.

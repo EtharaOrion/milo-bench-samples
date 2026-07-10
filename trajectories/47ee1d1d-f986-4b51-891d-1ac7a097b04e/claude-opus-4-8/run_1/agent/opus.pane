@@ -1,0 +1,200 @@
+   200	          'Cannot bypass a request when using the "error" strategy for the "onUnhandledRequest" option.',
+   201	        ),
+   202	      )
+   203	    }
+   204	
+   205	    case 'warn': {
+   206	      print.warning()
+   207	      break
+   208	    }
+   209	
+   210	    case 'bypass':
+   211	      break
+   212	
+   213	    default:
+   214	      throw new Error(
+   215	        devUtils.formatMessage(
+   216	          'Failed to react to an unhandled request: unknown strategy "%s". Please provide one of the supported strategies ("bypass", "warn", "error") or a custom callback function as the value of the "onUnhandledRequest" option.',
+   217	          strategy,
+   218	        ),
+   219	      )
+   220	  }
+   221	}
+$ cd /workspace/msw && git --no-pager diff src/ package.json
+diff --git a/package.json b/package.json
+index 1540854..153f935 100644
+--- a/package.json
++++ b/package.json
+@@ -72,7 +72,7 @@
+     "chalk": "4.1.1",
+     "chokidar": "^3.4.2",
+     "cookie": "^0.4.1",
+-    "graphql": "^15.5.1",
++    "graphql": "^16.0.1",
+     "headers-utils": "^3.0.2",
+     "inquirer": "^8.2.0",
+     "is-node-process": "^1.0.1",
+diff --git a/src/handlers/GraphQLHandler.ts b/src/handlers/GraphQLHandler.ts
+index e556364..a648186 100644
+--- a/src/handlers/GraphQLHandler.ts
++++ b/src/handlers/GraphQLHandler.ts
+@@ -30,7 +30,7 @@ import { getPublicUrlFromRequest } from '../utils/request/getPublicUrlFromReques
+ import { tryCatch } from '../utils/internal/tryCatch'
+ import { devUtils } from '../utils/internal/devUtils'
+
+-export type ExpectedOperationTypeNode = OperationTypeNode | 'all'
++export type ExpectedOperationTypeNode = `${OperationTypeNode}` | 'all'
+ export type GraphQLHandlerNameSelector = DocumentNode | RegExp | string
+
+ // GraphQL related context should contain utility functions
+diff --git a/src/utils/request/onUnhandledRequest.ts b/src/utils/request/onUnhandledRequest.ts
+index f17a1e3..046e1dd 100644
+--- a/src/utils/request/onUnhandledRequest.ts
++++ b/src/utils/request/onUnhandledRequest.ts
+@@ -15,7 +15,15 @@ const MAX_MATCH_SCORE = 3
+ const MAX_SUGGESTION_COUNT = 4
+ const TYPE_MATCH_DELTA = 0.5
+
+-export type UnhandledRequestCallback = (request: MockedRequest) => void
++export interface UnhandledRequestPrint {
++  warning(): void
++  error(): void
++}
++
++export type UnhandledRequestCallback = (
++  request: MockedRequest,
++  print: UnhandledRequestPrint,
++) => void
+
+ export type UnhandledRequestStrategy =
+   | 'bypass'
+@@ -131,11 +139,6 @@ export function onUnhandledRequest(
+   handlers: RequestHandler[],
+   strategy: UnhandledRequestStrategy = 'warn',
+ ): void {
+-  if (typeof strategy === 'function') {
+-    strategy(request)
+-    return
+-  }
+-
+   /**
+    * @note Ignore exceptions during GraphQL request parsing because at this point
+    * we cannot assume the unhandled request is a valid GraphQL request.
+@@ -176,10 +179,20 @@ Read more: https://mswjs.io/docs/getting-started/mocks\
+   ].filter(Boolean)
+   const message = messageTemplate.join('\n\n')
+
++  const print: UnhandledRequestPrint = {
++    warning: devUtils.warn.bind(null, 'Warning: %s', message),
++    error: devUtils.error.bind(null, 'Error: %s', message),
++  }
++
++  if (typeof strategy === 'function') {
++    strategy(request, print)
++    return
++  }
++
+   switch (strategy) {
+     case 'error': {
+       // Print a developer-friendly error.
+-      devUtils.error('Error: %s', message)
++      print.error()
+
+       // Throw an exception to halt request processing and not perform the original request.
+       throw new Error(
+@@ -190,7 +203,7 @@ Read more: https://mswjs.io/docs/getting-started/mocks\
+     }
+
+     case 'warn': {
+-      devUtils.warn('Warning: %s', message)
++      print.warning()
+       break
+     }
+$ cd /workspace/msw && cat test/msw-api/setup-server/scenarios/on-unhandled-request/default.test.ts 2>/dev/null | head -60
+/**
+ * @jest-environment node
+ */
+import fetch from 'node-fetch'
+import { setupServer } from 'msw/node'
+import { rest } from 'msw'
+
+const server = setupServer(
+  rest.get('https://test.mswjs.io/user', (req, res, ctx) => {
+    return res(ctx.json({ firstName: 'John' }))
+  }),
+)
+
+beforeAll(() => {
+  server.listen()
+  jest.spyOn(global.console, 'error').mockImplementation()
+  jest.spyOn(global.console, 'warn').mockImplementation()
+})
+
+afterAll(() => {
+  server.close()
+  jest.restoreAllMocks()
+})
+
+test('warns on unhandled requests by default', async () => {
+  const res = await fetch('https://test.mswjs.io')
+
+  // Request should be performed as-is
+  expect(res).toHaveProperty('status', 404)
+
+  expect(console.error).not.toBeCalled()
+  expect(console.warn).toBeCalledWith(`\
+[MSW] Warning: captured a request without a matching request handler:
+
+  • GET https://test.mswjs.io/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/getting-started/mocks`)
+})
+$ cd /workspace/msw && npx jest src/utils/request/onUnhandledRequest.test.ts src/utils/handleRequest.test.ts src/handlers/GraphQLHandler.test.ts src/utils/internal/parseGraphQLRequest.test.ts 2>&1 | grep -E "✓|✕|Tests:|Test Suites:"
+Test Suites: 2 failed, 2 passed, 4 total
+Tests:       2 failed, 40 passed, 42 total
+$ cd /workspace/msw && npx eslint src/utils/request/onUnhandledRequest.ts src/handlers/GraphQLHandler.ts 2>&1 | head -30; echo "lint exit=$?"
+lint exit=0
+$ cd /workspace/msw && cat jest.config.js 2>/dev/null; ls jest*; cat package.json | grep -A3 '"jest"' 2>/dev/null
+module.exports = {
+  roots: ['<rootDir>/src', '<rootDir>/cli'],
+  transform: {
+    '^.+\\.tsx?$': 'ts-jest',
+  },
+  testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(j|t)sx?$',
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  setupFiles: ['./jest.setup.js'],
+}
+jest.config.js  jest.setup.js
+    "jest": "26",
+    "json-bigint": "^1.0.0",
+    "lint-staged": "^11.0.1",
+    "outvariant": "^1.2.1",
+# finish: Completed both issue fixes; reported results
+I implemented both features from the issue with minimal, focused changes.
+
+## Issue 1 (#1080): Hand control back to MSW from a custom `onUnhandledRequest` callback
+File: `src/utils/request/onUnhandledRequest.ts`
+- Added an `UnhandledRequestPrint` interface (`{ warning(): void; error(): void }`).
+- Extended `UnhandledRequestCallback` to receive a second `print` argument (the "next"-like control hand-back).
+- Constructed a `print` object bound to the formatted unhandled-request message and pass it to custom callbacks: `strategy(request, print)`. The built-in `'warn'`/`'error'` strategies now also route through `print.warning()`/`print.error()`, so the default behavior and the callback share identical messages/code.
+
+Usage:
+```ts
+onUnhandledRequest(req, (request, print) => {
+  if (shouldIgnore(request)) return   // bypass
+  print.warning()                     // delegate to MSW's default behavior
+})
+```
+
+## Issue 2 (#995): Support GraphQL v16
+Files: `package.json`, `yarn.lock`, `src/handlers/GraphQLHandler.ts`
+- Bumped `graphql` from `^15.5.1` to `^16.0.1` (updated `yarn.lock`; installed 16.14.2).
+- In v16 `OperationTypeNode` became an enum, breaking the previous string-literal usage. Changed `ExpectedOperationTypeNode` from `OperationTypeNode | 'all'` to `` `${OperationTypeNode}` | 'all' ``, which accepts both the enum members and plain string literals (`'query'`/`'mutation'`/`'subscription'`/`'all'`), keeping it compatible with v15 and v16.
+
+## Verification
+- `tsc` type-checks `src/` cleanly against graphql v16; ESLint passes on the changed files.
+- GraphQL unit tests (`GraphQLHandler.test.ts`, `parseGraphQLRequest.test.ts`) — 27 tests pass with v16.
+- The new `print` behavior was confirmed with temporary tests (callback receives `{ warning, error }`; calling them reproduces MSW's exact default warn/error messages; no-op callback prints nothing).
+
+The only two remaining unit-test failures (`onUnhandledRequest.test.ts` "supports custom callback function" and `handleRequest.test.ts` "reports request as unhandled...") assert the OLD single-argument callback signature (`toHaveBeenCalledWith(request)`). Adding the `print` parameter — the core of issue #1080 — necessarily changes that signature; per the instructions these test files are already handled in the evaluation environment, so I did not modify any tests.

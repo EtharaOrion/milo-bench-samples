@@ -1,0 +1,200 @@
+$ cd /workspace/clap && git --no-pager diff examples/git-derive.rs examples/tutorial_derive/04_03_relations.rs
+diff --git a/examples/git-derive.rs b/examples/git-derive.rs
+index 519982d1..9bd4f313 100644
+--- a/examples/git-derive.rs
++++ b/examples/git-derive.rs
+@@ -102,7 +102,7 @@ fn main() {
+
+     match args.command {
+         Commands::Clone { remote } => {
+-            println!("Cloning {}", remote);
++            println!("Cloning {remote}");
+         }
+         Commands::Diff {
+             mut base,
+@@ -128,30 +128,27 @@ fn main() {
+                 .unwrap_or("worktree");
+             let path = path.as_deref().unwrap_or_else(|| OsStr::new(""));
+             println!(
+-                "Diffing {}..{} {} (color={})",
+-                base,
+-                head,
+-                path.to_string_lossy(),
+-                color
++                "Diffing {base}..{head} {} (color={color})",
++                path.to_string_lossy()
+             );
+         }
+         Commands::Push { remote } => {
+-            println!("Pushing to {}", remote);
++            println!("Pushing to {remote}");
+         }
+         Commands::Add { path } => {
+-            println!("Adding {:?}", path);
++            println!("Adding {path:?}");
+         }
+         Commands::Stash(stash) => {
+             let stash_cmd = stash.command.unwrap_or(StashCommands::Push(stash.push));
+             match stash_cmd {
+                 StashCommands::Push(push) => {
+-                    println!("Pushing {:?}", push);
++                    println!("Pushing {push:?}");
+                 }
+                 StashCommands::Pop { stash } => {
+-                    println!("Popping {:?}", stash);
++                    println!("Popping {stash:?}");
+                 }
+                 StashCommands::Apply { stash } => {
+-                    println!("Applying {:?}", stash);
++                    println!("Applying {stash:?}");
+                 }
+             }
+         }
+diff --git a/examples/tutorial_derive/04_03_relations.rs b/examples/tutorial_derive/04_03_relations.rs
+index e3660957..cbe491de 100644
+--- a/examples/tutorial_derive/04_03_relations.rs
++++ b/examples/tutorial_derive/04_03_relations.rs
+@@ -56,10 +56,10 @@ fn main() {
+             (_, _, true) => patch += 1,
+             _ => unreachable!(),
+         };
+-        format!("{}.{}.{}", major, minor, patch)
++        format!("{major}.{minor}.{patch}")
+     };
+
+-    println!("Version: {}", version);
++    println!("Version: {version}");
+
+     // Check for usage of -c
+     if let Some(config) = cli.config.as_deref() {
+@@ -67,6 +67,6 @@ fn main() {
+             .input_file
+             .as_deref()
+             .unwrap_or_else(|| cli.spec_in.as_deref().unwrap());
+-        println!("Doing work using input {} and config {}", input, config);
++        println!("Doing work using input {input} and config {config}");
+     }
+ }
+$ cd /workspace/clap && cargo test --lib 2>&1 | tail -3 && cargo test --doc 2>&1 | tail -4
+test result: ok. 77 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+test src/parser/matches/arg_matches.rs - parser::matches::arg_matches::IdsRef (line 1346) ... ok
+
+test result: ok. 331 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 1.77s
+$ cd /workspace/clap && cat examples/demo.rs; echo "=== md ==="; cat examples/demo.md 2>/dev/null
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Name of the person to greet
+    #[arg(short, long)]
+    name: String,
+
+    /// Number of times to greet
+    #[arg(short, long, default_value_t = 1)]
+    count: u8,
+}
+
+fn main() {
+    let args = Args::parse();
+
+    for _ in 0..args.count {
+        println!("Hello {}!", args.name)
+    }
+}
+=== md ===
+```console
+$ demo --help
+A simple to use, efficient, and full-featured Command Line Argument Parser
+
+Usage: demo[EXE] [OPTIONS] --name <NAME>
+
+Options:
+  -n, --name <NAME>    Name of the person to greet
+  -c, --count <COUNT>  Number of times to greet [default: 1]
+  -h, --help           Print help
+  -V, --version        Print version
+
+$ demo --name Me
+Hello Me!
+
+```
+*(version number and `.exe` extension on windows replaced by placeholders)*
+$ cd /workspace/clap && git status --short | grep -E "^\?\?" ; echo "=== untracked check done ==="; git status --short | head
+=== untracked check done ===
+ M examples/cargo-example.rs
+ M examples/derive_ref/augment_args.rs
+ M examples/derive_ref/augment_subcommands.rs
+ M examples/derive_ref/flatten_hand_args.rs
+ M examples/derive_ref/hand_subcommand.rs
+ M examples/find.rs
+ M examples/git-derive.rs
+ M examples/git.rs
+ M examples/pacman.rs
+ M examples/repl.rs
+$ cd /workspace/clap && git --no-pager diff src/builder/command.rs | grep -A6 "should_long" | head -20; echo "=== str.rs ==="; git --no-pager diff src/builder/str.rs
+-            || self.get_arguments().any(should_long)
++            || self
++                .get_arguments()
++                .filter(|arg| !arg.is_hide_set())
++                .any(should_long)
+     }
+
+     // Should we color the help?
+=== str.rs ===
+diff --git a/src/builder/str.rs b/src/builder/str.rs
+index c6689d31..be69c3f6 100644
+--- a/src/builder/str.rs
++++ b/src/builder/str.rs
+@@ -246,7 +246,10 @@ pub(crate) mod inner {
+         }
+
+         pub(crate) fn into_string(self) -> String {
+-            self.as_str().to_owned()
++            match self {
++                Self::Static(s) => s.to_owned(),
++                Self::Owned(s) => s.into(),
++            }
+         }
+     }
+ }
+# finish: Summary of all issue fixes implemented
+I've implemented changes addressing the issues in the description. Here's a summary:
+
+## Issue 5 (#4711): `builder::str::inner::Inner::into_string`
+**File:** `src/builder/str.rs`
+Since `into_string` takes ownership of `self`, I avoid the unnecessary copy/allocation by moving the `Box<str>` and using its `Into<String>` impl for the `Owned` variant (only `Static(&str)` still needs `.to_owned()`):
+```rust
+pub(crate) fn into_string(self) -> String {
+    match self {
+        Self::Static(s) => s.to_owned(),
+        Self::Owned(s) => s.into(),
+    }
+}
+```
+
+## Issue 4 (#4710): Don't accidentally show long help with `--help`
+**File:** `src/builder/command.rs` (`long_help_exists_`)
+Hidden arguments (`is_hide_set()`) are never displayed in either short or long help, yet they were still triggering long-help inference (most commonly via auto-generated possible-value descriptions in the derive API). I now skip hidden args when deciding whether long help exists:
+```rust
+|| self.get_arguments().filter(|arg| !arg.is_hide_set()).any(should_long)
+```
+Verified with a reproduction: a hidden arg with possible-value help no longer makes `-h` show "Print help (see more with '--help')", while a *visible* arg with possible-value help still correctly enables long help.
+
+## Issue 3 (#4696): Fix typo in `examples/git.rs`
+Fixed `unreachabe!()` → `unreachable!()` in the trailing comment.
+
+## Issue 1 (#4683): Clippy cleanup (uninlined_format_args)
+Inlined format arguments across the library, examples, and tutorials (96 occurrences in non-test code), e.g. `println!("Diffing {}..{} {} (color={})", base, head, path, color)` → `println!("Diffing {base}..{head} {path} (color={color})")`. I deliberately scoped this to *only* the `uninlined_format_args` rule (no other clippy lints were applied, per the issue's request). Field/method/index accesses (e.g. `cli.port`, `path.to_string_lossy()`) were left untouched since that lint doesn't flag them. After the change, `cargo clippy --features cargo -- -W clippy::uninlined_format_args` reports 0 such warnings in non-test code.
+
+## Issue 2 (#4694): Differentiate struct from command name
+The derive/builder examples already use struct names distinct from the command names shown in help (e.g. `struct Cli` with `#[command(name = "git")]`, `struct Args`/`demo`, `DerivedArgs`/`"CLI"`), so no functional change was needed here.
+
+## Testing & constraints
+- I did **not** modify any test files (reverted the auto-applied format-arg changes clippy made under `tests/`).
+- `cargo test --features "cargo string"` passes: lib (77), builder (816), doctests (331). The only failing test is the pre-existing, environment-dependent `examples/find.md` (it lists the working-directory contents and fails identically on the unmodified base commit).
+- A diff audit confirms the only non-format changes are exactly the three intended source fixes above.
+
+Note: derive-feature examples (e.g. `git-derive.rs`, `typed-derive.rs`) couldn't be compiled here because the `heck` crate required by `clap_derive` isn't available offline, so their format-arg edits were applied manually and reviewed for correctness.

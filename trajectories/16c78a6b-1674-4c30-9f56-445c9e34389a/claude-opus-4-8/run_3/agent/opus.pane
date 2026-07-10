@@ -1,0 +1,200 @@
+
+        // Generator defines a function to generate the unique identifier.
+        //
+        // Optional. Default: func() string {
+        //   return utils.UUID()
+        // }
+        Generator func() string
+
+        // ContextKey defines the key used when storing the request ID in
+        // the locals for a specific request.
+        //
+        // Optional. Default: requestid
+        ContextKey string
+}
+```
+
+### Default Config
+```go
+var ConfigDefault = Config{
+        Next:       nil,
+        Header:     fiber.HeaderXRequestID,
+        Generator: func() string {
+                return utils.UUID()
+        },
+        ContextKey: "requestid",
+}
+
+```
+$ cd /workspace/fiber && go vet ./middleware/requestid/ . 2>&1 | grep -v go-ole | tail; echo "---TESTS---"; go test . ./middleware/requestid/ ./middleware/proxy/ 2>&1 | tail -20
+---TESTS---
+ok      github.com/gofiber/fiber/v2     6.211s
+ok      github.com/gofiber/fiber/v2/middleware/requestid        0.004s
+ok      github.com/gofiber/fiber/v2/middleware/proxy    (cached)
+$ cd /workspace/fiber && grep -rn "2.1.0\|Version =" app.go | head
+34:const Version = "2.1.0"
+# file_editor: Bump version to 2.1.1
+The file /workspace/fiber/app.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fiber/app.go:
+    31	)
+    32	
+    33	// Version of current fiber package
+    34	const Version = "2.1.1"
+    35	
+    36	// Map is a shortcut for map[string]interface{}, useful for JSON returns
+    37	type Map map[string]interface{}
+    38	
+    39	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/fiber && grep -rn "2.1.0\|2.1.1\|Version" app_test.go ctx_test.go 2>/dev/null | head
+$ cd /workspace/fiber && gofmt -l ctx.go router.go app.go middleware/requestid/requestid.go
+$ cd /workspace/fiber && git --no-pager diff -- ctx.go router.go app.go middleware/requestid/requestid.go
+diff --git a/app.go b/app.go
+index 08713f8..7c58e57 100644
+--- a/app.go
++++ b/app.go
+@@ -31,7 +31,7 @@ import (
+ )
+
+ // Version of current fiber package
+-const Version = "2.1.0"
++const Version = "2.1.1"
+
+ // Map is a shortcut for map[string]interface{}, useful for JSON returns
+ type Map map[string]interface{}
+diff --git a/ctx.go b/ctx.go
+index 33ba1fa..b1a3677 100644
+--- a/ctx.go
++++ b/ctx.go
+@@ -46,6 +46,7 @@ type Ctx struct {
+        values       [maxParams]string    // Route parameter values
+        fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+        matched      bool                 // Non use route matched
++       baseURI      string               // HTTP base uri
+ }
+
+ // Range data for c.Range
+@@ -86,6 +87,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+        c.indexHandler = 0
+        // Reset matched flag
+        c.matched = false
++       // Reset base uri
++       c.baseURI = ""
+        // Set paths
+        c.pathBuffer = append(c.pathBuffer[0:0], fctx.URI().PathOriginal()...)
+        c.pathOriginal = getString(fctx.URI().PathOriginal())
+@@ -206,7 +209,11 @@ func (c *Ctx) Attachment(filename ...string) {
+ func (c *Ctx) BaseURL() string {
+        // TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+        // Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+-       return c.Protocol() + "://" + c.Hostname()
++       if c.baseURI != "" {
++               return c.baseURI
++       }
++       c.baseURI = c.Protocol() + "://" + c.Hostname()
++       return c.baseURI
+ }
+
+ // Body contains the raw body submitted in a POST request.
+diff --git a/middleware/requestid/requestid.go b/middleware/requestid/requestid.go
+index ef0de78..b0a4512 100644
+--- a/middleware/requestid/requestid.go
++++ b/middleware/requestid/requestid.go
+@@ -21,13 +21,20 @@ type Config struct {
+        //
+        // Optional. Default: utils.UUID
+        Generator func() string
++
++       // ContextKey defines the key used when storing the request ID in
++       // the locals for a specific request.
++       //
++       // Optional. Default: requestid
++       ContextKey string
+ }
+
+ // ConfigDefault is the default config
+ var ConfigDefault = Config{
+-       Next:      nil,
+-       Header:    fiber.HeaderXRequestID,
+-       Generator: utils.UUID,
++       Next:       nil,
++       Header:     fiber.HeaderXRequestID,
++       Generator:  utils.UUID,
++       ContextKey: "requestid",
+ }
+
+ // New creates a new middleware handler
+@@ -46,6 +53,9 @@ func New(config ...Config) fiber.Handler {
+                if cfg.Generator == nil {
+                        cfg.Generator = ConfigDefault.Generator
+                }
++               if cfg.ContextKey == "" {
++                       cfg.ContextKey = ConfigDefault.ContextKey
++               }
+        }
+
+        // Return new handler
+@@ -60,6 +70,9 @@ func New(config ...Config) fiber.Handler {
+                // Set new id to response header
+                c.Set(cfg.Header, rid)
+
++               // Add the request ID to locals
++               c.Locals(cfg.ContextKey, rid)
++
+                // Continue stack
+                return c.Next()
+        }
+diff --git a/router.go b/router.go
+index 63874f3..081c6c6 100644
+--- a/router.go
++++ b/router.go
+@@ -63,6 +63,8 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
+        } else if r.star {
+                if len(original) > 1 {
+                        params[0] = original[1:]
++               } else {
++                       params[0] = ""
+                }
+                return true
+        }
+$ cd /workspace/fiber && go test . ./middleware/requestid/ ./middleware/proxy/ 2>&1 | tail
+ok      github.com/gofiber/fiber/v2     6.187s
+ok      github.com/gofiber/fiber/v2/middleware/requestid        (cached)
+ok      github.com/gofiber/fiber/v2/middleware/proxy    1.009s
+$ cd /workspace/fiber && git --no-pager diff --stat
+app.go                            |  2 +-
+ ctx.go                            |  9 ++++++++-
+ middleware/requestid/README.md    | 21 +++++++++++++++++++--
+ middleware/requestid/requestid.go | 19 ++++++++++++++++---
+ router.go                         |  2 ++
+ 5 files changed, 46 insertions(+), 7 deletions(-)
+# finish: Completed all code fixes for the issues
+I've implemented the code-level fixes required by the issue description. Here's the final summary:
+
+## Changes Made
+
+### Issue 3 (#936) — Improve base URI for ctx (`ctx.go`)
+- Added a `baseURI string` cache field to the `Ctx` struct.
+- `BaseURL()` now computes `protocol://host` only once and returns the cached value on subsequent calls, removing the previous 1 alloc/32 B/~58 ns per-call overhead.
+- The field is reset in `AcquireCtx` when a `Ctx` is reused from the pool.
+
+### Issue 4 (#945) — Wildcard parameter persists between requests (`router.go`)
+- In `Route.match`, the `*` wildcard branch only set `params[0]` when `len(original) > 1`. Because the `Ctx.values` array is reused from a pool, a stale wildcard value leaked into the next root-path request.
+- Added an `else { params[0] = "" }` branch to reset it. Verified with a reproduction test: requesting `/favicon.ico` then `/` now correctly yields `""` on the second request.
+
+### Issue 5 (#948) — Add request ID to locals (`middleware/requestid/requestid.go` + README)
+- Added a new `ContextKey` config option (default `"requestid"`).
+- The middleware now stores the assigned request ID via `c.Locals(cfg.ContextKey, rid)`, allowing retrieval in handlers.
+- Updated the middleware README to document the new field and how to retrieve the ID.
+
+### Issue 6 (#949) — Bump v2.1.1 (`app.go`)
+- Updated `const Version = "2.1.1"`.
+
+### Issue 8 (#947) — Header added by proxy
+- Verified the proxy middleware already forwards request headers added in `ModifyRequest` via `c.Request().Header.Set(...)`. The original report used `c.Set()` (which sets a response header). A custom forwarding test plus the existing `Test_Proxy_Modify_Request` confirm request modification works, so this was a documentation clarification (#950) rather than a code defect.
+
+Issues 1 (#933 proxy test localhost→IP, tests already pass), 2 (#935 translation/typo), and 7 (#950 doc URL) are documentation/translation/test-only items that require no source code changes.
+
+## Verification
+- `go build` succeeds; `gofmt` reports no issues on changed files.
+- All tests pass: main package (`github.com/gofiber/fiber/v2`), `middleware/requestid`, and `middleware/proxy`.
+- Added temporary reproduction tests for the wildcard-persistence and proxy-header scenarios (both passing), then removed them per the no-extra-files guideline.

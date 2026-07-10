@@ -1,0 +1,200 @@
+    19	#==============================================================================#
+    20	#                                   TEST                                       #
+    21	#==============================================================================#
+    22	
+    23	if [ "$BABEL_8_BREAKING" = true ] ; then
+    24	  # This option is removed in Babel 8
+    25	  sed -i 's/allowDeclareFields: true,\?/\/* allowDeclareFields: true *\//g' babel.config.js
+    26	fi
+    27	
+    28	startLocalRegistry "$PWD"/scripts/integration-tests/verdaccio-config.yml
+    29	# We only bump dependencies in the top-level package.json, because workspaces
+    30	# already use the workspace: protocol so will get the version in the monorepo
+    31	# and not from npm.
+    32	node "$PWD"/scripts/integration-tests/utils/bump-babel-dependencies.js
+    33	
+    34	# Update deps, build and test
+    35	make -j test-ci
+    36	
+    37	cleanup
+$ cd /workspace/babel && grep -n "test-ci\|TEST_OPTIONS\|test-only" -n Makefile scripts/test.sh package.json | sed -n '1,160p'
+Makefile:19:.PHONY: build build-dist watch lint fix clean test-clean test-only test test-ci publish bootstrap
+Makefile:118:test-only:
+Makefile:122:test: lint test-only
+Makefile:124:test-ci: build-standalone-ci
+Makefile:129:test-ci-coverage: SHELL:=/bin/bash
+Makefile:130:test-ci-coverage:
+# file_editor: View Makefile test targets
+Here's the result of running `cat -n` on /workspace/babel/Makefile:
+   108		rm -f .npmrc
+   109		rm -rf coverage
+   110		rm -rf packages/*/npm-debug*
+   111		rm -rf node_modules/.cache
+   112	
+   113	test-clean:
+   114		$(foreach source, $(SOURCES), \
+   115			$(call clean-source-test, $(source)))
+   116	
+   117	# Does not work on Windows; use "$(YARN) jest" instead
+   118	test-only:
+   119		BABEL_ENV=test ./scripts/test.sh
+   120		$(MAKE) test-clean
+   121	
+   122	test: lint test-only
+   123	
+   124	test-ci: build-standalone-ci
+   125		BABEL_ENV=test $(YARN) jest --maxWorkers=4 --ci
+   126		$(MAKE) test-clean
+   127	
+   128	# Does not work on Windows
+   129	test-ci-coverage: SHELL:=/bin/bash
+   130	test-ci-coverage:
+# file_editor: View CRA e2e integration script
+NOTE: We only show up to 55 since there're only 55 lines in this file.
+Here's the result of running `cat -n` on /workspace/babel/scripts/integration-tests/e2e-create-react-app.sh:
+     1	#!/bin/bash
+     2	
+     3	#==============================================================================#
+     4	#                                  SETUP                                       #
+     5	#==============================================================================#
+     6	
+     7	# Start in scripts/integration-tests/ even if run from root directory
+     8	cd "$(dirname "$0")" || exit
+     9	
+    10	source utils/local-registry.sh
+    11	source utils/cleanup.sh
+    12	
+    13	# Echo every command being executed
+    14	set -x
+    15	
+    16	# Clone create-react-app
+    17	git clone --depth=1 https://github.com/facebook/create-react-app.git tmp/create-react-app
+    18	cd tmp/create-react-app || exit
+    19	
+    20	#==============================================================================#
+    21	#                                   TEST                                       #
+    22	#==============================================================================#
+    23	
+    24	# !!! WARNING !!!
+    25	# create-react-app uses the useBuiltIns: true option of @babel/preset-react,
+    26	# removed in Babel 8.0.0. And it does not specify runtime option. The test will break on
+    27	# runtime: "automatic", default of Babel 8.
+    28	# This change replaces useBuiltIns: true with runtime: "classic"
+    29	sed -i 's/useBuiltIns: true/runtime: "classic"/' packages/babel-preset-react-app/create.js
+    30	
+    31	# create-react-app throws if `@babel/eslint-parser` is not pinned, but we
+    32	# must upgrade it for test purposes
+    33	sed -i "s#'@babel/eslint-parser',##" packages/react-scripts/scripts/utils/verifyPackageTree.js
+    34	
+    35	# remove this line when https://github.com/facebook/create-react-app/pull/11216 gets merged
+    36	sed -i "s#isESLintPluginEnabled && 'babel-eslint',##" packages/react-scripts/scripts/utils/verifyPackageTree.js
+    37	
+    38	bump_deps="$PWD/../../utils/bump-babel-dependencies.js"
+    39	node "$bump_deps"
+    40	for d in ./packages/*/
+    41	do
+    42	  (cd "$d"; node "$bump_deps")
+    43	done
+    44	
+    45	# Don't use Yarn 2
+    46	export YARN_IGNORE_PATH=1
+    47	
+    48	startLocalRegistry "$PWD"/../../verdaccio-config.yml
+    49	yarn install
+    50	
+    51	# Test
+    52	CI=true yarn test
+    53	
+    54	unset YARN_IGNORE_PATH
+    55	cleanup
+# file_editor: Add forceExit workaround to Babel 8 e2e script
+The file /workspace/babel/scripts/integration-tests/e2e-babel.sh has been edited. Here's the result of running `cat -n` on a snippet of /workspace/babel/scripts/integration-tests/e2e-babel.sh:
+    31	# and not from npm.
+    32	node "$PWD"/scripts/integration-tests/utils/bump-babel-dependencies.js
+    33	
+    34	# Update deps, build and test
+    35	if [ "$BABEL_8_BREAKING" = true ] ; then
+    36	  make -j build-standalone-ci
+    37	  BABEL_ENV=test yarn jest --maxWorkers=4 --ci --forceExit
+    38	  make test-clean
+    39	else
+    40	  make -j test-ci
+    41	fi
+    42	
+    43	cleanup
+    44	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/babel && bash -n scripts/integration-tests/e2e-babel.sh && git status --short
+M eslint/babel-eslint-parser/src/configuration.cjs
+ M packages/babel-core/src/parser/index.ts
+ M packages/babel-helper-compilation-targets/src/index.ts
+ M packages/babel-helper-create-class-features-plugin/src/fields.ts
+ M packages/babel-helper-create-class-features-plugin/src/index.ts
+ M packages/babel-helpers/src/helpers.js
+ M packages/babel-parser/src/parser/expression.js
+ M packages/babel-parser/src/plugins/typescript/index.js
+ M packages/babel-plugin-transform-typescript/src/namespace.ts
+ M packages/babel-types/src/definitions/core.ts
+ M packages/babel-types/src/retrievers/getBindingIdentifiers.ts
+ M scripts/integration-tests/e2e-babel.sh
+$ cd /workspace/babel && BROWSERSLIST_IGNORE_OLD_DATA=1 node /workspace/reproduce-babel-issues.ts
+All reproduction checks passed
+$ cd /workspace/babel && git --no-pager diff --stat && git status --short
+eslint/babel-eslint-parser/src/configuration.cjs                 |  2 +-
+ packages/babel-core/src/parser/index.ts                          | 11 ++++++++++-
+ packages/babel-helper-compilation-targets/src/index.ts           |  9 ++++++---
+ packages/babel-helper-create-class-features-plugin/src/fields.ts | 27 ++++++++++++++++++++++++---
+ packages/babel-helper-create-class-features-plugin/src/index.ts  |  8 ++++++++
+ packages/babel-helpers/src/helpers.js                            | 24 ++++++++++++++++++++++++
+ packages/babel-parser/src/parser/expression.js                   |  5 ++++-
+ packages/babel-parser/src/plugins/typescript/index.js            | 12 +++++-------
+ packages/babel-plugin-transform-typescript/src/namespace.ts      | 13 ++++++++++++-
+ packages/babel-types/src/definitions/core.ts                     |  7 ++++++-
+ packages/babel-types/src/retrievers/getBindingIdentifiers.ts     |  1 +
+ scripts/integration-tests/e2e-babel.sh                           |  8 +++++++-
+ 12 files changed, 108 insertions(+), 19 deletions(-)
+ M eslint/babel-eslint-parser/src/configuration.cjs
+ M packages/babel-core/src/parser/index.ts
+ M packages/babel-helper-compilation-targets/src/index.ts
+ M packages/babel-helper-create-class-features-plugin/src/fields.ts
+ M packages/babel-helper-create-class-features-plugin/src/index.ts
+ M packages/babel-helpers/src/helpers.js
+ M packages/babel-parser/src/parser/expression.js
+ M packages/babel-parser/src/plugins/typescript/index.js
+ M packages/babel-plugin-transform-typescript/src/namespace.ts
+ M packages/babel-types/src/definitions/core.ts
+ M packages/babel-types/src/retrievers/getBindingIdentifiers.ts
+ M scripts/integration-tests/e2e-babel.sh
+# task_tracker: Update completed plan with e2e script change
+Task list has been updated with 4 item(s).
+# finish: Finish Babel issue implementation and validation
+Implemented the remaining suitable non-test changes and validated them.
+
+Summary of changes:
+- Parser now rejects illegal `obj.[prop]` while preserving valid computed/optional computed member access.
+- TypeScript parser static blocks no longer retain an invalid `static: true` property.
+- TypeScript parser reason codes now align with Flow for identical messages.
+- Dotted TypeScript namespaces such as `namespace a.b.c {}` transform without crashing.
+- `parserOverride` now receives `sourceFilename` while default parser/source-map behavior remains unchanged.
+- Private instance fields, methods, and accessors in spec mode now check for duplicate initialization on the same object.
+- Static private access/check transforms avoid class-name shadowing by using a generated class reference.
+- `@babel/eslint-parser` accepts `ecmaVersion: "latest"`.
+- Explicit browserslist queries now receive `browserslistEnv`.
+- Babel 8 `RestElement` builder validation no longer allows `AssignmentPattern` via the broad `Pattern` alias.
+- `getBindingIdentifiers` now includes parameters of private class methods.
+- Added the Babel 8 e2e Jest `--forceExit` workaround in `scripts/integration-tests/e2e-babel.sh`.
+
+Validation performed:
+- `make build-no-bundle` passed.
+- `BROWSERSLIST_IGNORE_OLD_DATA=1 node /workspace/reproduce-babel-issues.ts` passed.
+- `bash -n scripts/integration-tests/e2e-babel.sh` passed.
+- `./node_modules/.bin/jest packages/babel-helper-compilation-targets/test --runInBand` passed.
+- `./node_modules/.bin/jest packages/babel-types/test --runInBand` passed.
+- `./node_modules/.bin/jest eslint/babel-eslint-parser/test --runInBand` passed.
+- `./node_modules/.bin/jest packages/babel-plugin-transform-typescript/test --runInBand` passed.
+- `BROWSERSLIST_IGNORE_OLD_DATA=1 ./node_modules/.bin/jest packages/babel-core/test --runInBand` passed.
+
+Notes:
+- I did not modify any test files.
+- `ts-node` was not available in this environment, so the reproduction file `/workspace/reproduce-babel-issues.ts` was written as JS-compatible TypeScript and executed with Node.
+- The local base parser/class-features fixture tests still contain old expected output for changed behavior, so they fail unless those already-prepared test updates are present. This matches your instruction that tests are already handled separately and must not be edited here.

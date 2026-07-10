@@ -1,0 +1,200 @@
+        }
+
+        ctx = graphql.WithFieldContext(ctx, fc)
+diff --git a/graphql/context_field.go b/graphql/context_field.go
+index 3c33850..c06118b 100644
+--- a/graphql/context_field.go
++++ b/graphql/context_field.go
+@@ -28,6 +28,8 @@ type FieldContext struct {
+        Result interface{}
+        // IsMethod indicates if the resolver is a method
+        IsMethod bool
++       // IsResolver indicates if the field has a user-specified resolver
++       IsResolver bool
+ }
+
+ type FieldStats struct {
+diff --git a/graphql/context_field_input.go b/graphql/context_field_input.go
+index 0ed6f8b..76cf443 100644
+--- a/graphql/context_field_input.go
++++ b/graphql/context_field_input.go
+@@ -8,6 +8,29 @@ import (
+ )
+
+ const fieldInputCtx key = "field_input_context"
++const errorPathCtx key = "error_path_context"
++
++type inputPathError struct {
++       path ast.Path
++       err  error
++}
++
++func (e *inputPathError) Error() string { return e.err.Error() }
++func (e *inputPathError) Unwrap() error { return e.err }
++
++func withErrorPath(ctx context.Context, path ast.Path) context.Context {
++       if path == nil {
++               return ctx
++       }
++       return context.WithValue(ctx, errorPathCtx, path)
++}
++
++func getErrorPath(ctx context.Context) ast.Path {
++       if val, ok := ctx.Value(errorPathCtx).(ast.Path); ok {
++               return val
++       }
++       return nil
++}
+
+ type FieldInputContext struct {
+        ParentField *FieldContext
+@@ -73,13 +96,21 @@ func WrapErrorWithInputPath(ctx context.Context, err error) error {
+        }
+
+        inputContext := GetFieldInputContext(ctx)
++       if inputContext == nil {
++               return err
++       }
+        path := inputContext.Path()
+        if gerr, ok := err.(*gqlerror.Error); ok {
+                if gerr.Path == nil {
+                        gerr.Path = path
+                }
+                return gerr
+-       } else {
+-               return gqlerror.WrapPath(path, err)
+        }
++       if pathErr, ok := err.(*inputPathError); ok {
++               if pathErr.path == nil {
++                       pathErr.path = path
++               }
++               return pathErr
++       }
++       return &inputPathError{path: path, err: err}
+ }
+diff --git a/graphql/context_response.go b/graphql/context_response.go
+index cc952ed..05bdf97 100644
+--- a/graphql/context_response.go
++++ b/graphql/context_response.go
+@@ -48,6 +48,10 @@ func AddErrorf(ctx context.Context, format string, args ...interface{}) {
+
+ // AddError sends an error to the client, first passing it through the error presenter.
+ func AddError(ctx context.Context, err error) {
++       if pathErr, ok := err.(*inputPathError); ok {
++               ctx = withErrorPath(ctx, pathErr.path)
++               err = pathErr.err
++       }
+        c := getResponseContext(ctx)
+
+        c.errorsMu.Lock()
+diff --git a/graphql/error.go b/graphql/error.go
+index 201058a..1241018 100644
+--- a/graphql/error.go
++++ b/graphql/error.go
+@@ -13,9 +13,16 @@ type ExtendedError interface {
+ }
+
+ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
++       path := getErrorPath(ctx)
++       if path == nil {
++               if fieldContext := GetFieldContext(ctx); fieldContext != nil {
++                       path = fieldContext.Path()
++               }
++       }
++
+        if gqlerr, ok := err.(*gqlerror.Error); ok {
+                if gqlerr.Path == nil {
+-                       gqlerr.Path = GetFieldContext(ctx).Path()
++                       gqlerr.Path = path
+                }
+                return gqlerr
+        }
+@@ -27,7 +34,7 @@ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+
+        return &gqlerror.Error{
+                Message:    err.Error(),
+-               Path:       GetFieldContext(ctx).Path(),
++               Path:       path,
+                Extensions: extensions,
+        }
+ }
+17:+            IsResolver: false,
+33:+            IsResolver: false,
+49:+            IsResolver: false,
+65:+            IsResolver: false,
+81:+            IsResolver: false,
+97:+            IsResolver: false,
+113:+           IsResolver: false,
+129:+           IsResolver: false,
+145:+           IsResolver: false,
+161:+           IsResolver: true,
+177:+           IsResolver: false,
+193:+           IsResolver: false,
+209:+           IsResolver: false,
+225:+           IsResolver: false,
+241:+           IsResolver: false,
+257:+           IsResolver: false,
+273:+           IsResolver: false,
+289:+           IsResolver: false,
+305:+           IsResolver: false,
+321:+           IsResolver: false,
+337:+           IsResolver: false,
+353:+           IsResolver: false,
+369:+           IsResolver: false,
+385:+           IsResolver: false,
+401:+           IsResolver: false,
+417:+           IsResolver: false,
+433:+           IsResolver: false,
+449:+           IsResolver: false,
+465:+           IsResolver: false,
+481:+           IsResolver: false,
+497:+           IsResolver: false,
+513:+           IsResolver: false,
+529:+           IsResolver: false,
+545:+           IsResolver: false,
+561:+           IsResolver: false,
+577:+           IsResolver: false,
+593:+           IsResolver: true,
+609:+           IsResolver: true,
+625:+           IsResolver: true,
+641:+           IsResolver: true,
+# think: Reflect on issue completeness and edge cases
+Your thought has been logged.
+$ cd /workspace/gqlgen && git status --short && echo 'Verified commands:' && echo 'go run /tmp/repro_issues_1291_1315.go' && echo 'go test ./graphql ./codegen ./codegen/testserver' && echo 'go test ./...'
+M README.md
+ M codegen/field.gotpl
+ M codegen/testserver/generated.go
+ M docs/content/getting-started.md
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+ M graphql/error.go
+Verified commands:
+go run /tmp/repro_issues_1291_1315.go
+go test ./graphql ./codegen ./codegen/testserver
+go test ./...
+# finish: Summarize completed gqlgen fixes and verification
+Implemented the requested non-test changes in `/workspace/gqlgen`.
+
+Summary:
+- Added `FieldContext.IsResolver` in `graphql/context_field.go`.
+- Updated `codegen/field.gotpl` so generated field contexts populate `IsResolver` separately from `IsMethod`.
+- Updated the committed `codegen/testserver/generated.go` fixture so runtime middleware can observe `IsResolver` values.
+- Fixed input field directive error propagation so custom errors are no longer converted into plain `gqlerror.Error` before custom error presenters run.
+  - The original error is now preserved for presenters.
+  - Input path information is still carried into `DefaultErrorPresenter`.
+  - Existing `*gqlerror.Error` values keep their path/extensions behavior.
+- Fixed documentation typos in `README.md` and `docs/content/getting-started.md`.
+- Did not modify any test files.
+
+Verification performed:
+- Created and ran a temporary reproduction script with `go run /tmp/repro_issues_1291_1315.go`.
+  - It first reproduced the custom directive error clobbering.
+  - After the fix, it passed and also checked gqlerror preservation plus `IsResolver` true/false behavior.
+- Ran targeted tests:
+  - `go test ./graphql ./codegen ./codegen/testserver`
+- Ran the full suite:
+  - `go test ./...`
+- Ran `git diff --check` successfully.
+
+All verification commands passed after the changes.

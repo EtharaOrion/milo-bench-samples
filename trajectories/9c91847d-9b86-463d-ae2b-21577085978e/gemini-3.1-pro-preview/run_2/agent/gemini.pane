@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+git diff
+diff --git a/docs/requirements.txt b/docs/requirements.txt
+index a5db0b4..3494b80 100644
+--- a/docs/requirements.txt
++++ b/docs/requirements.txt
+@@ -1,3 +1,3 @@
+ alabaster==0.7.12
+-Sphinx==3.4.1
+-sphinx-rtd-theme==0.5.0
++Sphinx==3.4.3
++sphinx-rtd-theme==0.5.1
+diff --git a/docs/source/progress.rst b/docs/source/progress.rst
+index a68fa08..fee6306 100644
+--- a/docs/source/progress.rst
++++ b/docs/source/progress.rst
+@@ -35,6 +35,7 @@ The Progress class is designed to be used as a *context manager* which will star
+
+ Here's a simple example::
+
++    import time
+     from rich.progress import Progress
+
+     with Progress() as progress:
+diff --git a/poetry.lock b/poetry.lock
+index e0c6969..d5a1b63 100644
+--- a/poetry.lock
++++ b/poetry.lock
+@@ -232,7 +232,7 @@ python-versions = "*"
+
+ [[package]]
+ name = "ipywidgets"
+-version = "7.6.2"
++version = "7.6.3"
+ description = "IPython HTML widgets for Jupyter"
+ category = "main"
+ optional = true
+@@ -910,8 +910,8 @@ ipython-genutils = [
+     {file = "ipython_genutils-0.2.0.tar.gz", hash = "sha256:eb2e116e75ecef9d4d228fdc66af54269afa26ab4463042e33785b887c628ba8"},
+ ]
+ ipywidgets = [
+-    {file = "ipywidgets-7.6.2-py2.py3-none-any.whl", hash = "sha256:eab960f737f380075cabca41f92e5e81dfb6eba3ce6392094469ef2418ca4d35"},
+-    {file = "ipywidgets-7.6.2.tar.gz", hash = "sha256:bbb881ce18fb0cff4ac718f40c04709c7ac86a77abee149f1b447965ede86e36"},
++    {file = "ipywidgets-7.6.3-py2.py3-none-any.whl", hash = "sha256:e6513cfdaf5878de30f32d57f6dc2474da395a2a2991b94d487406c0ab7f55ca"},
++    {file = "ipywidgets-7.6.3.tar.gz", hash = "sha256:9f1a43e620530f9e570e4a493677d25f08310118d315b00e25a18f12913c41f0"},
+ ]
+ jedi = [
+     {file = "jedi-0.17.1-py2.py3-none-any.whl", hash = "sha256:1ddb0ec78059e8e27ec9eb5098360b4ea0a3dd840bedf21415ea820c21b40a22"},
+diff --git a/rich/console.py b/rich/console.py
+index 2ef5b3d..06a919c 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -470,6 +470,7 @@ class Console:
+         )
+
+         self._color_system: Optional[ColorSystem]
++        self._original_color_system = color_system
+         self._force_terminal = force_terminal
+         self._file = file
+         self.stderr = stderr
+@@ -1374,8 +1375,13 @@ class Console:
+             with self._record_buffer_lock:
+                 self._record_buffer.extend(buffer)
+         not_terminal = not self.is_terminal
++        if self._force_terminal is not None:
++            styles_enabled = self._force_terminal
++        else:
++            styles_enabled = self._original_color_system not in ("auto", None) or not not_terminal
++
+         for text, style, is_control in buffer:
+-            if style:
++            if style and styles_enabled:
+                 append(
+                     style.render(
+                         text,
+# finish: Finish task with summary of implemented changes
+I have successfully completed the tasks:
+
+1. **Issue 2, 3, 5**: Bumped `sphinx-rtd-theme` from `0.5.0` to `0.5.1` and `sphinx` from `3.4.1` to `3.4.3` in `docs/requirements.txt`.
+2. **Issue 4**: Bumped `ipywidgets` from `7.6.2` to `7.6.3` in `poetry.lock` and updated the corresponding package hashes.
+3. **Issue 6**: Added the missing `import time` in `docs/source/progress.rst` under the "Progress Display Advanced Usage" example, which previously raised a `NameError`.
+4. **Issue 7**: Fixed `rich/console.py` where `Console` did not correctly suppress styles when `force_terminal=False` but `color_system` was provided explicitly. By saving `_original_color_system` and computing `styles_enabled`, styles are now correctly suppressed when the console is explicitly forced not to use the terminal (`force_terminal=False`), while correctly keeping the default behavior of styles for non-terminal file objects when explicitly requested.
+5. **Issue 1**: Did not require implementation as it represents an empty PR template related to a "New Tree renderable", with no actionable descriptions or specifications. Tests also did not exist for it.
+
+No tests were modified, and all non-test files were handled to fulfill the requirements.

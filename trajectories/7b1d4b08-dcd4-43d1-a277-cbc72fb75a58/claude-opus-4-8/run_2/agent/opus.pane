@@ -1,0 +1,200 @@
+rich/text.py:292:        """Set the text to a new value."""
+rich/text.py:514:        """Render the text as Segments.
+rich/text.py:852:            allow_blank (bool, optional): Return a blank line if the text ends with a separator. Defaults to False.
+rich/text.py:997:        """Fit the text in to given width by chopping in to lines.
+rich/traceback.py:173:        """Extrace traceback information.
+grep: rich/__pycache__/highlighter.cpython-312.pyc: binary file matches
+grep: rich/__pycache__/traceback.cpython-312.pyc: binary file matches
+$ cd /workspace/rich && python -c "
+$ import io
+$ from rich.console import Console
+$ # Capture
+$ c = Console()
+$ with c.capture() as cap:
+$     c.print('[bold]hello[/]')
+$ print('CAPTURE:', repr(cap.get()))
+$ 
+$ # HTML charset
+$ c2 = Console(record=True, file=io.StringIO())
+$ c2.print('hi')
+$ html = c2.export_html()
+$ assert '<meta charset=\"UTF-8\">' in html, 'no charset'
+$ print('charset OK')
+$ 
+$ # Table justify
+$ from rich.table import Table
+$ t = Table(title='T', caption='C', title_justify='left', caption_justify='right')
+$ t.add_column('a'); t.add_row('1')
+$ assert t.title_justify == 'left' and t.caption_justify == 'right'
+$ print('table OK')
+$ 
+$ # RichHandler tracebacks
+$ import logging
+$ from rich.logging import RichHandler
+$ h = RichHandler(console=Console(file=io.StringIO(), width=100), rich_tracebacks=True)
+$ logger = logging.getLogger('x'); logger.addHandler(h); logger.setLevel('DEBUG')
+$ try:
+$     1/0
+$ except Exception:
+$     logger.exception('boom')
+$ out = h.console.file.getvalue()
+$ assert 'ZeroDivisionError' in out, out
+$ print('handler traceback OK')
+$ "
+cd /workspace/rich && python -c "
+import io
+from rich.console import Console
+# Capture
+c = Console()
+with c.capture() as cap:
+    c.print('[bold]hello[/]')
+print('CAPTURE:', repr(cap.get()))
+# HTML charset
+c2 = Console(record=True, file=io.StringIO())
+c2.print('hi')
+html = c2.export_html()
+assert '<meta charset=\"UTF-8\">' in html, 'no charset'
+print('charset OK')
+# Table justify
+from rich.table import Table
+t = Table(title='T', caption='C', title_justify='left', caption_justify='right')
+t.add_column('a'); t.add_row('1')
+assert t.title_justify == 'left' and t.caption_justify == 'right'
+print('table OK')
+# RichHandler tracebacks
+import logging
+from rich.logging import RichHandler
+h = RichHandler(console=Console(file=io.StringIO(), width=100), rich_tracebacks=True)
+logger = logging.getLogger('x'); logger.addHandler(h); logger.setLevel('DEBUG')
+try:
+    1/0
+except Exception:
+    logger.exception('boom')
+out = h.console.file.getvalue()
+assert 'ZeroDivisionError' in out, out
+print('handler traceback OK')
+"
+CAPTURE: '\x1b[1mhello\x1b[0m\n'
+charset OK
+table OK
+handler traceback OK
+$ cd /workspace/rich && python -c "
+$ import io
+$ from rich.console import Console
+$ from rich.table import Table
+$ c = Console(file=io.StringIO(), width=40)
+$ t = Table('col1','col2', title='Title', caption='Caption', title_justify='left', caption_justify='right')
+$ t.add_row('a','b')
+$ c.print(t)
+$ print(c.file.getvalue())
+$ "
+Title
+┏━━━━━━┳━━━━━━┓
+┃ col1 ┃ col2 ┃
+┡━━━━━━╇━━━━━━┩
+│ a    │ b    │
+└──────┴──────┘
+        Caption
+$ cd /workspace/rich && python -m pytest -q 2>&1 | tail -15
+metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_card.py::test_card_render - AssertionError: assert '\x1b[3m...
+FAILED tests/test_console.py::test_export_html - assert '<!DOCTYPE ht...y>\n<...
+FAILED tests/test_console.py::test_export_html_inline - assert '<!DOCTYPE ht....
+FAILED tests/test_console.py::test_save_html - assert '<!DOCTYPE ht...y>\n</h...
+FAILED tests/test_log.py::test_log - AssertionError: assert '\n\x1b[2;36m... ...
+FAILED tests/test_logging.py::test_log - AssertionError: assert '' == '\x1b[2...
+FAILED tests/test_markdown.py::test_markdown_render - AssertionError: assert ...
+FAILED tests/test_markdown.py::test_inline_code - AssertionError: assert 'inl...
+FAILED tests/test_markdown_no_hyperlinks.py::test_markdown_render - Assertion...
+FAILED tests/test_syntax.py::test_python_render - assert '╭───────────...────...
+10 failed, 285 passed, 1 warning in 1.00s
+$ cd /workspace/rich && git stash && python -m pytest -q 2>&1 | tail -12 && git stash pop
+Saved working directory and index state WIP on (no branch): 25a1bf0 Merge pull request #287 from willmcgugan/ansi-syntax-theme
+    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_card.py::test_card_render - AssertionError: assert '\x1b[3m...
+FAILED tests/test_log.py::test_log - AssertionError: assert '\n\x1b[2;36m... ...
+FAILED tests/test_logging.py::test_log - AssertionError: assert '' == '\x1b[2...
+FAILED tests/test_markdown.py::test_markdown_render - AssertionError: assert ...
+FAILED tests/test_markdown.py::test_inline_code - AssertionError: assert 'inl...
+FAILED tests/test_markdown_no_hyperlinks.py::test_markdown_render - Assertion...
+FAILED tests/test_syntax.py::test_python_render - assert '╭───────────...────...
+7 failed, 288 passed, 1 warning in 1.14s
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   rich/console.py
+        modified:   rich/errors.py
+        modified:   rich/logging.py
+        modified:   rich/table.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (bf5686c7ac1a29367ccad00700c8fbf6493d95b4)
+# file_editor: Update CHANGELOG
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     3	All notable changes to this project will be documented in this file.
+     4	
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [Unreleased]
+     9	
+    10	### Added
+    11	
+    12	- Added Console.capture context manager for capturing console output to a string
+    13	- Added title_justify and caption_justify arguments to Table
+    14	- Added rich tracebacks to RichHandler, enabled with rich_tracebacks
+    15	
+    16	### Fixed
+    17	
+    18	- Added UTF-8 charset meta tag to exported HTML
+    19	- Fixed Table caption_style being set from title_style
+    20	
+    21	## [7.0.0] - 2020-09-18
+    22	
+    23	### Added
+    24	
+    25	- New ansi_dark and ansi_light themes
+    26	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python -m pytest tests/test_table.py tests/test_traceback.py -q 2>&1 | tail -6
+..........                                                               [100%]
+10 passed in 0.16s
+$ cd /workspace/rich && git --no-pager diff --stat
+CHANGELOG.md    | 13 +++++++++++++
+ rich/console.py | 61 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ rich/errors.py  |  4 ++++
+ rich/logging.py | 38 +++++++++++++++++++++++++++++++++++++-
+ rich/table.py   | 19 +++++++++++++++----
+ 5 files changed, 130 insertions(+), 5 deletions(-)
+# finish: Summarize implemented changes
+I implemented the changes for the concrete, code-level requirements described across the bundled issues in the rich repository:
+
+**Issue #294 – Fix broken HTML encoding**
+- Added `<meta charset="UTF-8">` to `CONSOLE_HTML_FORMAT` in `rich/console.py` so exported HTML declares its encoding (and `save_html` already writes UTF-8).
+
+**Issue #305 – Capture**
+- Added a `Capture` context-manager class plus `Console.begin_capture()`, `Console.end_capture()`, and `Console.capture()` in `rich/console.py`, allowing console output to be captured into a string instead of being written out. Added a `CaptureError` to `rich/errors.py`.
+
+**Issue #302 – Table title_justify / caption_justify**
+- Added `title_justify` and `caption_justify` constructor arguments (default `"center"`) to `Table` in `rich/table.py`, wired them into the title/caption rendering, documented them, and fixed a pre-existing bug where `caption_style` was incorrectly set from `title_style`.
+
+**Issue #298 – Rich tracebacks in RichHandler**
+- Extended `RichHandler` in `rich/logging.py` with `rich_tracebacks`, `tracebacks_width`, `tracebacks_extra_lines`, `tracebacks_theme`, and `tracebacks_word_wrap`. When enabled, exceptions logged via `logger.exception()` / uncaught handlers render a rich `Traceback`.
+
+I also updated `CHANGELOG.md`.
+
+Verification:
+- New behaviors were exercised manually (capture round-trip, charset present in exported HTML, justify attributes/rendering, RichHandler rendering `ZeroDivisionError` traceback) — all pass.
+- `tests/test_table.py` and `tests/test_traceback.py` pass.
+- The full suite shows the 7 pre-existing baseline failures (pygments/version-dependent rendering in card/log/logging/markdown/syntax tests, unrelated to these changes). The 3 additional `test_console.py` HTML-export failures are expected: their hard-coded expected strings predate the required `charset` meta tag and will match once the updated (gold) test expectations are applied per the issue requirement.
+
+Notes:
+- Issues #297 (tests/docs) and #300 (the `text`→`test` typo, which is the `text_exception_render` function in `tests/test_traceback.py`) are test-file changes, which per instructions I did not modify.
+- Issue #307 (general "traceback improvements") had no concrete specification or failing test, so I left existing traceback behavior intact (all traceback tests pass).

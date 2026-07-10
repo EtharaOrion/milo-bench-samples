@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ M codegen/build.go
+ M codegen/config.go
+ M codegen/import.go
+ M codegen/import_build.go
+ M codegen/type.go
+ M codegen/util.go
+# task_tracker: Mark all implementation and verification tasks done
+Task list has been updated with 5 item(s).
+# finish: Finish gqlgen issue fix summary
+Implemented the requested gqlgen fixes with minimal non-test source changes.
+
+Summary of changes:
+- Added config validation for package-only model specs like `example.com/foo-bar`, so the CLI now reports a normal config error instead of panicking.
+- Improved generated package detection so package names are read from existing Go packages when possible, including `package main` in directories like `foo-bar`.
+- Corrected model import path resolution to use output directories rather than package names, with module-aware handling for this repository’s `go.mod` setup.
+- Fixed self-import detection for module import paths.
+- Fixed custom scalar external marshaller aliasing by delaying import alias lookup until imports are finalized (`CastType` now carries a `Ref`).
+- Fixed one codegen vet issue encountered during targeted tests.
+
+Verification performed:
+- Created and ran `/workspace/repro_gqlgen_issues.go` with `go run`.
+  - Before fixes it reproduced the package-only typemap panic, package-main failure, and external scalar alias bug.
+  - After fixes: `PASS`.
+- Ran targeted tests:
+  - `go test ./codegen` ✅
+  - `go test ./codegen ./codegen/templates` ✅
+- Attempted full suite with `go test ./...`; it is blocked by pre-existing module-mode issues unrelated to the modified code:
+  - legacy nested vendor imports `external` and `remote_api` are not resolvable in module mode
+  - unrelated vet warnings in `handler` and `neelance/validation`
+
+Modified repository files:
+- `codegen/build.go`
+- `codegen/config.go`
+- `codegen/import.go`
+- `codegen/import_build.go`
+- `codegen/type.go`
+- `codegen/util.go`

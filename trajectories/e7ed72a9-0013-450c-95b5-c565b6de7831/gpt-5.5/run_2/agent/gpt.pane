@@ -1,0 +1,200 @@
+"""Rockset chat message history."""
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from langchain.schema import BaseChatMessageHistory
+from langchain.schema.messages import BaseMessage, _message_to_dict, messages_from_dict
+
+
+class RocksetChatMessageHistory(BaseChatMessageHistory):
+    """Chat message history backed by a Rockset collection."""
+
+    def __init__(
+        self,
+        session_id: str,
+        client: Any,
+        collection: Optional[str] = None,
+        *,
+        collection_name: Optional[str] = None,
+        workspace: str = "commons",
+    ) -> None:
+        self.session_id = session_id
+        self.client = client
+        self.collection = collection or collection_name
+        if self.collection is None:
+            raise ValueError("Must provide `collection` or `collection_name`.")
+        self.workspace = workspace
+
+    def _query_sql(self) -> str:
+        session_id = self.session_id.replace("'", "''")
+        return (
+            "SELECT * FROM "
+            f"{self.workspace}.{self.collection} "
+            f"WHERE session_id = '{session_id}' ORDER BY _event_time ASC"
+        )
+
+    def _query(self) -> List[Dict[str, Any]]:
+        response = self.client.Queries.query(sql={"query": self._query_sql()})
+        return list(getattr(response, "results", []) or [])
+
+    @property
+    def messages(self) -> List[BaseMessage]:  # type: ignore[override]
+        items = []
+        for row in self._query():
+            if "message" in row:
+                items.append(row["message"])
+            elif "data" in row:
+                items.append(row["data"])
+        return messages_from_dict(items)
+
+    def add_message(self, message: BaseMessage) -> None:
+        data = {
+            "_id": str(uuid4()),
+            "session_id": self.session_id,
+            "message": _message_to_dict(message),
+        }
+        self.client.Documents.add_documents(
+            collection=self.collection, data=[data], workspace=self.workspace
+        )
+
+    def clear(self) -> None:
+        ids = [row.get("_id") for row in self._query() if row.get("_id")]
+        if not ids:
+            return
+        try:
+            from rockset.models import DeleteDocumentsRequestData  # type: ignore
+
+            delete_data = [DeleteDocumentsRequestData(id=id_) for id_ in ids]
+        except Exception:
+            delete_data = [
+                type("DeleteDocumentsRequestData", (), {"id": id_})() for id_ in ids
+            ]
+        self.client.Documents.delete_documents(
+            collection=self.collection, data=delete_data, workspace=self.workspace
+        )
+
+
+RocksetDBChatMessageHistory = RocksetChatMessageHistory
+$ cd /workspace/langchain/libs/langchain && . .venv/bin/activate && PYTHONPATH=. pytest -q tests/unit_tests -m scheduled --collect-only
+=========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================== warnings summary ===========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+langchain/document_transformers/openai_functions.py:14
+  /workspace/langchain/libs/langchain/langchain/document_transformers/openai_functions.py:14: DeprecationWarning: invalid escape sequence '\T'
+    """Extract metadata tags from document contents using OpenAI functions.
+
+langchain/document_transformers/openai_functions.py:84
+  /workspace/langchain/libs/langchain/langchain/document_transformers/openai_functions.py:84: DeprecationWarning: invalid escape sequence '\T'
+    """Create a DocumentTransformer that uses an OpenAI function chain to automatically
+
+langchain/chains/query_constructor/parser.py:25
+  /workspace/langchain/libs/langchain/langchain/chains/query_constructor/parser.py:25: DeprecationWarning: invalid escape sequence '\d'
+    GRAMMAR = """
+
+langchain/document_loaders/acreom.py:52
+  /workspace/langchain/libs/langchain/langchain/document_loaders/acreom.py:52: DeprecationWarning: invalid escape sequence '\s'
+    content = re.sub("\s*-\s\[\s\]\s.*|\s*\[\s\]\s.*", "", content)  # rm tasks
+
+langchain/document_loaders/acreom.py:54
+  /workspace/langchain/libs/langchain/langchain/document_loaders/acreom.py:54: DeprecationWarning: invalid escape sequence '\['
+    content = re.sub("\[\[.*?\]\]", "", content)  # rm doclinks
+
+langchain/retrievers/kendra.py:24
+  /workspace/langchain/libs/langchain/langchain/retrievers/kendra.py:24: DeprecationWarning: invalid escape sequence '\s'
+    res = re.sub("\s+", " ", excerpt).replace("...", "")
+
+langchain/retrievers/self_query/myscale.py:90
+  /workspace/langchain/libs/langchain/langchain/retrievers/self_query/myscale.py:90: DeprecationWarning: invalid escape sequence '\('
+    regex = "\((.*?)\)"
+
+langchain/retrievers/self_query/myscale.py:91
+  /workspace/langchain/libs/langchain/langchain/retrievers/self_query/myscale.py:91: DeprecationWarning: invalid escape sequence '\('
+    matched = re.search("\(\w+\)", comparison.attribute)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- snapshot report summary --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+no tests collected (1140 deselected) in 2.87s
+$ cd /workspace/langchain && git --no-pager diff --name-status ab193338aa6d2ca811e073ff49e6e2f37de32c31 && git ls-files --others --exclude-standard
+M       libs/langchain/langchain/callbacks/tracers/base.py
+M       libs/langchain/langchain/document_loaders/__init__.py
+M       libs/langchain/langchain/memory/chat_message_histories/__init__.py
+M       libs/langchain/langchain/retrievers/__init__.py
+M       libs/langchain/langchain/schema/__init__.py
+M       libs/langchain/pyproject.toml
+.github/workflows/langchain_scheduled.yml
+libs/langchain/langchain/document_loaders/airbyte.py
+libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+libs/langchain/langchain/retrievers/multi_vector.py
+libs/langchain/langchain/retrievers/parent_document_retriever.py
+libs/langchain/langchain/schema/storage.py
+libs/langchain/langchain/storage/__init__.py
+libs/langchain/langchain/storage/_lc_store.py
+libs/langchain/langchain/storage/encoder_backed.py
+libs/langchain/langchain/storage/exceptions.py
+libs/langchain/langchain/storage/file_system.py
+libs/langchain/langchain/storage/in_memory.py
+# think: Reflect on issue coverage and remaining limitations
+Your thought has been logged.
+# task_tracker: Mark all tasks completed after final review
+Task list has been updated with 6 item(s).
+$ cd /workspace/langchain && git status --short && find . -maxdepth 4 -name '__pycache__' -o -name 'reproduce_issues.py'
+M libs/langchain/langchain/callbacks/tracers/base.py
+ M libs/langchain/langchain/document_loaders/__init__.py
+ M libs/langchain/langchain/memory/chat_message_histories/__init__.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/langchain/schema/__init__.py
+ M libs/langchain/pyproject.toml
+?? .github/workflows/langchain_scheduled.yml
+?? libs/langchain/langchain/document_loaders/airbyte.py
+?? libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+?? libs/langchain/langchain/retrievers/multi_vector.py
+?? libs/langchain/langchain/retrievers/parent_document_retriever.py
+?? libs/langchain/langchain/schema/storage.py
+?? libs/langchain/langchain/storage/
+./libs/langchain/tests/__pycache__
+./libs/langchain/langchain/__pycache__
+$ cd /workspace/langchain && find . -type d -name '__pycache__' -prune -exec rm -rf {} + && git status --short && find . -maxdepth 4 -name '__pycache__' -o -name 'reproduce_issues.py'
+M libs/langchain/langchain/callbacks/tracers/base.py
+ M libs/langchain/langchain/document_loaders/__init__.py
+ M libs/langchain/langchain/memory/chat_message_histories/__init__.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/langchain/schema/__init__.py
+ M libs/langchain/pyproject.toml
+?? .github/workflows/langchain_scheduled.yml
+?? libs/langchain/langchain/document_loaders/airbyte.py
+?? libs/langchain/langchain/memory/chat_message_histories/rocksetdb.py
+?? libs/langchain/langchain/retrievers/multi_vector.py
+?? libs/langchain/langchain/retrievers/parent_document_retriever.py
+?? libs/langchain/langchain/schema/storage.py
+?? libs/langchain/langchain/storage/
+# finish: Summarize completed implementation and verification results
+Implemented the requested non-test changes in `/workspace/langchain`.
+
+Summary of changes:
+- Added Airbyte CDK document loaders:
+  - `AirbyteCDKLoader`
+  - `AirbyteGongLoader`, `AirbyteHubspotLoader`, `AirbyteSalesforceLoader`, `AirbyteShopifyLoader`, `AirbyteStripeLoader`, `AirbyteTypeformLoader`, `AirbyteZendeskSupportLoader`
+  - Supports stream filtering, metadata-only documents, incremental-capable stream selection, and `last_state` tracking.
+- Added key-value storage support:
+  - `BaseStore`, `ByteStore`
+  - `InMemoryStore`, `LocalFileStore`
+  - `EncoderBackedStore`
+  - LangChain document byte-store helper via `create_kv_docstore`.
+- Added parent-document retrieval support:
+  - `MultiVectorRetriever`
+  - `ParentDocumentRetriever`
+- Added Rockset chat history support:
+  - `RocksetChatMessageHistory`
+  - `RocksetDBChatMessageHistory` alias.
+- Updated tracer errors to include the missing `run_id`, and fixed `on_llm_error` to invoke `_on_llm_error` instead of `_on_chain_error`.
+- Added scheduled pytest marker and daily GitHub Actions workflow for scheduled integration tests.
+- Bumped `libs/langchain` version from `0.0.258` to `0.0.259`.
+- Confirmed image loader and LCEL fallback functionality were already present in the base repository.
+
+Verification performed:
+- Created and ran a temporary reproduction script covering tracer errors, storage edge cases, docstore serialization, parent retriever behavior, Airbyte incremental state handling, and Rockset history. It failed before changes and passed after changes; then I removed the script.
+- Ran targeted tests: `22 passed`.
+- Ran Ruff on modified Python files: passed.
+- Ran full unit suite excluding the repository’s existing socket-config check: `927 passed, 212 skipped, 1 deselected`.
+- Running the full unit suite without exclusion leaves one unrelated pre-existing/environment failure: `tests/unit_tests/test_pytest_config.py::test_socket_disabled` because sockets are not being blocked in this environment.

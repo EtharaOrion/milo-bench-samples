@@ -1,0 +1,200 @@
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Add factory cache helper for alternatives
+The file /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py:
+   296	        ],
+   297	    ]
+   298	
+   299	    default_key: str = "default"
+   300	
+   301	    _alternative_cache: Dict[str, RunnableSerializable[Input, Output]] = PrivateAttr(
+   302	        default_factory=dict
+   303	    )
+   304	
+   305	    def _prepare_alternative(
+   306	        self,
+   307	        key: str,
+   308	        alternative: Union[
+   309	            Callable[[], RunnableSerializable[Input, Output]],
+   310	            RunnableSerializable[Input, Output],
+   311	        ],
+   312	    ) -> RunnableSerializable[Input, Output]:
+   313	        if isinstance(alternative, Runnable):
+   314	            return alternative
+   315	        if key not in self._alternative_cache:
+   316	            self._alternative_cache[key] = alternative()
+   317	        return self._alternative_cache[key]
+   318	
+   319	    @property
+   320	    def config_specs(self) -> Sequence[ConfigurableFieldSpec]:
+   321	        with _enums_for_spec_lock:
+   322	            if which_enum := _enums_for_spec.get(self.which):
+   323	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Use keyed cache while collecting alternative specs
+The file /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py:
+   341	            *self.default.config_specs,
+   342	        ] + [
+   343	            s
+   344	            for key, alt in self.alternatives.items()
+   345	            for s in self._prepare_alternative(key, alt).config_specs
+   346	        ]
+   347	
+   348	    def configurable_fields(
+   349	        self, **kwargs: AnyConfigurableField
+   350	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Use keyed cache when selecting alternatives
+The file /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/schema/runnable/configurable.py:
+   362	        which = config.get("configurable", {}).get(self.which.id, self.default_key)
+   363	        if which == self.default_key:
+   364	            return self.default
+   365	        elif which in self.alternatives:
+   366	            return self._prepare_alternative(which, self.alternatives[which])
+   367	        else:
+   368	            raise ValueError(f"Unknown alternative: {which}")
+   369	
+   370	
+   371	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain && . libs/langchain/.venv/bin/activate && PYTHONPATH=libs/langchain python - <<'PY'
+$ from langchain.prompts import PromptTemplate
+$ from langchain.schema.runnable import ConfigurableField
+$ state={'called':0}
+$ def factory():
+$     state['called'] += 1
+$     return PromptTemplate.from_template('factory:{value}')
+$ r = PromptTemplate.from_template('default:{value}').configurable_alternatives(ConfigurableField(id='mode'), factory=factory)
+$ assert r.invoke({'value': 'ok'}).to_string() == 'default:ok'
+$ assert state['called'] == 0
+$ b = r.with_config(configurable={'mode':'factory'})
+$ assert state['called'] == 1  # validation resolves specs once
+$ assert b.invoke({'value': 'ok'}).to_string() == 'factory:ok'
+$ assert state['called'] == 1
+$ print('configurable factory cache ok')
+$ PY
+configurable factory cache ok
+$ cd /workspace/langchain && . libs/langchain/.venv/bin/activate && ruff check libs/langchain/langchain/schema/runnable/configurable.py libs/langchain/langchain/schema/runnable/base.py && PYTHONPATH=libs/langchain pytest libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py -k configurable -q
+========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================= test session starts ==========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+platform linux -- Python 3.11.15, pytest-7.4.2, pluggy-1.3.0 -- /home/langchain/libs/langchain/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /workspace/langchain/libs/langchain
+configfile: pyproject.toml
+plugins: anyio-3.7.1, asyncio-0.20.3, cov-4.1.0, dotenv-0.5.2, mock-3.11.1, socket-0.6.0, syrupy-4.5.0
+asyncio: mode=Mode.STRICT
+collected 61 items / 59 deselected / 2 selected
+
+libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py::test_configurable_fields PASSED                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                [ 50%]
+libs/langchain/tests/unit_tests/schema/runnable/test_runnable.py::test_configurable_fields_example PASSED                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        [100%]
+
+========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================= slowest 5 durations ==========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+0.02s call     tests/unit_tests/schema/runnable/test_runnable.py::test_configurable_fields
+0.01s call     tests/unit_tests/schema/runnable/test_runnable.py::test_configurable_fields_example
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+=================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================== 2 passed, 59 deselected in 0.72s ===================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+$ cd /workspace/langchain && . libs/langchain/.venv/bin/activate && python reproduce_issues.py
+PASS tongyi api_key
+PASS serpapi google scholar
+PASS configurable alternatives factory
+PASS tavily tool
+PASS hunyuan import
+PASS vertex private attr
+
+All checks passed
+$ cd /workspace/langchain && . libs/langchain/.venv/bin/activate && ruff check libs/langchain/langchain/callbacks/tracers/evaluation.py libs/langchain/langchain/chat_models/__init__.py libs/langchain/langchain/chat_models/hunyuan.py libs/langchain/langchain/chat_models/tongyi.py libs/langchain/langchain/graphs/neo4j_graph.py libs/langchain/langchain/llms/tongyi.py libs/langchain/langchain/retrievers/google_vertex_ai_search.py libs/langchain/langchain/schema/runnable/base.py libs/langchain/langchain/schema/runnable/configurable.py libs/langchain/langchain/serpapi.py libs/langchain/langchain/tools/__init__.py libs/langchain/langchain/tools/tavily_search/__init__.py libs/langchain/langchain/tools/tavily_search/tool.py libs/langchain/langchain/utilities/__init__.py libs/langchain/langchain/utilities/serpapi.py libs/langchain/langchain/utilities/zapier.py libs/langchain/langchain/vectorstores/clickhouse.py
+$ cd /workspace/langchain && . libs/langchain/.venv/bin/activate && python -m py_compile libs/langchain/langchain/callbacks/tracers/evaluation.py libs/langchain/langchain/chat_models/__init__.py libs/langchain/langchain/chat_models/hunyuan.py libs/langchain/langchain/chat_models/tongyi.py libs/langchain/langchain/graphs/neo4j_graph.py libs/langchain/langchain/llms/tongyi.py libs/langchain/langchain/retrievers/google_vertex_ai_search.py libs/langchain/langchain/schema/runnable/base.py libs/langchain/langchain/schema/runnable/configurable.py libs/langchain/langchain/serpapi.py libs/langchain/langchain/tools/__init__.py libs/langchain/langchain/tools/tavily_search/__init__.py libs/langchain/langchain/tools/tavily_search/tool.py libs/langchain/langchain/utilities/__init__.py libs/langchain/langchain/utilities/serpapi.py libs/langchain/langchain/utilities/zapier.py libs/langchain/langchain/vectorstores/clickhouse.py
+$ cd /workspace/langchain && rm reproduce_issues.py
+$ cd /workspace/langchain && git status --short && git --no-pager diff --name-only
+M docs/docs/modules/model_io/output_parsers/output_fixing_parser.mdx
+ M libs/langchain/langchain/callbacks/tracers/evaluation.py
+ M libs/langchain/langchain/chat_models/__init__.py
+ M libs/langchain/langchain/chat_models/tongyi.py
+ M libs/langchain/langchain/graphs/neo4j_graph.py
+ M libs/langchain/langchain/llms/tongyi.py
+ M libs/langchain/langchain/retrievers/google_vertex_ai_search.py
+ M libs/langchain/langchain/schema/runnable/base.py
+ M libs/langchain/langchain/schema/runnable/configurable.py
+ M libs/langchain/langchain/serpapi.py
+ M libs/langchain/langchain/tools/__init__.py
+ M libs/langchain/langchain/utilities/__init__.py
+ M libs/langchain/langchain/utilities/serpapi.py
+ M libs/langchain/langchain/utilities/zapier.py
+ M libs/langchain/langchain/vectorstores/clickhouse.py
+ M libs/langchain/pyproject.toml
+?? libs/langchain/langchain/chat_models/hunyuan.py
+?? libs/langchain/langchain/tools/tavily_search/
+docs/docs/modules/model_io/output_parsers/output_fixing_parser.mdx
+libs/langchain/langchain/callbacks/tracers/evaluation.py
+libs/langchain/langchain/chat_models/__init__.py
+libs/langchain/langchain/chat_models/tongyi.py
+libs/langchain/langchain/graphs/neo4j_graph.py
+libs/langchain/langchain/llms/tongyi.py
+libs/langchain/langchain/retrievers/google_vertex_ai_search.py
+libs/langchain/langchain/schema/runnable/base.py
+libs/langchain/langchain/schema/runnable/configurable.py
+libs/langchain/langchain/serpapi.py
+libs/langchain/langchain/tools/__init__.py
+libs/langchain/langchain/utilities/__init__.py
+libs/langchain/langchain/utilities/serpapi.py
+libs/langchain/langchain/utilities/zapier.py
+libs/langchain/langchain/vectorstores/clickhouse.py
+libs/langchain/pyproject.toml
+$ cd /workspace/langchain && git --no-pager diff --check
+libs/langchain/langchain/utilities/serpapi.py:277: new blank line at EOF.
+$ cd /workspace/langchain && python - <<'PY'
+$ from pathlib import Path
+$ p=Path('libs/langchain/langchain/utilities/serpapi.py')
+$ s=p.read_text().rstrip()+"\n"
+$ p.write_text(s)
+$ PY && git --no-pager diff --check
+$ C-c
+^C
+$ cd /workspace/langchain && python -c "from pathlib import Path; p=Path('libs/langchain/langchain/utilities/serpapi.py'); p.write_text(p.read_text().rstrip() + '\n')" && git --no-pager diff --check
+# task_tracker: Mark all tracked tasks complete
+Task list has been updated with 5 item(s).
+$ cd /workspace/langchain && git status --short
+M docs/docs/modules/model_io/output_parsers/output_fixing_parser.mdx
+ M libs/langchain/langchain/callbacks/tracers/evaluation.py
+ M libs/langchain/langchain/chat_models/__init__.py
+ M libs/langchain/langchain/chat_models/tongyi.py
+ M libs/langchain/langchain/graphs/neo4j_graph.py
+ M libs/langchain/langchain/llms/tongyi.py
+ M libs/langchain/langchain/retrievers/google_vertex_ai_search.py
+ M libs/langchain/langchain/schema/runnable/base.py
+ M libs/langchain/langchain/schema/runnable/configurable.py
+ M libs/langchain/langchain/serpapi.py
+ M libs/langchain/langchain/tools/__init__.py
+ M libs/langchain/langchain/utilities/__init__.py
+ M libs/langchain/langchain/utilities/serpapi.py
+ M libs/langchain/langchain/utilities/zapier.py
+ M libs/langchain/langchain/vectorstores/clickhouse.py
+ M libs/langchain/pyproject.toml
+?? libs/langchain/langchain/chat_models/hunyuan.py
+?? libs/langchain/langchain/tools/tavily_search/
+# finish: Summarize completed LangChain implementation and validation
+Implemented the requested non-test changes across the LangChain repo.
+
+Summary of changes:
+- Added Google Scholar support for SerpAPI via scholar-aware result processing and `GoogleScholarAPIWrapper` exports.
+- Updated Tongyi chat/LLM integrations to pass DashScope credentials as `api_key` while preserving `dashscope_api_key` constructor/env compatibility.
+- Added Tencent Hunyuan chat model (`ChatHunyuan`) and export wiring.
+- Added Tavily Search API tools (`TavilySearchResults`, `TavilyAnswer`) and export wiring.
+- Added runnable factory support for configurable alternatives, including `configurable_alts` alias and cached factory materialization.
+- Fixed `GoogleVertexAISearchRetriever` / multi-turn retriever `_serving_config` as a private pydantic attribute.
+- Added `run_id` to evaluator callback `source_info` and avoided double evaluation when `project_name=None`.
+- Added Neo4jGraph environment variable fallbacks for URI, username, password, and database.
+- Added Zapier NLA deprecation warning.
+- Fixed ClickHouse return docstrings and output-fixing parser pydantic import docs.
+- Bumped `libs/langchain` version to `0.0.320` and declared optional Tavily/Tencent SDK dependencies.
+
+Validation performed:
+- Created and ran a temporary reproduction script before changes: reproduced failures.
+- Reran it after changes: all checks passed; then removed the temporary script.
+- `ruff check` on all modified Python files: passed.
+- `python -m py_compile` on all modified Python files: passed.
+- `git diff --check`: passed.
+- Targeted runnable configurable tests: passed.
+- Targeted Zapier tests passed as part of the related test run.
+- Additional fake-SDK checks passed for Hunyuan, Neo4j env fallback, evaluator `run_id`, Tavily, and public imports.
+
+Note: credentialed integration tests for SerpAPI/Tongyi failed in this environment because the required API keys/env vars were not present, not because of code errors. No test files were modified.

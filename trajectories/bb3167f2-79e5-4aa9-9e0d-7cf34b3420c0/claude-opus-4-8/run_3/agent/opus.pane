@@ -1,0 +1,200 @@
+# time=6143.02ms
+$ cd /workspace/fastify && node test/schemas.test.js 2>&1 | grep -E "^(ok|not ok|# fail|# pass)" | tail -10; echo "=== types ==="; npx tsc --noEmit test/types/index.ts 2>&1 | head -5 || echo "tsc not run"
+ok 1 - Should use the ref resolver - response # time=42.725ms
+ok 2 - Should use the ref resolver - body # time=17.758ms
+ok 3 - Encapsulation # time=11.762ms
+ok 4 - Schema resolver without schema compiler # time=1.733ms
+ok 5 - Triple $ref deep # time=7.856ms
+=== types ===
+npm notice
+npm notice New major version of npm available! 10.9.8 -> 11.17.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+npm notice To update run: npm install -g npm@11.17.0
+npm notice
+$ cd /workspace/fastify && grep -n "typescript\|tsd\|test:typescript\|\"test" package.json
+8:    "lint": "npm run lint:standard && npm run lint:typescript",
+10:    "lint:typescript": "standard --parser @typescript-eslint/parser --plugin @typescript-eslint/eslint-plugin test/types/*.ts fastify.d.ts",
+14:    "typescript": "tsc --project ./test/types/tsconfig.json",
+15:    "test:report": "npm run lint && npm run unit:report && npm run typescript",
+16:    "test": "npm run lint && npm run unit && npm run typescript",
+18:    "test:ci": "npm run lint && npm run unit -- --cov --coverage-report=lcovonly && npm run typescript",
+96:    "@typescript-eslint/eslint-plugin": "^2.3.0",
+97:    "@typescript-eslint/parser": "^2.3.0",
+135:    "typescript": "^3.6.3",
+162:      "@typescript-eslint/eslint-plugin",
+$ cd /workspace/fastify && npm run typescript 2>&1 | tail -15
+> fastify@2.9.0 typescript
+> tsc --project ./test/types/tsconfig.json
+$ cd /workspace/fastify && npx standard lib/schemas.js lib/reply.js 2>&1 | tail -15 && echo "LINT DONE"
+LINT DONE
+$ cd /workspace/fastify && node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json valid')" && cp /tmp/repro.js ./repro.js && node repro.js && rm -f repro.js
+package.json valid
+BODY: {"bar":{"foo":"bar"}}
+$ cd /workspace/fastify && git --no-pager diff
+diff --git a/docs/Reply.md b/docs/Reply.md
+index d6a7a3f..6e25487 100644
+--- a/docs/Reply.md
++++ b/docs/Reply.md
+@@ -4,7 +4,9 @@
+ - [Reply](#reply)
+   - [Introduction](#introduction)
+   - [.code(statusCode)](#codestatuscode)
++  - [.statusCode](#statuscode)
+   - [.header(key, value)](#headerkey-value)
++  - [.headers(object)](#headersobject)
+   - [.getHeader(key)](#getheaderkey)
+   - [.removeHeader(key)](#removeheaderkey)
+   - [.hasHeader(key)](#hasheaderkey)
+@@ -32,7 +34,9 @@ and properties:
+
+ - `.code(statusCode)` - Sets the status code.
+ - `.status(statusCode)` - An alias for `.code(statusCode)`.
++- `.statusCode` - Read and set the HTTP status code.
+ - `.header(name, value)` - Sets a response header.
++- `.headers(object)` - Sets all the keys of the object as response headers.
+ - `.getHeader(name)` - Retrieve value of already set header.
+ - `.removeHeader(key)` - Remove the value of a previously set header.
+ - `.hasHeader(name)` - Determine if a header has been set.
+@@ -69,6 +73,15 @@ fastify.get('/', {config: {foo: 'bar'}}, function (request, reply) {
+ ### .code(statusCode)
+ If not set via `reply.code`, the resulting `statusCode` will be `200`.
+
++<a name="statusCode"></a>
++### .statusCode
++This property reads and sets the HTTP status code. It is an alias for `reply.code()` when used as a setter.
++```js
++if (reply.statusCode >= 299) {
++  reply.statusCode = 500
++}
++```
++
+ <a name="header"></a>
+ ### .header(key, value)
+ Sets a response header. If the value is omitted or undefined it is coerced
+@@ -76,6 +89,17 @@ to `''`.
+
+ For more information, see [`http.ServerResponse#setHeader`](https://nodejs.org/dist/latest/docs/api/http.html#http_response_setheader_name_value).
+
++<a name="headers"></a>
++### .headers(object)
++Sets all the keys of the object as response headers.
++[`.header`](#headerkey-value) will be called under the hood.
++```js
++reply.headers({
++  'x-foo': 'foo',
++  'x-bar': 'bar'
++})
++```
++
+ <a name="getHeader"></a>
+ ### .getHeader(key)
+ Retrieves the value of a previously set header.
+diff --git a/fastify.d.ts b/fastify.d.ts
+index 935a583..ae6ff31 100644
+--- a/fastify.d.ts
++++ b/fastify.d.ts
+@@ -164,6 +164,7 @@ declare namespace fastify {
+   interface FastifyReply<HttpResponse> {
+     code(statusCode: number): FastifyReply<HttpResponse>
+     status(statusCode: number): FastifyReply<HttpResponse>
++    statusCode: number
+     header(name: string, value: any): FastifyReply<HttpResponse>
+     headers(headers: { [key: string]: any }): FastifyReply<HttpResponse>
+     getHeader(name: string): string | undefined
+diff --git a/lib/reply.js b/lib/reply.js
+index 6e354e3..32ba0ca 100644
+--- a/lib/reply.js
++++ b/lib/reply.js
+@@ -86,6 +86,15 @@ Object.defineProperty(Reply.prototype, 'sent', {
+   }
+ })
+
++Object.defineProperty(Reply.prototype, 'statusCode', {
++  get () {
++    return this.res.statusCode
++  },
++  set (value) {
++    this.code(value)
++  }
++})
++
+ Reply.prototype.send = function (payload) {
+   if (this[kReplyIsRunningOnErrorHook] === true) {
+     throw new FST_ERR_SEND_INSIDE_ONERR()
+diff --git a/lib/schemas.js b/lib/schemas.js
+index 4008030..3ea3dc0 100644
+--- a/lib/schemas.js
++++ b/lib/schemas.js
+@@ -107,7 +107,8 @@ Schemas.prototype.traverse = function (schema, refResolver) {
+     } else if (key === '$ref' && refResolver) {
+       const refValue = schema[key]
+
+-      const refId = refValue.slice(0, refValue.indexOf('#'))
++      const hashIndex = refValue.indexOf('#')
++      const refId = hashIndex >= 0 ? refValue.slice(0, hashIndex) : refValue
+       if (refId.length > 0 && !this.store[refId]) {
+         const resolvedSchema = refResolver(refId)
+         if (resolvedSchema) {
+diff --git a/package.json b/package.json
+index 583d58f..ab049b2 100644
+--- a/package.json
++++ b/package.json
+@@ -99,7 +99,7 @@
+     "ajv-pack": "^0.3.1",
+     "autocannon": "^3.2.0",
+     "branch-comparer": "^0.4.0",
+-    "concurrently": "^4.1.2",
++    "concurrently": "^5.0.0",
+     "cors": "^2.8.5",
+     "coveralls": "^3.0.6",
+     "dns-prefetch-control": "^0.2.0",
+@@ -159,7 +159,8 @@
+       "@types/node",
+       "tap",
+       "tap-mocha-reporter",
+-      "@typescript-eslint/eslint-plugin"
++      "@typescript-eslint/eslint-plugin",
++      "lolex"
+     ]
+   },
+   "standard": {
+$ cd /workspace/fastify && node test/schemas.test.js 2>&1 | grep -E "^(ok|not ok)" && echo "--- reply ---" && node test/internals/reply.test.js 2>&1 | grep -cE "^ok" && node test/internals/reply.test.js 2>&1 | grep -cE "^not ok"
+ok 1 - Should use the ref resolver - response # time=41.052ms
+ok 2 - Should use the ref resolver - body # time=17.229ms
+ok 3 - Encapsulation # time=11.121ms
+ok 4 - Schema resolver without schema compiler # time=1.67ms
+ok 5 - Triple $ref deep # time=7.573ms
+--- reply ---
+39
+0
+# finish: Completed all issue fixes with verification
+I implemented changes addressing all five items in the issue description:
+
+## Issue 1 (#1881) — Broken JSON Schema resolution [core bug fix]
+In `lib/schemas.js`, `$ref` resolution used `refValue.slice(0, refValue.indexOf('#'))`. For a reference to a full schema (no `#`, e.g. `'urn:schema:foo'`), `indexOf('#')` is `-1`, so `slice(0, -1)` dropped the last character (`'urn:schema:fo'`), breaking lookup. Fixed to only slice when a hash is present:
+```js
+const hashIndex = refValue.indexOf('#')
+const refId = hashIndex >= 0 ? refValue.slice(0, hashIndex) : refValue
+```
+Confirmed via the issue's exact reproduction — now returns `{"bar":{"foo":"bar"}}`.
+
+## Issue 2 (#1886) — Update `concurrently`
+Bumped `concurrently` from `^4.1.2` to `^5.0.0` in `package.json`.
+
+## Issue 3 (#1887) — Greenkeeper should not update `lolex`
+Added `"lolex"` to the `greenkeeper.ignore` array in `package.json`.
+
+## Issue 4 (#1890) — Doc fix: add `.headers` to reply docs
+Documented the existing `.headers(object)` method in `docs/Reply.md` (TOC, properties list, dedicated section).
+
+## Issue 5 (#1892) — Reply status code
+Added a `statusCode` getter/setter on `Reply.prototype` in `lib/reply.js` (setter delegates to `code()`), added `statusCode: number` to `FastifyReply` in `fastify.d.ts`, and documented it in `docs/Reply.md`.
+
+## Verification
+- Reproduction script for Issue 1 returns the expected response.
+- `test/schemas.test.js`: 5/5 pass.
+- `test/internals/reply.test.js`: 39/39 pass (0 failures).
+- `npm run typescript` compiles cleanly.
+- `standard` lint passes on modified JS files; `package.json` validated as valid JSON.
+
+No test files were modified.

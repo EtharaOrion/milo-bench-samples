@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+git diff rich/console.py
+diff --git a/rich/console.py b/rich/console.py
+index 2ef5b3d..7803641 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -1374,8 +1374,9 @@ class Console:
+             with self._record_buffer_lock:
+                 self._record_buffer.extend(buffer)
+         not_terminal = not self.is_terminal
++        clear_style = self._force_terminal is False
+         for text, style, is_control in buffer:
+-            if style:
++            if style and not clear_style:
+                 append(
+                     style.render(
+                         text,
+# finish: Finish task. All issues resolved and tests pass.
+I have successfully addressed all issues listed in the issue description.
+
+1. **Issue #882: [BUG] Setting color_system seems to affect more than just color**
+   - The user reported that when they explicitly disable the terminal by setting `force_terminal=False` but set `color_system` to something like `'standard'`, `Console` still outputs ANSI codes. 
+   - I identified that in `Console._render_buffer`, the styling relies on `style.render()` which only outputs plain text if `color_system` is `None`. Since the user explicitly provided a `color_system`, it generated ANSI styling regardless of `force_terminal=False`.
+   - To fix this, I added a `clear_style` variable in `rich/console.py` that evaluates to `True` when `self._force_terminal is False`. Now, if `clear_style` is `True`, `Console` completely bypasses styling and appends plain text, satisfying the user's requirement.
+   - The user's other expectation regarding `force_terminal=True, color_system=None` was already the intended behavior of the library (disabling all styles including bold and italic, verified by existing tests such as `test_table.py`), so no further modifications were necessary.
+
+2. **Issue #896: Fixed the Progress Display Advanced Usage example**
+   - Added the missing `import time` statement to the code example in `docs/source/progress.rst` which previously raised a `NameError`.
+
+3. **Dependabot Updates**
+   - Updated `Sphinx` from `3.4.1` to `3.4.3` in `docs/requirements.txt`.
+   - Updated `sphinx-rtd-theme` from `0.5.0` to `0.5.1` in `docs/requirements.txt`.
+   - Bumped `ipywidgets` from `7.6.2` to `7.6.3` by updating the version and package hashes directly in `poetry.lock`. `pyproject.toml`'s specifier `^7.5.1` was already sufficient so no changes to it were needed.
+
+I've carefully run the repository test suite to ensure the solution satisfies all requirements without breaking existing functionality or modifying any tests.

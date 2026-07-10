@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+cd /workspace/gqlgen && git diff plugin/resolvergen/
+diff --git a/plugin/resolvergen/testdata/filetemplate/out/schema.custom.go b/plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
+index caed384f..bbef7716 100644
+--- a/plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
++++ b/plugin/resolvergen/testdata/filetemplate/out/schema.custom.go
+@@ -36,9 +36,11 @@ type resolverCustomResolverType struct{ *CustomResolverType }
+ // !!! WARNING !!!
+ // The code below was going to be deleted when updating resolvers. It has been copied here so you have
+ // one last chance to move it out of harms way if you want. There are two reasons this happens:
+-//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+-//     it when you're done.
+-//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+-func AUserHelperFunction() {
++//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
++//    it when you're done.
++//  - You have helper methods in this file. Move them out to keep these resolver files clean.
++/*
++       func AUserHelperFunction() {
+        // AUserHelperFunction implementation
+ }
++*/
+diff --git a/plugin/resolvergen/testdata/followschema/out/schema.resolvers.go b/plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
+index 1efcef81..1aee7783 100644
+--- a/plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
++++ b/plugin/resolvergen/testdata/followschema/out/schema.resolvers.go
+@@ -36,9 +36,11 @@ type resolverCustomResolverType struct{ *CustomResolverType }
+ // !!! WARNING !!!
+ // The code below was going to be deleted when updating resolvers. It has been copied here so you have
+ // one last chance to move it out of harms way if you want. There are two reasons this happens:
+-//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+-//     it when you're done.
+-//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+-func AUserHelperFunction() {
++//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
++//    it when you're done.
++//  - You have helper methods in this file. Move them out to keep these resolver files clean.
++/*
++       func AUserHelperFunction() {
+        // AUserHelperFunction implementation
+ }
++*/
+diff --git a/plugin/resolvergen/testdata/singlefile/out/resolver.go b/plugin/resolvergen/testdata/singlefile/out/resolver.go
+index 614c66cf..2081df53 100644
+--- a/plugin/resolvergen/testdata/singlefile/out/resolver.go
++++ b/plugin/resolvergen/testdata/singlefile/out/resolver.go
+@@ -4,19 +4,18 @@ package customresolver
+
+ import (
+        "context"
+-       "fmt"
+ )
+
+ type CustomResolverType struct{}
+
+ // Resolver is the resolver for the resolver field.
+ func (r *queryCustomResolverType) Resolver(ctx context.Context) (*Resolver, error) {
+-       panic(fmt.Errorf("not implemented: Resolver - resolver"))
++       panic("not implemented")
+ }
+
+ // Name is the resolver for the name field.
+ func (r *resolverCustomResolverType) Name(ctx context.Context, obj *Resolver) (string, error) {
+-       panic(fmt.Errorf("not implemented: Name - name"))
++       panic("not implemented")
+ }
+
+ // Query returns QueryResolver implementation.
+$ cd /workspace/gqlgen && git checkout plugin/resolvergen/testdata
+Updated 3 paths from the index
+# finish: Resolved multiple dependency updates, initialisms bugs, and unmarshaling pointer issue
+I have successfully resolved all of the issues specified in the description by making the following changes:
+
+1. **Issue 1, 2 & 8 (vite and rollup deps in /integration)**:
+   - I bumped the dependencies in `/integration/package.json` for `vite` (to `^5.4.8`) and `rollup` (to `^4.22.4`) by running `npm install vite@^5.4.8 rollup@^4.22.4`. The updated `package.json` and `package-lock.json` are tracked.
+
+2. **Issue 3 (Handle common initialisms as the non-first word)**:
+   - Updated the initialism splitting logic in `codegen/templates/templates.go`. It previously falsely prevented `ID` and `IP` from being treated as an initialism if they were at the start of the whole string, rather than at the start of the *current word*. Changed the condition from `word == str[:2]` to `word == string(runes[w:w+2])` and checked `runes[w+3]`. This properly parses `"USER_IDENTITY"` into `"UserIdentity"`.
+
+3. **Issue 4 (Add CSPs to list of common initialisms)**:
+   - Added `"CSP": true` to the `CommonInitialisms` map in `codegen/templates/templates.go`, allowing `CSPs` to be correctly capitalized.
+
+4. **Issue 5 (Bug found when generating schema including arrays of type Any)**:
+   - The bug was triggered by `types.Alias` behavior introduced in Go 1.22+. The `IsNilable(t types.Type)` function in `codegen/config/binder.go` was failing to unwrap type aliases properly, leading to `any` (a `*types.Alias` to `interface{}`) being incorrectly evaluated as non-nilable. As a result, the code generator was inserting an invalid dereference operator (`*res`).
+   - The fix simply assigns `t = t.Underlying()` at the top of `IsNilable()` to robustly unwrap any named or alias types into their base types, correctly evaluating `any` as an interface.
+
+5. **Issue 6 (Update subscriptions.md)**:
+   - Replaced formatting-breaking tab indentation (`\t`) in `docs/content/recipes/subscriptions.md` code examples with 2 spaces for consistent markdown rendering.
+
+6. **Issue 7 (Update gqlparser to v2.5.17)**:
+   - Bumped `github.com/vektah/gqlparser/v2` to `v2.5.17` using `go get github.com/vektah/gqlparser/v2@v2.5.17`. (As part of this update, I also bumped `golang.org/x/tools` to fix `tokeninternal` build errors present on newer Go SDKs).
+
+All modifications have been comprehensively tested, and tests for both the codebase and the issue reproducers successfully pass.

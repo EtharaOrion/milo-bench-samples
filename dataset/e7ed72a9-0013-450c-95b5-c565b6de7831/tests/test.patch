@@ -1,0 +1,1384 @@
+diff --git a/.github/workflows/scheduled_test.yml b/.github/workflows/scheduled_test.yml
+new file mode 100644
+index 0000000000000..a1ab54a840fbf
+--- /dev/null
++++ b/.github/workflows/scheduled_test.yml
+@@ -0,0 +1,38 @@
++name: Scheduled tests
++
++on:
++  scheduled:
++    - cron:  '0 13 * * *'
++
++env:
++  POETRY_VERSION: "1.4.2"
++
++jobs:
++  build:
++    runs-on: ubuntu-latest
++    environment: Scheduled testing
++    strategy:
++      matrix:
++        python-version:
++          - "3.8"
++          - "3.9"
++          - "3.10"
++          - "3.11"
++    name: Python ${{ matrix.python-version }}
++    steps:
++      - uses: actions/checkout@v3
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: "./.github/actions/poetry_setup"
++        with:
++          python-version: ${{ matrix.python-version }}
++          poetry-version: "1.4.2"
++          install-command: |
++            echo "Running scheduled tests, installing dependencies with poetry..."
++            poetry install -E scheduled_testing
++      - name: Run tests
++        env:
++          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
++        run: |
++          make scheduled_tests
++        shell: bash
++    secrets: inherit
+diff --git a/libs/langchain/tests/integration_tests/chains/test_cpal.py b/libs/experimental/tests/integration_tests/chains/test_cpal.py
+similarity index 100%
+rename from libs/langchain/tests/integration_tests/chains/test_cpal.py
+rename to libs/experimental/tests/integration_tests/chains/test_cpal.py
+index 35b00bb0e8a32..c9f703de81a67 100644
+--- a/libs/langchain/tests/integration_tests/chains/test_cpal.py
++++ b/libs/experimental/tests/integration_tests/chains/test_cpal.py
+@@ -7,6 +7,10 @@
+ 
+ import pydantic
+ import pytest
++from langchain import OpenAI
++from langchain.output_parsers import PydanticOutputParser
++from langchain.prompts.prompt import PromptTemplate
++
+ from langchain_experimental.cpal.base import (
+     CausalChain,
+     CPALChain,
+@@ -35,10 +39,6 @@
+ from langchain_experimental.cpal.templates.univariate.query import (
+     template as query_template,
+ )
+-
+-from langchain import OpenAI
+-from langchain.output_parsers import PydanticOutputParser
+-from langchain.prompts.prompt import PromptTemplate
+ from tests.unit_tests.llms.fake_llm import FakeLLM
+ 
+ 
+diff --git a/libs/langchain/tests/integration_tests/chains/test_pal.py b/libs/experimental/tests/integration_tests/chains/test_pal.py
+similarity index 100%
+rename from libs/langchain/tests/integration_tests/chains/test_pal.py
+rename to libs/experimental/tests/integration_tests/chains/test_pal.py
+diff --git a/libs/langchain/tests/integration_tests/chains/test_sql_database.py b/libs/experimental/tests/integration_tests/chains/test_sql_database.py
+similarity index 98%
+rename from libs/langchain/tests/integration_tests/chains/test_sql_database.py
+rename to libs/experimental/tests/integration_tests/chains/test_sql_database.py
+index 18be75bf7ca57..cf1dc445cae98 100644
+--- a/libs/langchain/tests/integration_tests/chains/test_sql_database.py
++++ b/libs/experimental/tests/integration_tests/chains/test_sql_database.py
+@@ -1,12 +1,11 @@
+ """Test SQL Database Chain."""
+-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, insert
+-
+-from langchain.chains.sql_database.base import (
++from langchain.llms.openai import OpenAI
++from langchain.utilities.sql_database import SQLDatabase
++from libs.experimental.langchain_experimental.sql.base import (
+     SQLDatabaseChain,
+     SQLDatabaseSequentialChain,
+ )
+-from langchain.llms.openai import OpenAI
+-from langchain.utilities.sql_database import SQLDatabase
++from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, insert
+ 
+ metadata_obj = MetaData()
+ 
+diff --git a/libs/langchain/tests/integration_tests/cache/test_gptcache.py b/libs/langchain/tests/integration_tests/cache/test_gptcache.py
+index 823ec0c303444..509f0b67ec20b 100644
+--- a/libs/langchain/tests/integration_tests/cache/test_gptcache.py
++++ b/libs/langchain/tests/integration_tests/cache/test_gptcache.py
+@@ -18,7 +18,7 @@
+     gptcache_installed = False
+ 
+ 
+-def init_gptcache_map(cache_obj: Cache) -> None:
++def init_gptcache_map(cache_obj: Any) -> None:
+     i = getattr(init_gptcache_map, "_i", 0)
+     cache_path = f"data_map_{i}.txt"
+     if os.path.isfile(cache_path):
+@@ -30,7 +30,7 @@ def init_gptcache_map(cache_obj: Cache) -> None:
+     init_gptcache_map._i = i + 1  # type: ignore
+ 
+ 
+-def init_gptcache_map_with_llm(cache_obj: Cache, llm: str) -> None:
++def init_gptcache_map_with_llm(cache_obj: Any, llm: str) -> None:
+     cache_path = f"data_map_{llm}.txt"
+     if os.path.isfile(cache_path):
+         os.remove(cache_path)
+diff --git a/libs/langchain/tests/integration_tests/cache/test_momento_cache.py b/libs/langchain/tests/integration_tests/cache/test_momento_cache.py
+index dec8f44cbf8c5..09517305c0fe5 100644
+--- a/libs/langchain/tests/integration_tests/cache/test_momento_cache.py
++++ b/libs/langchain/tests/integration_tests/cache/test_momento_cache.py
+@@ -11,7 +11,6 @@
+ from typing import Iterator
+ 
+ import pytest
+-from momento import CacheClient, Configurations, CredentialProvider
+ 
+ import langchain
+ from langchain.cache import MomentoCache
+@@ -25,6 +24,8 @@ def random_string() -> str:
+ 
+ @pytest.fixture(scope="module")
+ def momento_cache() -> Iterator[MomentoCache]:
++    from momento import CacheClient, Configurations, CredentialProvider
++
+     cache_name = f"langchain-test-cache-{random_string()}"
+     client = CacheClient(
+         Configurations.Laptop.v1(),
+@@ -40,6 +41,8 @@ def momento_cache() -> Iterator[MomentoCache]:
+ 
+ 
+ def test_invalid_ttl() -> None:
++    from momento import CacheClient, Configurations, CredentialProvider
++
+     client = CacheClient(
+         Configurations.Laptop.v1(),
+         CredentialProvider.from_environment_variable("MOMENTO_AUTH_TOKEN"),
+diff --git a/libs/langchain/tests/integration_tests/cache/test_redis_cache.py b/libs/langchain/tests/integration_tests/cache/test_redis_cache.py
+index b39cc0fac96b6..7d43c9a4058e0 100644
+--- a/libs/langchain/tests/integration_tests/cache/test_redis_cache.py
++++ b/libs/langchain/tests/integration_tests/cache/test_redis_cache.py
+@@ -1,6 +1,5 @@
+ """Test Redis cache functionality."""
+ import pytest
+-import redis
+ 
+ import langchain
+ from langchain.cache import RedisCache, RedisSemanticCache
+@@ -13,6 +12,8 @@
+ 
+ 
+ def test_redis_cache() -> None:
++    import redis
++
+     langchain.llm_cache = RedisCache(redis_=redis.Redis.from_url(REDIS_TEST_URL))
+     llm = FakeLLM()
+     params = llm.dict()
+@@ -31,6 +32,8 @@ def test_redis_cache() -> None:
+ 
+ 
+ def test_redis_cache_chat() -> None:
++    import redis
++
+     langchain.llm_cache = RedisCache(redis_=redis.Redis.from_url(REDIS_TEST_URL))
+     llm = FakeChatModel()
+     params = llm.dict()
+@@ -69,6 +72,8 @@ def test_redis_semantic_cache() -> None:
+ 
+ 
+ def test_redis_semantic_cache_chat() -> None:
++    import redis
++
+     langchain.llm_cache = RedisCache(redis_=redis.Redis.from_url(REDIS_TEST_URL))
+     llm = FakeChatModel()
+     params = llm.dict()
+diff --git a/libs/langchain/tests/integration_tests/chains/test_dalle_agent.py b/libs/langchain/tests/integration_tests/chains/test_dalle_agent.py
+new file mode 100644
+index 0000000000000..246c2c2c6ee4c
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/chains/test_dalle_agent.py
+@@ -0,0 +1,16 @@
++"""Integration test for Dall-E image generator agent."""
++from langchain.agents import AgentType, initialize_agent, load_tools
++from langchain.llms import OpenAI
++
++
++def test_call() -> None:
++    """Test that the agent runs and returns output."""
++    llm = OpenAI(temperature=0.9)
++    tools = load_tools(["dalle-image-generator"])
++
++    agent = initialize_agent(
++        tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
++    )
++
++    output = agent.run("Create an image of a volcano island")
++    assert output is not None
+diff --git a/libs/langchain/tests/integration_tests/document_loaders/test_unstructured.py b/libs/langchain/tests/integration_tests/document_loaders/test_unstructured.py
+index 26d90f6f29a49..7930a6b7f278c 100644
+--- a/libs/langchain/tests/integration_tests/document_loaders/test_unstructured.py
++++ b/libs/langchain/tests/integration_tests/document_loaders/test_unstructured.py
+@@ -2,8 +2,6 @@
+ from contextlib import ExitStack
+ from pathlib import Path
+ 
+-from unstructured.cleaners.core import clean_extra_whitespace
+-
+ from langchain.document_loaders import (
+     UnstructuredAPIFileIOLoader,
+     UnstructuredAPIFileLoader,
+@@ -14,6 +12,8 @@
+ 
+ 
+ def test_unstructured_loader_with_post_processor() -> None:
++    from unstructured.cleaners.core import clean_extra_whitespace
++
+     file_path = os.path.join(EXAMPLE_DOCS_DIRECTORY, "layout-parser-paper.pdf")
+     loader = UnstructuredFileLoader(
+         file_path=file_path,
+diff --git a/libs/langchain/tests/integration_tests/llms/test_baseten.py b/libs/langchain/tests/integration_tests/llms/test_baseten.py
+index 0e1226b91b216..6409f62270f42 100644
+--- a/libs/langchain/tests/integration_tests/llms/test_baseten.py
++++ b/libs/langchain/tests/integration_tests/llms/test_baseten.py
+@@ -1,15 +1,13 @@
+ """Test Baseten API wrapper."""
+ import os
+ 
+-import baseten
+-import pytest
+-
+ from langchain.llms.baseten import Baseten
+ 
+ 
+-@pytest.mark.requires(baseten)
+ def test_baseten_call() -> None:
+     """Test valid call to Baseten."""
++    import baseten
++
+     baseten.login(os.environ["BASETEN_API_KEY"])
+     llm = Baseten(model=os.environ["BASETEN_MODEL_ID"])
+     output = llm("Say foo:")
+diff --git a/libs/langchain/tests/integration_tests/llms/test_openai.py b/libs/langchain/tests/integration_tests/llms/test_openai.py
+index ca8911078a48f..4ec967667b387 100644
+--- a/libs/langchain/tests/integration_tests/llms/test_openai.py
++++ b/libs/langchain/tests/integration_tests/llms/test_openai.py
+@@ -7,16 +7,17 @@
+ from langchain.callbacks.manager import CallbackManager
+ from langchain.chat_models.openai import ChatOpenAI
+ from langchain.llms.loading import load_llm
+-from langchain.llms.openai import OpenAI, OpenAIChat
++from langchain.llms.openai import OpenAI
+ from langchain.schema import LLMResult
+ from tests.unit_tests.callbacks.fake_callback_handler import (
+     FakeCallbackHandler,
+ )
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_call() -> None:
+     """Test valid call to openai."""
+-    llm = OpenAI(max_tokens=10, n=3)
++    llm = OpenAI()
+     output = llm("Say something nice:")
+     assert isinstance(output, str)
+ 
+@@ -86,6 +87,7 @@ def test_saving_loading_llm(tmp_path: Path) -> None:
+     assert loaded_llm == llm
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_streaming() -> None:
+     """Test streaming tokens from OpenAI."""
+     llm = OpenAI(max_tokens=10)
+@@ -97,6 +99,7 @@ def test_openai_streaming() -> None:
+         assert isinstance(token, str)
+ 
+ 
++@pytest.mark.scheduled
+ @pytest.mark.asyncio
+ async def test_openai_astream() -> None:
+     """Test streaming tokens from OpenAI."""
+@@ -106,6 +109,7 @@ async def test_openai_astream() -> None:
+         assert isinstance(token, str)
+ 
+ 
++@pytest.mark.scheduled
+ @pytest.mark.asyncio
+ async def test_openai_abatch() -> None:
+     """Test streaming tokens from OpenAI."""
+@@ -128,6 +132,7 @@ async def test_openai_abatch_tags() -> None:
+         assert isinstance(token, str)
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_batch() -> None:
+     """Test streaming tokens from OpenAI."""
+     llm = OpenAI(max_tokens=10)
+@@ -137,6 +142,7 @@ def test_openai_batch() -> None:
+         assert isinstance(token, str)
+ 
+ 
++@pytest.mark.scheduled
+ @pytest.mark.asyncio
+ async def test_openai_ainvoke() -> None:
+     """Test streaming tokens from OpenAI."""
+@@ -146,6 +152,7 @@ async def test_openai_ainvoke() -> None:
+     assert isinstance(result, str)
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_invoke() -> None:
+     """Test streaming tokens from OpenAI."""
+     llm = OpenAI(max_tokens=10)
+@@ -154,6 +161,7 @@ def test_openai_invoke() -> None:
+     assert isinstance(result, str)
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_multiple_prompts() -> None:
+     """Test completion with multiple prompts."""
+     llm = OpenAI(max_tokens=10)
+@@ -181,6 +189,7 @@ def test_openai_streaming_multiple_prompts_error() -> None:
+         OpenAI(streaming=True).generate(["I'm Pickle Rick", "I'm Pickle Rick"])
+ 
+ 
++@pytest.mark.scheduled
+ def test_openai_streaming_call() -> None:
+     """Test valid call to openai."""
+     llm = OpenAI(max_tokens=10, streaming=True)
+@@ -203,6 +212,7 @@ def test_openai_streaming_callback() -> None:
+     assert callback_handler.llm_streams == 10
+ 
+ 
++@pytest.mark.scheduled
+ @pytest.mark.asyncio
+ async def test_openai_async_generate() -> None:
+     """Test async generation."""
+@@ -235,60 +245,6 @@ def test_openai_chat_wrong_class() -> None:
+     assert isinstance(output, str)
+ 
+ 
+-def test_openai_chat() -> None:
+-    """Test OpenAIChat."""
+-    llm = OpenAIChat(max_tokens=10)
+-    output = llm("Say foo:")
+-    assert isinstance(output, str)
+-
+-
+-def test_openai_chat_streaming() -> None:
+-    """Test OpenAIChat with streaming option."""
+-    llm = OpenAIChat(max_tokens=10, streaming=True)
+-    output = llm("Say foo:")
+-    assert isinstance(output, str)
+-
+-
+-def test_openai_chat_streaming_callback() -> None:
+-    """Test that streaming correctly invokes on_llm_new_token callback."""
+-    callback_handler = FakeCallbackHandler()
+-    callback_manager = CallbackManager([callback_handler])
+-    llm = OpenAIChat(
+-        max_tokens=10,
+-        streaming=True,
+-        temperature=0,
+-        callback_manager=callback_manager,
+-        verbose=True,
+-    )
+-    llm("Write me a sentence with 100 words.")
+-    assert callback_handler.llm_streams != 0
+-
+-
+-@pytest.mark.asyncio
+-async def test_openai_chat_async_generate() -> None:
+-    """Test async chat."""
+-    llm = OpenAIChat(max_tokens=10)
+-    output = await llm.agenerate(["Hello, how are you?"])
+-    assert isinstance(output, LLMResult)
+-
+-
+-@pytest.mark.asyncio
+-async def test_openai_chat_async_streaming_callback() -> None:
+-    """Test that streaming correctly invokes on_llm_new_token callback."""
+-    callback_handler = FakeCallbackHandler()
+-    callback_manager = CallbackManager([callback_handler])
+-    llm = OpenAIChat(
+-        max_tokens=10,
+-        streaming=True,
+-        temperature=0,
+-        callback_manager=callback_manager,
+-        verbose=True,
+-    )
+-    result = await llm.agenerate(["Write me a sentence with 100 words."])
+-    assert callback_handler.llm_streams != 0
+-    assert isinstance(result, LLMResult)
+-
+-
+ def test_openai_modelname_to_contextsize_valid() -> None:
+     """Test model name to context size on a valid model."""
+     assert OpenAI().modelname_to_contextsize("davinci") == 2049
+diff --git a/libs/langchain/tests/integration_tests/memory/test_cosmos_db.py b/libs/langchain/tests/integration_tests/memory/test_cosmos_db.py
+index 1792692bc1f1d..0a32883351bd1 100644
+--- a/libs/langchain/tests/integration_tests/memory/test_cosmos_db.py
++++ b/libs/langchain/tests/integration_tests/memory/test_cosmos_db.py
+@@ -6,8 +6,8 @@
+ from langchain.schema.messages import _message_to_dict
+ 
+ # Replace these with your Azure Cosmos DB endpoint and key
+-endpoint = os.environ["COSMOS_DB_ENDPOINT"]
+-credential = os.environ["COSMOS_DB_KEY"]
++endpoint = os.environ.get("COSMOS_DB_ENDPOINT", "")
++credential = os.environ.get("COSMOS_DB_KEY", "")
+ 
+ 
+ def test_memory_with_message_store() -> None:
+diff --git a/libs/langchain/tests/integration_tests/memory/test_momento.py b/libs/langchain/tests/integration_tests/memory/test_momento.py
+index 99f2327a7a7e8..395232689b2de 100644
+--- a/libs/langchain/tests/integration_tests/memory/test_momento.py
++++ b/libs/langchain/tests/integration_tests/memory/test_momento.py
+@@ -10,7 +10,6 @@
+ from typing import Iterator
+ 
+ import pytest
+-from momento import CacheClient, Configurations, CredentialProvider
+ 
+ from langchain.memory import ConversationBufferMemory
+ from langchain.memory.chat_message_histories import MomentoChatMessageHistory
+@@ -23,6 +22,8 @@ def random_string() -> str:
+ 
+ @pytest.fixture(scope="function")
+ def message_history() -> Iterator[MomentoChatMessageHistory]:
++    from momento import CacheClient, Configurations, CredentialProvider
++
+     cache_name = f"langchain-test-cache-{random_string()}"
+     client = CacheClient(
+         Configurations.Laptop.v1(),
+diff --git a/libs/langchain/tests/integration_tests/memory/test_mongodb.py b/libs/langchain/tests/integration_tests/memory/test_mongodb.py
+index a57ccd0522dba..cb7cdbe7352f6 100644
+--- a/libs/langchain/tests/integration_tests/memory/test_mongodb.py
++++ b/libs/langchain/tests/integration_tests/memory/test_mongodb.py
+@@ -6,7 +6,7 @@
+ from langchain.schema.messages import _message_to_dict
+ 
+ # Replace these with your mongodb connection string
+-connection_string = os.environ["MONGODB_CONNECTION_STRING"]
++connection_string = os.environ.get("MONGODB_CONNECTION_STRING", "")
+ 
+ 
+ def test_memory_with_message_store() -> None:
+diff --git a/libs/langchain/tests/integration_tests/memory/test_rockset.py b/libs/langchain/tests/integration_tests/memory/test_rockset.py
+new file mode 100644
+index 0000000000000..e1cb50d05f44a
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/memory/test_rockset.py
+@@ -0,0 +1,63 @@
++"""Tests RocksetChatMessageHistory by creating a collection
++for message history, adding to it, and clearing it.
++
++To run these tests, make sure you have the ROCKSET_API_KEY
++and ROCKSET_REGION environment variables set.
++"""
++
++import json
++import os
++
++from rockset import DevRegions, Regions, RocksetClient
++
++from langchain.memory import ConversationBufferMemory
++from langchain.memory.chat_message_histories import RocksetChatMessageHistory
++from langchain.schema.messages import _message_to_dict
++
++collection_name = "langchain_demo"
++session_id = "MySession"
++
++
++class TestRockset:
++    memory: RocksetChatMessageHistory
++
++    @classmethod
++    def setup_class(cls) -> None:
++        assert os.environ.get("ROCKSET_API_KEY") is not None
++        assert os.environ.get("ROCKSET_REGION") is not None
++
++        api_key = os.environ.get("ROCKSET_API_KEY")
++        region = os.environ.get("ROCKSET_REGION")
++        if region == "use1a1":
++            host = Regions.use1a1
++        elif region == "usw2a1" or not region:
++            host = Regions.usw2a1
++        elif region == "euc1a1":
++            host = Regions.euc1a1
++        elif region == "dev":
++            host = DevRegions.usw2a1
++        else:
++            host = region
++
++        client = RocksetClient(host, api_key)
++        cls.memory = RocksetChatMessageHistory(
++            session_id, client, collection_name, sync=True
++        )
++
++    def test_memory_with_message_store(self) -> None:
++        memory = ConversationBufferMemory(
++            memory_key="messages", chat_memory=self.memory, return_messages=True
++        )
++
++        memory.chat_memory.add_ai_message("This is me, the AI")
++        memory.chat_memory.add_user_message("This is me, the human")
++
++        messages = memory.chat_memory.messages
++        messages_json = json.dumps([_message_to_dict(msg) for msg in messages])
++
++        assert "This is me, the AI" in messages_json
++        assert "This is me, the human" in messages_json
++
++        memory.chat_memory.clear()
++
++        assert memory.chat_memory.messages == []
+diff --git a/libs/langchain/tests/integration_tests/retrievers/docarray/fixtures.py b/libs/langchain/tests/integration_tests/retrievers/docarray/fixtures.py
+index 28e0b61c4b664..520f3e54e5a84 100644
+--- a/libs/langchain/tests/integration_tests/retrievers/docarray/fixtures.py
++++ b/libs/langchain/tests/integration_tests/retrievers/docarray/fixtures.py
+@@ -1,43 +1,30 @@
++from __future__ import annotations
++
+ from pathlib import Path
+-from typing import Any, Dict, Generator, Tuple
++from typing import TYPE_CHECKING, Any, Dict, Generator, Tuple
+ 
+ import numpy as np
+ import pytest
+-from docarray import BaseDoc
+-from docarray.index import (
+-    ElasticDocIndex,
+-    HnswDocumentIndex,
+-    InMemoryExactNNIndex,
+-    QdrantDocumentIndex,
+-    WeaviateDocumentIndex,
+-)
+-from docarray.typing import NdArray
+ from pydantic import Field
+-from qdrant_client.http import models as rest
+-
+-from langchain.embeddings import FakeEmbeddings
+-
+-
+-class MyDoc(BaseDoc):
+-    title: str
+-    title_embedding: NdArray[32]  # type: ignore
+-    other_emb: NdArray[32]  # type: ignore
+-    year: int
+ 
++if TYPE_CHECKING:
++    from docarray.index import (
++        ElasticDocIndex,
++        HnswDocumentIndex,
++        InMemoryExactNNIndex,
++        QdrantDocumentIndex,
++        WeaviateDocumentIndex,
++    )
++    from docarray.typing import NdArray
++    from qdrant_client.http import models as rest
+ 
+-class WeaviateDoc(BaseDoc):
+-    # When initializing the Weaviate index, denote the field
+-    # you want to search on with `is_embedding=True`
+-    title: str
+-    title_embedding: NdArray[32] = Field(is_embedding=True)  # type: ignore
+-    other_emb: NdArray[32]  # type: ignore
+-    year: int
++from langchain.embeddings import FakeEmbeddings
+ 
+ 
+ @pytest.fixture
+ def init_weaviate() -> (
+     Generator[
+-        Tuple[WeaviateDocumentIndex[WeaviateDoc], Dict[str, Any], FakeEmbeddings],
++        Tuple[WeaviateDocumentIndex, Dict[str, Any], FakeEmbeddings],
+         None,
+         None,
+     ]
+@@ -46,6 +33,19 @@ def init_weaviate() -> (
+     cd tests/integration_tests/vectorstores/docker-compose
+     docker compose -f weaviate.yml up
+     """
++    from docarray import BaseDoc
++    from docarray.index import (
++        WeaviateDocumentIndex,
++    )
++
++    class WeaviateDoc(BaseDoc):
++        # When initializing the Weaviate index, denote the field
++        # you want to search on with `is_embedding=True`
++        title: str
++        title_embedding: NdArray[32] = Field(is_embedding=True)  # type: ignore
++        other_emb: NdArray[32]  # type: ignore
++        year: int
++
+     embeddings = FakeEmbeddings(size=32)
+ 
+     # initialize WeaviateDocumentIndex
+@@ -76,12 +76,23 @@ def init_weaviate() -> (
+ 
+ @pytest.fixture
+ def init_elastic() -> (
+-    Generator[Tuple[ElasticDocIndex[MyDoc], Dict[str, Any], FakeEmbeddings], None, None]
++    Generator[Tuple[ElasticDocIndex, Dict[str, Any], FakeEmbeddings], None, None]
+ ):
+     """
+     cd tests/integration_tests/vectorstores/docker-compose
+     docker-compose -f elasticsearch.yml up
+     """
++    from docarray import BaseDoc
++    from docarray.index import (
++        ElasticDocIndex,
++    )
++
++    class MyDoc(BaseDoc):
++        title: str
++        title_embedding: NdArray[32]  # type: ignore
++        other_emb: NdArray[32]  # type: ignore
++        year: int
++
+     embeddings = FakeEmbeddings(size=32)
+ 
+     # initialize ElasticDocIndex
+@@ -109,7 +120,16 @@ def init_elastic() -> (
+ 
+ 
+ @pytest.fixture
+-def init_qdrant() -> Tuple[QdrantDocumentIndex[MyDoc], rest.Filter, FakeEmbeddings]:
++def init_qdrant() -> Tuple[QdrantDocumentIndex, rest.Filter, FakeEmbeddings]:
++    from docarray import BaseDoc
++    from docarray.index import QdrantDocumentIndex
++
++    class MyDoc(BaseDoc):
++        title: str
++        title_embedding: NdArray[32]  # type: ignore
++        other_emb: NdArray[32]  # type: ignore
++        year: int
++
+     embeddings = FakeEmbeddings(size=32)
+ 
+     # initialize QdrantDocumentIndex
+@@ -144,9 +164,16 @@ def init_qdrant() -> Tuple[QdrantDocumentIndex[MyDoc], rest.Filter, FakeEmbeddin
+ 
+ 
+ @pytest.fixture
+-def init_in_memory() -> (
+-    Tuple[InMemoryExactNNIndex[MyDoc], Dict[str, Any], FakeEmbeddings]
+-):
++def init_in_memory() -> Tuple[InMemoryExactNNIndex, Dict[str, Any], FakeEmbeddings]:
++    from docarray import BaseDoc
++    from docarray.index import InMemoryExactNNIndex
++
++    class MyDoc(BaseDoc):
++        title: str
++        title_embedding: NdArray[32]  # type: ignore
++        other_emb: NdArray[32]  # type: ignore
++        year: int
++
+     embeddings = FakeEmbeddings(size=32)
+ 
+     # initialize InMemoryExactNNIndex
+@@ -172,7 +199,18 @@ def init_in_memory() -> (
+ @pytest.fixture
+ def init_hnsw(
+     tmp_path: Path,
+-) -> Tuple[HnswDocumentIndex[MyDoc], Dict[str, Any], FakeEmbeddings]:
++) -> Tuple[HnswDocumentIndex, Dict[str, Any], FakeEmbeddings]:
++    from docarray import BaseDoc
++    from docarray.index import (
++        HnswDocumentIndex,
++    )
++
++    class MyDoc(BaseDoc):
++        title: str
++        title_embedding: NdArray[32]  # type: ignore
++        other_emb: NdArray[32]  # type: ignore
++        year: int
++
+     embeddings = FakeEmbeddings(size=32)
+ 
+     # initialize InMemoryExactNNIndex
+diff --git a/libs/langchain/tests/integration_tests/retrievers/docarray/test_backends.py b/libs/langchain/tests/integration_tests/retrievers/docarray/test_backends.py
+index b1f34b253f131..8f364f1a39df7 100644
+--- a/libs/langchain/tests/integration_tests/retrievers/docarray/test_backends.py
++++ b/libs/langchain/tests/integration_tests/retrievers/docarray/test_backends.py
+@@ -1,7 +1,6 @@
+ from typing import Any
+ 
+ import pytest
+-from vcr.request import Request
+ 
+ from langchain.retrievers import DocArrayRetriever
+ from tests.integration_tests.retrievers.docarray.fixtures import (  # noqa: F401
+@@ -17,7 +16,7 @@
+     "backend",
+     ["init_hnsw", "init_in_memory", "init_qdrant", "init_elastic", "init_weaviate"],
+ )
+-def test_backends(request: Request, backend: Any) -> None:
++def test_backends(request: Any, backend: Any) -> None:
+     index, filter_query, embeddings = request.getfixturevalue(backend)
+ 
+     # create a retriever
+diff --git a/libs/langchain/tests/integration_tests/retrievers/test_weaviate_hybrid_search.py b/libs/langchain/tests/integration_tests/retrievers/test_weaviate_hybrid_search.py
+index 267820cf2acc4..93c1a34f1aa0a 100644
+--- a/libs/langchain/tests/integration_tests/retrievers/test_weaviate_hybrid_search.py
++++ b/libs/langchain/tests/integration_tests/retrievers/test_weaviate_hybrid_search.py
+@@ -6,7 +6,6 @@
+ from uuid import uuid4
+ 
+ import pytest
+-from weaviate import Client
+ 
+ from langchain.docstore.document import Document
+ from langchain.retrievers.weaviate_hybrid_search import WeaviateHybridSearchRetriever
+@@ -28,6 +27,8 @@ def setup_class(cls) -> None:
+     @pytest.fixture(scope="class", autouse=True)
+     def weaviate_url(self) -> Union[str, Generator[str, None, None]]:
+         """Return the weaviate url."""
++        from weaviate import Client
++
+         url = "http://localhost:8080"
+         yield url
+ 
+@@ -38,6 +39,8 @@ def weaviate_url(self) -> Union[str, Generator[str, None, None]]:
+     @pytest.mark.vcr(ignore_localhost=True)
+     def test_get_relevant_documents(self, weaviate_url: str) -> None:
+         """Test end to end construction and MRR search."""
++        from weaviate import Client
++
+         texts = ["foo", "bar", "baz"]
+         metadatas = [{"page": i} for i in range(len(texts))]
+ 
+@@ -64,6 +67,8 @@ def test_get_relevant_documents(self, weaviate_url: str) -> None:
+     @pytest.mark.vcr(ignore_localhost=True)
+     def test_get_relevant_documents_with_score(self, weaviate_url: str) -> None:
+         """Test end to end construction and MRR search."""
++        from weaviate import Client
++
+         texts = ["foo", "bar", "baz"]
+         metadatas = [{"page": i} for i in range(len(texts))]
+ 
+@@ -87,6 +92,8 @@ def test_get_relevant_documents_with_score(self, weaviate_url: str) -> None:
+     @pytest.mark.vcr(ignore_localhost=True)
+     def test_get_relevant_documents_with_filter(self, weaviate_url: str) -> None:
+         """Test end to end construction and MRR search."""
++        from weaviate import Client
++
+         texts = ["foo", "bar", "baz"]
+         metadatas = [{"page": i} for i in range(len(texts))]
+ 
+@@ -113,6 +120,8 @@ def test_get_relevant_documents_with_filter(self, weaviate_url: str) -> None:
+     @pytest.mark.vcr(ignore_localhost=True)
+     def test_get_relevant_documents_with_uuids(self, weaviate_url: str) -> None:
+         """Test end to end construction and MRR search."""
++        from weaviate import Client
++
+         texts = ["foo", "bar", "baz"]
+         metadatas = [{"page": i} for i in range(len(texts))]
+         # Weaviate replaces the object if the UUID already exists
+diff --git a/libs/langchain/tests/integration_tests/test_dalle.py b/libs/langchain/tests/integration_tests/test_dalle.py
+new file mode 100644
+index 0000000000000..d51cc13ff71dc
+--- /dev/null
++++ b/libs/langchain/tests/integration_tests/test_dalle.py
+@@ -0,0 +1,9 @@
++"""Integration test for DallE API Wrapper."""
++from langchain.utilities.dalle_image_generator import DallEAPIWrapper
++
++
++def test_call() -> None:
++    """Test that call returns a URL in the output."""
++    search = DallEAPIWrapper()
++    output = search.run("volcano island")
++    assert "https://oaidalleapi" in output
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_add_texts.py b/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_add_texts.py
+index a6f3e72b78597..b1689e836a1c1 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_add_texts.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_add_texts.py
+@@ -2,7 +2,6 @@
+ from typing import Optional
+ 
+ import pytest
+-from qdrant_client.http import models as rest
+ 
+ from langchain.vectorstores import Qdrant
+ from tests.integration_tests.vectorstores.fake_embeddings import (
+@@ -69,6 +68,7 @@ async def test_qdrant_aadd_texts_stores_ids(
+ ) -> None:
+     """Test end to end Qdrant.aadd_texts stores provided ids."""
+     from qdrant_client import QdrantClient
++    from qdrant_client.http import models as rest
+ 
+     ids = [
+         "fa38d572-4c31-4579-aedc-1960d79df6df",
+@@ -101,6 +101,7 @@ async def test_qdrant_aadd_texts_stores_embeddings_as_named_vectors(
+ ) -> None:
+     """Test end to end Qdrant.aadd_texts stores named vectors if name is provided."""
+     from qdrant_client import QdrantClient
++    from qdrant_client.http import models as rest
+ 
+     collection_name = uuid.uuid4().hex
+ 
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_similarity_search.py b/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_similarity_search.py
+index c6158bbb50d34..55e1fc3aa3046 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_similarity_search.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/qdrant/async_api/test_similarity_search.py
+@@ -2,7 +2,6 @@
+ 
+ import numpy as np
+ import pytest
+-from qdrant_client.http import models as rest
+ 
+ from langchain.schema import Document
+ from langchain.vectorstores import Qdrant
+@@ -239,6 +238,8 @@ async def test_qdrant_similarity_search_filters_with_qdrant_filters(
+     qdrant_location: str,
+ ) -> None:
+     """Test end to end construction and search."""
++    from qdrant_client.http import models as rest
++
+     texts = ["foo", "bar", "baz"]
+     metadatas = [
+         {"page": i, "details": {"page": i + 1, "pages": [i + 2, -1]}}
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_add_texts.py b/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_add_texts.py
+index 0290911e40ca6..052ef3c074733 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_add_texts.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_add_texts.py
+@@ -2,7 +2,6 @@
+ from typing import Optional
+ 
+ import pytest
+-from qdrant_client.http import models as rest
+ 
+ from langchain.schema import Document
+ from langchain.vectorstores import Qdrant
+@@ -81,6 +80,7 @@ def test_qdrant_add_texts_stores_duplicated_texts(vector_name: Optional[str]) ->
+ def test_qdrant_add_texts_stores_ids(batch_size: int) -> None:
+     """Test end to end Qdrant.add_texts stores provided ids."""
+     from qdrant_client import QdrantClient
++    from qdrant_client.http import models as rest
+ 
+     ids = [
+         "fa38d572-4c31-4579-aedc-1960d79df6df",
+@@ -107,6 +107,7 @@ def test_qdrant_add_texts_stores_ids(batch_size: int) -> None:
+ def test_qdrant_add_texts_stores_embeddings_as_named_vectors(vector_name: str) -> None:
+     """Test end to end Qdrant.add_texts stores named vectors if name is provided."""
+     from qdrant_client import QdrantClient
++    from qdrant_client.http import models as rest
+ 
+     collection_name = uuid.uuid4().hex
+ 
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_similarity_search.py b/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_similarity_search.py
+index cfd413fbef2e9..b1aae06ab57a1 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_similarity_search.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/qdrant/test_similarity_search.py
+@@ -2,7 +2,6 @@
+ 
+ import numpy as np
+ import pytest
+-from qdrant_client.http import models as rest
+ 
+ from langchain.schema import Document
+ from langchain.vectorstores import Qdrant
+@@ -209,6 +208,8 @@ def test_qdrant_similarity_search_filters_with_qdrant_filters(
+     vector_name: Optional[str],
+ ) -> None:
+     """Test end to end construction and search."""
++    from qdrant_client.http import models as rest
++
+     texts = ["foo", "bar", "baz"]
+     metadatas = [
+         {"page": i, "details": {"page": i + 1, "pages": [i + 2, -1]}}
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_azuresearch.py b/libs/langchain/tests/integration_tests/vectorstores/test_azuresearch.py
+index b5c3b720cf2f5..2819f819d60f3 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_azuresearch.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_azuresearch.py
+@@ -1,7 +1,6 @@
+ import os
+ import time
+ 
+-import openai
+ import pytest
+ from dotenv import load_dotenv
+ 
+@@ -10,13 +9,7 @@
+ 
+ load_dotenv()
+ 
+-# Azure OpenAI settings
+-openai.api_type = "azure"
+-openai.api_base = os.getenv("OPENAI_API_BASE", "")
+-openai.api_version = "2023-05-15"
+-openai.api_key = os.getenv("OPENAI_API_KEY", "")
+-model: str = os.getenv("OPENAI_EMBEDDINGS_ENGINE_DOC", "text-embedding-ada-002")
+-
++model = os.getenv("OPENAI_EMBEDDINGS_ENGINE_DOC", "text-embedding-ada-002")
+ # Vector store settings
+ vector_store_address: str = os.getenv("AZURE_SEARCH_ENDPOINT", "")
+ vector_store_password: str = os.getenv("AZURE_SEARCH_ADMIN_KEY", "")
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_deeplake.py b/libs/langchain/tests/integration_tests/vectorstores/test_deeplake.py
+index 9274392ae8603..a666329cce89c 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_deeplake.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_deeplake.py
+@@ -1,5 +1,4 @@
+ """Test Deep Lake functionality."""
+-import deeplake
+ import pytest
+ from pytest import FixtureRequest
+ 
+@@ -53,6 +52,8 @@ def test_deeplake_with_metadatas() -> None:
+ 
+ def test_deeplakewith_persistence() -> None:
+     """Test end to end construction and search, with persistence."""
++    import deeplake
++
+     dataset_path = "./tests/persist_dir"
+     if deeplake.exists(dataset_path):
+         deeplake.delete(dataset_path)
+@@ -84,6 +85,8 @@ def test_deeplakewith_persistence() -> None:
+ 
+ def test_deeplake_overwrite_flag() -> None:
+     """Test overwrite behavior"""
++    import deeplake
++
+     dataset_path = "./tests/persist_dir"
+     if deeplake.exists(dataset_path):
+         deeplake.delete(dataset_path)
+@@ -234,6 +237,8 @@ def test_delete_dataset_by_filter(deeplake_datastore: DeepLake) -> None:
+ 
+ def test_delete_by_path(deeplake_datastore: DeepLake) -> None:
+     """Test delete dataset."""
++    import deeplake
++
+     path = deeplake_datastore.dataset_path
+     DeepLake.force_delete_by_path(path)
+     assert not deeplake.exists(path)
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_elasticsearch.py b/libs/langchain/tests/integration_tests/vectorstores/test_elasticsearch.py
+index cb2d0c0e02611..db87f0bc5a238 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_elasticsearch.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_elasticsearch.py
+@@ -5,7 +5,6 @@
+ from typing import Generator, List, Union
+ 
+ import pytest
+-from elasticsearch import Elasticsearch
+ 
+ from langchain.docstore.document import Document
+ from langchain.embeddings import OpenAIEmbeddings
+@@ -29,6 +28,8 @@ def setup_class(cls) -> None:
+     @pytest.fixture(scope="class", autouse=True)
+     def elasticsearch_url(self) -> Union[str, Generator[str, None, None]]:
+         """Return the elasticsearch url."""
++        from elasticsearch import Elasticsearch
++
+         url = "http://localhost:9200"
+         yield url
+         es = Elasticsearch(hosts=url)
+@@ -108,6 +109,7 @@ def test_custom_index_from_documents(
+     ) -> None:
+         """This test checks the construction of a custom
+         ElasticSearch index using the 'from_documents'."""
++        from elasticsearch import Elasticsearch
+ 
+         index_name = f"custom_index_{uuid.uuid4().hex}"
+         elastic_vector_search = ElasticVectorSearch.from_documents(
+@@ -134,6 +136,7 @@ def test_custom_index_add_documents(
+     ) -> None:
+         """This test checks the construction of a custom
+         ElasticSearch index using the 'add_documents'."""
++        from elasticsearch import Elasticsearch
+ 
+         index_name = f"custom_index_{uuid.uuid4().hex}"
+         elastic_vector_search = ElasticVectorSearch(
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_lancedb.py b/libs/langchain/tests/integration_tests/vectorstores/test_lancedb.py
+index b2f7e4cc2cc6a..cf9199f67910f 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_lancedb.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_lancedb.py
+@@ -1,10 +1,10 @@
+-import lancedb
+-
+ from langchain.vectorstores import LanceDB
+ from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
+ 
+ 
+ def test_lancedb() -> None:
++    import lancedb
++
+     embeddings = FakeEmbeddings()
+     db = lancedb.connect("/tmp/lancedb")
+     texts = ["text 1", "text 2", "item 3"]
+@@ -24,6 +24,8 @@ def test_lancedb() -> None:
+ 
+ 
+ def test_lancedb_add_texts() -> None:
++    import lancedb
++
+     embeddings = FakeEmbeddings()
+     db = lancedb.connect("/tmp/lancedb")
+     texts = ["text 1"]
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py b/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
+index f2685ecc1bfc6..4821ee2dc2a04 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_marqo.py
+@@ -1,7 +1,6 @@
+ """Test Marqo functionality."""
+ from typing import Dict
+ 
+-import marqo
+ import pytest
+ 
+ from langchain.docstore.document import Document
+@@ -14,6 +13,8 @@
+ 
+ @pytest.fixture
+ def client() -> Marqo:
++    import marqo
++
+     # fixture for marqo client to be used throughout testing, resets the index
+     client = marqo.Client(url=DEFAULT_MARQO_URL, api_key=DEFAULT_MARQO_API_KEY)
+     try:
+@@ -128,6 +129,8 @@ def test_marqo_weighted_query(client: Marqo) -> None:
+ 
+ 
+ def test_marqo_multimodal() -> None:
++    import marqo
++
+     client = marqo.Client(url=DEFAULT_MARQO_URL, api_key=DEFAULT_MARQO_API_KEY)
+     try:
+         client.index(INDEX_NAME).delete()
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_meilisearch.py b/libs/langchain/tests/integration_tests/vectorstores/test_meilisearch.py
+index 630f9a0b75051..1041ad315b6d4 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_meilisearch.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_meilisearch.py
+@@ -1,7 +1,6 @@
+ """Test Meilisearch functionality."""
+-from typing import Generator
++from typing import TYPE_CHECKING, Generator
+ 
+-import meilisearch
+ import pytest
+ import requests
+ 
+@@ -9,6 +8,9 @@
+ from langchain.vectorstores import Meilisearch
+ from tests.integration_tests.vectorstores.fake_embeddings import FakeEmbeddings
+ 
++if TYPE_CHECKING:
++    import meilisearch
++
+ INDEX_NAME = "test-langchain-demo"
+ TEST_MEILI_HTTP_ADDR = "http://localhost:7700"
+ TEST_MEILI_MASTER_KEY = "masterKey"
+@@ -49,7 +51,9 @@ def delete_all_indexes(self) -> None:
+             task = client.index(index.uid).delete()
+             client.wait_for_task(task.task_uid)
+ 
+-    def client(self) -> meilisearch.Client:
++    def client(self) -> "meilisearch.Client":
++        import meilisearch
++
+         return meilisearch.Client(TEST_MEILI_HTTP_ADDR, TEST_MEILI_MASTER_KEY)
+ 
+     def _wait_last_task(self) -> None:
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_mongodb_atlas.py b/libs/langchain/tests/integration_tests/vectorstores/test_mongodb_atlas.py
+index ec27bbdaadd4f..c57b111018264 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_mongodb_atlas.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_mongodb_atlas.py
+@@ -3,7 +3,7 @@
+ 
+ import os
+ from time import sleep
+-from typing import TYPE_CHECKING
++from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+@@ -21,23 +21,27 @@
+ 
+ # Instantiate as constant instead of pytest fixture to prevent needing to make multiple
+ # connections.
+-TEST_CLIENT: MongoClient = MongoClient(CONNECTION_STRING)
+-collection = TEST_CLIENT[DB_NAME][COLLECTION_NAME]
++
++
++@pytest.fixture
++def collection() -> Any:
++    test_client = MongoClient(CONNECTION_STRING)
++    return test_client[DB_NAME][COLLECTION_NAME]
+ 
+ 
+ class TestMongoDBAtlasVectorSearch:
+     @classmethod
+-    def setup_class(cls) -> None:
++    def setup_class(cls, collection: Any) -> None:
+         # insure the test collection is empty
+         assert collection.count_documents({}) == 0  # type: ignore[index]  # noqa: E501
+ 
+     @classmethod
+-    def teardown_class(cls) -> None:
++    def teardown_class(cls, collection: Any) -> None:
+         # delete all the documents in the collection
+         collection.delete_many({})  # type: ignore[index]
+ 
+     @pytest.fixture(autouse=True)
+-    def setup(self) -> None:
++    def setup(self, collection: Any) -> None:
+         # delete all the documents in the collection
+         collection.delete_many({})  # type: ignore[index]
+ 
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_opensearch.py b/libs/langchain/tests/integration_tests/vectorstores/test_opensearch.py
+index 7b16c2a5d8273..49752c88a0639 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_opensearch.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_opensearch.py
+@@ -1,8 +1,6 @@
+ """Test OpenSearch functionality."""
+ 
+-import boto3
+ import pytest
+-from opensearchpy import AWSV4SignerAuth
+ 
+ from langchain.docstore.document import Document
+ from langchain.vectorstores.opensearch_vector_search import (
+@@ -219,6 +217,9 @@ def test_opensearch_with_custom_field_name_appx_false() -> None:
+ 
+ def test_opensearch_serverless_with_scripting_search_indexing_throws_error() -> None:
+     """Test to validate indexing using Serverless without Approximate Search."""
++    import boto3
++    from opensearchpy import AWSV4SignerAuth
++
+     region = "test-region"
+     service = "aoss"
+     credentials = boto3.Session().get_credentials()
+@@ -235,6 +236,9 @@ def test_opensearch_serverless_with_scripting_search_indexing_throws_error() ->
+ 
+ def test_opensearch_serverless_with_lucene_engine_throws_error() -> None:
+     """Test to validate indexing using lucene engine with Serverless."""
++    import boto3
++    from opensearchpy import AWSV4SignerAuth
++
+     region = "test-region"
+     service = "aoss"
+     credentials = boto3.Session().get_credentials()
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_pinecone.py b/libs/langchain/tests/integration_tests/vectorstores/test_pinecone.py
+index cc380150cbe03..db6b6cdbd9361 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_pinecone.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_pinecone.py
+@@ -2,16 +2,18 @@
+ import os
+ import time
+ import uuid
+-from typing import List
++from typing import TYPE_CHECKING, List
+ 
+ import numpy as np
+-import pinecone
+ import pytest
+ 
+ from langchain.docstore.document import Document
+ from langchain.embeddings import OpenAIEmbeddings
+ from langchain.vectorstores.pinecone import Pinecone
+ 
++if TYPE_CHECKING:
++    import pinecone
++
+ index_name = "langchain-test-index"  # name of the index
+ namespace_name = "langchain-test-namespace"  # name of the namespace
+ dimension = 1536  # dimension of the embeddings
+@@ -32,10 +34,12 @@ def reset_pinecone() -> None:
+ 
+ 
+ class TestPinecone:
+-    index: pinecone.Index
++    index: "pinecone.Index"
+ 
+     @classmethod
+     def setup_class(cls) -> None:
++        import pinecone
++
+         reset_pinecone()
+ 
+         cls.index = pinecone.Index(index_name)
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_rocksetdb.py b/libs/langchain/tests/integration_tests/vectorstores/test_rocksetdb.py
+index f907210165918..e62b8e86532c5 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_rocksetdb.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_rocksetdb.py
+@@ -1,9 +1,6 @@
+ import logging
+ import os
+ 
+-import rockset
+-import rockset.models
+-
+ from langchain.docstore.document import Document
+ from langchain.vectorstores.rocksetdb import Rockset
+ from tests.integration_tests.vectorstores.fake_embeddings import (
+@@ -44,6 +41,9 @@ class TestRockset:
+ 
+     @classmethod
+     def setup_class(cls) -> None:
++        import rockset
++        import rockset.models
++
+         assert os.environ.get("ROCKSET_API_KEY") is not None
+         assert os.environ.get("ROCKSET_REGION") is not None
+ 
+diff --git a/libs/langchain/tests/integration_tests/vectorstores/test_weaviate.py b/libs/langchain/tests/integration_tests/vectorstores/test_weaviate.py
+index a9e1736a4975a..0f8487285a440 100644
+--- a/libs/langchain/tests/integration_tests/vectorstores/test_weaviate.py
++++ b/libs/langchain/tests/integration_tests/vectorstores/test_weaviate.py
+@@ -5,7 +5,6 @@
+ from typing import Generator, Union
+ 
+ import pytest
+-from weaviate import Client
+ 
+ from langchain.docstore.document import Document
+ from langchain.embeddings.openai import OpenAIEmbeddings
+@@ -29,6 +28,8 @@ def setup_class(cls) -> None:
+     @pytest.fixture(scope="class", autouse=True)
+     def weaviate_url(self) -> Union[str, Generator[str, None, None]]:
+         """Return the weaviate url."""
++        from weaviate import Client
++
+         url = "http://localhost:8080"
+         yield url
+ 
+diff --git a/libs/langchain/tests/unit_tests/storage/__init__.py b/libs/langchain/tests/unit_tests/storage/__init__.py
+new file mode 100644
+index 0000000000000..e69de29bb2d1d
+diff --git a/libs/langchain/tests/unit_tests/storage/test_filesystem.py b/libs/langchain/tests/unit_tests/storage/test_filesystem.py
+new file mode 100644
+index 0000000000000..25ba3866bf353
+--- /dev/null
++++ b/libs/langchain/tests/unit_tests/storage/test_filesystem.py
+@@ -0,0 +1,78 @@
++import tempfile
++from typing import Generator
++
++import pytest
++
++from langchain.storage.exceptions import InvalidKeyException
++from langchain.storage.file_system import LocalFileStore
++
++
++@pytest.fixture
++def file_store() -> Generator[LocalFileStore, None, None]:
++    # Create a temporary directory for testing
++    with tempfile.TemporaryDirectory() as temp_dir:
++        # Instantiate the LocalFileStore with the temporary directory as the root path
++        store = LocalFileStore(temp_dir)
++        yield store
++
++
++def test_mset_and_mget(file_store: LocalFileStore) -> None:
++    # Set values for keys
++    key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
++    file_store.mset(key_value_pairs)
++
++    # Get values for keys
++    values = file_store.mget(["key1", "key2"])
++
++    # Assert that the retrieved values match the original values
++    assert values == [b"value1", b"value2"]
++
++
++def test_mdelete(file_store: LocalFileStore) -> None:
++    # Set values for keys
++    key_value_pairs = [("key1", b"value1"), ("key2", b"value2")]
++    file_store.mset(key_value_pairs)
++
++    # Delete keys
++    file_store.mdelete(["key1"])
++
++    # Check if the deleted key is present
++    values = file_store.mget(["key1"])
++
++    # Assert that the value is None after deletion
++    assert values == [None]
++
++
++def test_set_invalid_key(file_store: LocalFileStore) -> None:
++    """Test that an exception is raised when an invalid key is set."""
++    # Set a key-value pair
++    key = "crying-cat/😿"
++    value = b"This is a test value"
++    with pytest.raises(InvalidKeyException):
++        file_store.mset([(key, value)])
++
++
++def test_set_key_and_verify_content(file_store: LocalFileStore) -> None:
++    """Test that the content of the file is the same as the value set."""
++    # Set a key-value pair
++    key = "test_key"
++    value = b"This is a test value"
++    file_store.mset([(key, value)])
++
++    # Verify the content of the actual file
++    full_path = file_store._get_full_path(key)
++    assert full_path.exists()
++    assert full_path.read_bytes() == b"This is a test value"
++
++
++def test_yield_keys(file_store: LocalFileStore) -> None:
++    # Set values for keys
++    key_value_pairs = [("key1", b"value1"), ("subdir/key2", b"value2")]
++    file_store.mset(key_value_pairs)
++
++    # Iterate over keys
++    keys = list(file_store.yield_keys())
++
++    # Assert that the yielded keys match the expected keys
++    expected_keys = ["key1", "subdir/key2"]
++    assert keys == expected_keys
+diff --git a/libs/langchain/tests/unit_tests/storage/test_in_memory.py b/libs/langchain/tests/unit_tests/storage/test_in_memory.py
+new file mode 100644
+index 0000000000000..4e969a01dd8f1
+--- /dev/null
++++ b/libs/langchain/tests/unit_tests/storage/test_in_memory.py
+@@ -0,0 +1,48 @@
++from langchain.storage.in_memory import InMemoryStore
++
++
++def test_mget() -> None:
++    store = InMemoryStore()
++    store.mset([("key1", "value1"), ("key2", "value2")])
++
++    values = store.mget(["key1", "key2"])
++    assert values == ["value1", "value2"]
++
++    # Test non-existent key
++    non_existent_value = store.mget(["key3"])
++    assert non_existent_value == [None]
++
++
++def test_mset() -> None:
++    store = InMemoryStore()
++    store.mset([("key1", "value1"), ("key2", "value2")])
++
++    values = store.mget(["key1", "key2"])
++    assert values == ["value1", "value2"]
++
++
++def test_mdelete() -> None:
++    store = InMemoryStore()
++    store.mset([("key1", "value1"), ("key2", "value2")])
++
++    store.mdelete(["key1"])
++
++    values = store.mget(["key1", "key2"])
++    assert values == [None, "value2"]
++
++    # Test deleting non-existent key
++    store.mdelete(["key3"])  # No error should be raised
++
++
++def test_yield_keys() -> None:
++    store = InMemoryStore()
++    store.mset([("key1", "value1"), ("key2", "value2"), ("key3", "value3")])
++
++    keys = list(store.yield_keys())
++    assert set(keys) == {"key1", "key2", "key3"}
++
++    keys_with_prefix = list(store.yield_keys(prefix="key"))
++    assert set(keys_with_prefix) == {"key1", "key2", "key3"}
++
++    keys_with_invalid_prefix = list(store.yield_keys(prefix="x"))
++    assert keys_with_invalid_prefix == []

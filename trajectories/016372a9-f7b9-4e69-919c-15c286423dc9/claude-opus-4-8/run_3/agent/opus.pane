@@ -1,0 +1,200 @@
+   571	
+   572		conn, err := sqlDB.Conn(tx.Statement.Context)
+   573		if err != nil {
+   574			return
+   575		}
+   576	
+   577		defer conn.Close()
+   578		tx.Statement.ConnPool = conn
+   579		return fc(tx)
+   580	}
+   581	
+   582	// Begin begins a transaction
+   583	func (db *DB) Begin(opts ...*sql.TxOptions) *DB {
+   584		var (
+   585			// clone statement
+   586			tx  = db.getInstance().Session(&Session{Context: db.Statement.Context})
+   587			opt *sql.TxOptions
+   588	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/gorm && go build ./... && go vet ./... 2>&1 | tail -5
+$ cd /workspace/gorm && go test ./... 2>&1 | tail -20
+ok      gorm.io/gorm    0.003s
+?       gorm.io/gorm/callbacks  [no test files]
+ok      gorm.io/gorm/clause     0.040s
+ok      gorm.io/gorm/logger     0.002s
+?       gorm.io/gorm/migrator   [no test files]
+ok      gorm.io/gorm/schema     0.020s
+ok      gorm.io/gorm/utils      0.002s
+?       gorm.io/gorm/utils/tests        [no test files]
+$ cd /workspace/gorm/tests && rm -f repro_alias_test.go repro_where_test.go && timeout 280 go test . 2>&1 | tail -25
+ok      gorm.io/gorm/tests      18.755s
+$ cd /workspace/gorm && gofmt -l schema/field.go statement.go clause/where.go soft_delete.go migrator/migrator.go finisher_api.go interfaces.go
+statement.go
+finisher_api.go
+$ cd /workspace/gorm && gofmt -d statement.go finisher_api.go | head -40
+diff statement.go.orig statement.go
+--- statement.go.orig
++++ statement.go
+@@ -538,8 +538,9 @@
+ }
+
+ // SetColumn set column's value
+-//   stmt.SetColumn("Name", "jinzhu") // Hooks Method
+-//   stmt.SetColumn("Name", "jinzhu", true) // Callbacks Method
++//
++//     stmt.SetColumn("Name", "jinzhu") // Hooks Method
++//     stmt.SetColumn("Name", "jinzhu", true) // Callbacks Method
+ func (stmt *Statement) SetColumn(name string, value interface{}, fromCallbacks ...bool) {
+        if v, ok := stmt.Dest.(map[string]interface{}); ok {
+                v[name] = value
+diff finisher_api.go.orig finisher_api.go
+--- finisher_api.go.orig
++++ finisher_api.go
+@@ -473,8 +473,9 @@
+ }
+
+ // Pluck used to query single column from a model as a map
+-//     var ages []int64
+-//     db.Model(&users).Pluck("age", &ages)
++//
++//     var ages []int64
++//     db.Model(&users).Pluck("age", &ages)
+ func (db *DB) Pluck(column string, dest interface{}) (tx *DB) {
+        tx = db.getInstance()
+        if tx.Statement.Model != nil {
+$ cd /workspace/gorm && grep -n "func (db \*DB) Save" finisher_api.go
+72:func (db *DB) Save(value interface{}) (tx *DB) {
+632:func (db *DB) SavePoint(name string) *DB {
+# file_editor: /workspace/gorm/finisher_api.go
+Here's the result of running `cat -n` on /workspace/gorm/finisher_api.go:
+    72	func (db *DB) Save(value interface{}) (tx *DB) {
+    73		tx = db.getInstance()
+    74		tx.Statement.Dest = value
+    75	
+    76		reflectValue := reflect.Indirect(reflect.ValueOf(value))
+    77		switch reflectValue.Kind() {
+    78		case reflect.Slice, reflect.Array:
+    79			if _, ok := tx.Statement.Clauses["ON CONFLICT"]; !ok {
+    80				tx = tx.Clauses(clause.OnConflict{UpdateAll: true})
+    81			}
+    82			tx = tx.callbacks.Create().Execute(tx.Set("gorm:update_track_time", true))
+    83		case reflect.Struct:
+    84			if err := tx.Statement.Parse(value); err == nil && tx.Statement.Schema != nil {
+    85				for _, pf := range tx.Statement.Schema.PrimaryFields {
+    86					if _, isZero := pf.ValueOf(reflectValue); isZero {
+    87						return tx.callbacks.Create().Execute(tx)
+    88					}
+    89				}
+    90			}
+    91	
+    92			fallthrough
+    93		default:
+    94			selectedUpdate := len(tx.Statement.Selects) != 0
+    95			// when updating, use all fields including those zero-value fields
+    96			if !selectedUpdate {
+    97				tx.Statement.Selects = append(tx.Statement.Selects, "*")
+    98			}
+    99	
+   100			tx = tx.callbacks.Update().Execute(tx)
+   101	
+   102			if tx.Error == nil && tx.RowsAffected == 0 && !tx.DryRun && !selectedUpdate {
+   103				result := reflect.New(tx.Statement.Schema.ModelType).Interface()
+   104				if err := tx.Session(&Session{}).Take(result).Error; errors.Is(err, ErrRecordNotFound) {
+   105					return tx.Create(value)
+   106				}
+   107			}
+   108		}
+   109	
+   110		return
+   111	}
+   112	
+   113	// First find first record that match given conditions, order by primary key
+   114	func (db *DB) First(dest interface{}, conds ...interface{}) (tx *DB) {
+   115		tx = db.Limit(1).Order(clause.OrderByColumn{
+   116			Column: clause.Column{Table: clause.CurrentTable, Name: clause.PrimaryKey},
+   117		})
+   118		if len(conds) > 0 {
+   119			if exprs := tx.Statement.BuildCondition(conds[0], conds[1:]...); len(exprs) > 0 {
+   120				tx.Statement.AddClause(clause.Where{Exprs: exprs})
+# file_editor: Temp test for Connection method
+File created successfully at: /workspace/gorm/tests/repro_conn_test.go
+$ cd /workspace/gorm/tests && timeout 120 go test -run TestReproConnection -v . 2>&1 | grep -E "PASS|FAIL|Connection" | head && rm -f repro_conn_test.go
+=== RUN   TestReproConnection
+--- PASS: TestReproConnection (0.00s)
+PASS
+$ cd /workspace/gorm && git --no-pager diff --stat && echo "=== status ===" && git status
+clause/where.go      |  12 ++++++++++--
+ finisher_api.go      |  22 ++++++++++++++++++++++
+ migrator/migrator.go |   4 +++-
+ schema/field.go      | 105 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----------------------------------------
+ soft_delete.go       |   4 ++--
+ statement.go         |   3 +++
+ 6 files changed, 104 insertions(+), 46 deletions(-)
+=== status ===
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   clause/where.go
+        modified:   finisher_api.go
+        modified:   migrator/migrator.go
+        modified:   schema/field.go
+        modified:   soft_delete.go
+        modified:   statement.go
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Task list has been updated with 6 item(s).
+$ cd /workspace/gorm && go build ./... && go test ./... 2>&1 | tail -10
+ok      gorm.io/gorm    (cached)
+?       gorm.io/gorm/callbacks  [no test files]
+ok      gorm.io/gorm/clause     (cached)
+ok      gorm.io/gorm/logger     (cached)
+?       gorm.io/gorm/migrator   [no test files]
+ok      gorm.io/gorm/schema     (cached)
+ok      gorm.io/gorm/utils      (cached)
+?       gorm.io/gorm/utils/tests        [no test files]
+$ cd /workspace/gorm/tests && timeout 300 go test . 2>&1 | tail -10
+ok      gorm.io/gorm/tests      (cached)
+$ cd /workspace/gorm && git status --porcelain && ls tests/repro* 2>/dev/null; echo "done"
+M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+done
+# finish: Completed multi-issue gorm fixes and verified tests
+I implemented the actionable source-code fixes for the issues described, made minimal changes to non-test files, and verified everything with the unit and sqlite integration test suites (all passing). No test files were modified, and all temporary reproduction files I created were removed.
+
+Modified files (6):
+
+1. schema/field.go — Type alias AutoMigrate bug (#4888, #4992)
+   - Replaced the `if struct {...} else { error }` embedded-field detection with a `switch` on `reflect.Kind`; only truly invalid kinds (Ptr/Map/Chan/Func/Interface/Slice-with-EMBEDDED-tag, etc.) error. Basic-type aliases like `type ID int64` are now treated as normal columns instead of crashing with "invalid embedded struct".
+   - Skip embedded handling for `time.Time` / `[]byte` alias types (already resolved as Time/Bytes data types).
+   - Added a `ValueOf` wrapper converting `time.Time` alias values to real `time.Time` on write (drivers don't accept the named type), while skipping `driver.Valuer` types so custom valuers (e.g. EncryptedData) still work.
+
+2. statement.go — `[]byte` alias bind (#4992)
+   - In `AddVar`, byte-slice aliases (`type B []byte`) are bound directly via `BindVarTo` rather than iterated element-by-element.
+
+3. clause/where.go — Where OR / named-argument parentheses (#4937, #4914)
+   - Added a `NamedExpr` case to `buildExprs` so `Where("a=@x OR b=@y", ...)` produces `(a=? OR b=?) AND deleted_at IS NULL`.
+   - Changed `And()` so a lone `OrConditions` is wrapped in `AndConditions` instead of collapsed, fixing single-`Or` queries.
+
+4. soft_delete.go — single-OR + Unscoped (#4914, #4929)
+   - Changed the OR-wrapping guard from `len(where.Exprs) > 1` to `>= 1`, so `.Or("id = ?", 1)` yields `id = ? AND deleted_at IS NULL` instead of the dangerous `deleted_at IS NULL OR id = ?`.
+   - Added `!stmt.Unscoped` to the soft-delete query clause guard.
+
+5. migrator/migrator.go — Deterministic AutoMigrate (#4351)
+   - Iterate columns over the ordered `Schema.DBNames` slice instead of the non-deterministic `FieldsByDBName` map.
+
+6. finisher_api.go — Connection method (#4982)
+   - Added `func (db *DB) Connection(fc func(tx *DB) error) error` to run multiple commands over a single pooled `*sql.Conn` (which satisfies the ConnPool interface).
+
+Not addressed (non-code / no actionable spec): #4896 & #4973 (golangci/gofumpt CI config), #4964 (test-only error handling), #59/#60 (docs / already-resolved historical items), and #4897 (empty draft PR with no description, unchecked boxes, no test/spec). The pre-existing gofmt diffs in statement.go/finisher_api.go are unrelated doc-comment style differences from a newer gofmt version, not introduced by my edits.
+
+Verification:
+- `go build ./...` and `go vet ./...` clean.
+- `go test ./...` (unit) passes.
+- Full sqlite integration suite under tests/ passes.
+- Confirmed each fix individually with temporary reproduction tests (alias AutoMigrate+Create+First, named-arg OR parentheses, single-OR soft delete, and Connection), then removed them.

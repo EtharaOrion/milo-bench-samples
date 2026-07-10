@@ -1,0 +1,200 @@
+        }
+
+        // Imports from top level user types
+        for _, t := range types {
+-               t.Import = imports.add(t.Package)
++               imp, err := imports.add(t.Package)
++               if err != nil {
++                       return nil, err
++               }
++               t.Import = imp
+        }
+
+-       return &imports
++       return &imports, nil
+ }
+
+-func (s *Imports) add(path string) *Import {
++func (s *Imports) add(path string) (*Import, error) {
+        if path == "" {
+-               return nil
++               return nil, nil
+        }
+
+        if stringHasSuffixFold(s.destDir, path) {
+-               return nil
++               return nil, nil
+        }
+
+        if existing := s.findByPath(path); existing != nil {
+-               return existing
++               return existing, nil
+        }
+
+        pkg, err := build.Default.Import(path, s.destDir, 0)
+        if err != nil {
+-               panic(err)
++               return nil, err
+        }
+
+        imp := &Import{
+@@ -67,7 +73,7 @@ func (s *Imports) add(path string) *Import {
+        }
+        s.imports = append(s.imports, imp)
+
+-       return imp
++       return imp, nil
+ }
+
+ func stringHasSuffixFold(s, suffix string) bool {
+diff --git a/codegen/type.go b/codegen/type.go
+index 31fcefc..49a49b2 100644
+--- a/codegen/type.go
++++ b/codegen/type.go
+@@ -27,7 +27,7 @@ type Type struct {
+        *NamedType
+
+        Modifiers []string
+-       CastType  string // the type to cast to when unmarshalling
++       CastType  *Ref // the type to cast to when unmarshalling
+ }
+
+ const (
+@@ -125,7 +125,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+        }
+
+        realResult := result
+-       if t.CastType != "" {
++       if t.CastType != nil {
+                result = "castTmp"
+        }
+
+@@ -140,7 +140,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+                                err = (&{{.result}}).UnmarshalGQL({{.raw}})
+                        {{- end }}
+                {{- if .t.CastType }}
+-                       {{ .realResult }} = {{.t.CastType}}(castTmp)
++                       {{ .realResult }} = {{.t.CastType.FullName}}(castTmp)
+                {{- end }}`, map[string]interface{}{
+                "realResult": realResult,
+                "result":     result,
+@@ -150,7 +150,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+ }
+
+ func (t Type) Marshal(val string) string {
+-       if t.CastType != "" {
++       if t.CastType != nil {
+                val = t.GoType + "(" + val + ")"
+        }
+
+diff --git a/codegen/type_build.go b/codegen/type_build.go
+index 76426a2..baf98d4 100644
+--- a/codegen/type_build.go
++++ b/codegen/type_build.go
+@@ -34,7 +34,7 @@ func (cfg *Config) buildNamedTypes() NamedTypes {
+        return types
+ }
+
+-func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) {
++func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) error {
+        for _, t := range namedTypes {
+                if t.Package == "" {
+                        continue
+@@ -48,9 +48,14 @@ func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir st
+                        t.Marshaler = &cpy
+
+                        t.Package, t.GoType = pkgAndType(sig.Params().At(0).Type().String())
+-                       t.Import = imports.add(t.Package)
++                       imp, err := imports.add(t.Package)
++                       if err != nil {
++                               return err
++                       }
++                       t.Import = imp
+                }
+        }
++       return nil
+ }
+
+ // namedTypeFromSchema objects for every graphql type, including primitives.
+diff --git a/codegen/util.go b/codegen/util.go
+index dfd44d5..5de60f5 100644
+--- a/codegen/util.go
++++ b/codegen/util.go
+@@ -183,11 +183,12 @@ func bindObject(t types.Type, object *Object, imports *Imports) error {
+                                // everything is fine
+
+                        case normalizeVendor(structField.Type().Underlying().String()):
++                               // type matches if we cast the field type to the underlying go type
+                                pkg, typ := pkgAndType(structField.Type().String())
+-                               imp := imports.findByPath(pkg)
+-                               field.CastType = typ
+-                               if imp != nil {
+-                                       field.CastType = imp.Alias + "." + typ
++                               field.CastType = &Ref{
++                                       GoType:  typ,
++                                       Package: pkg,
++                                       Import:  imports.findByPath(pkg),
+                                }
+
+                        default:
+$ cd /go/src/github.com/vektah/gqlgen && GOFLAGS=-mod=mod go test -vet=off -count=1 ./codegen/ 2>&1 | tail -5
+ok      github.com/vektah/gqlgen/codegen        16.271s
+$ echo "===== ISSUE 170: bad input no longer panics =====" && cd /tmp/gp/src/badinput && GO111MODULE=off GOPATH=/tmp/gp go run github.com/vektah/gqlgen 2>&1 | grep -i "panic\|goroutine\|cannot find" | head; echo "exit: $?"; \
+$ echo "" && echo "===== ISSUE 180: external cast type has package alias =====" && cd /tmp/gp/src/sc && rm -f generated.go models_gen.go && GO111MODULE=off GOPATH=/tmp/gp go run github.com/vektah/gqlgen >/dev/null 2>&1 && grep -n "it.IsBanned" generated.go && GO111MODULE=off GOPATH=/tmp/gp go build ./... && echo "REORG EXAMPLE BUILDS OK"
+===== ISSUE 170: bad input no longer panics =====
+model plan failed: cannot find package "example" in any of:
+exit: 0
+
+===== ISSUE 180: external cast type has package alias =====
+1283:                   it.IsBanned = model.Banned(castTmp)
+REORG EXAMPLE BUILDS OK
+$ rm -rf /tmp/gp /tmp/pkgtest.go /tmp/generated.go.orig /tmp/models_gen.go.orig /tmp/*.gen.orig; rm -f /go/src/github.com/vektah/gqlgen; rmdir /go/src/github.com/vektah 2>/dev/null; cd /workspace/gqlgen && git status --porcelain && echo "--- diff stat ---" && git --no-pager diff --stat
+M codegen/build.go
+ M codegen/import_build.go
+ M codegen/type.go
+ M codegen/type_build.go
+ M codegen/util.go
+--- diff stat ---
+ codegen/build.go        | 25 ++++++++++++++++++-------
+ codegen/import_build.go | 26 ++++++++++++++++----------
+ codegen/type.go         |  8 ++++----
+ codegen/type_build.go   |  9 +++++++--
+ codegen/util.go         |  9 +++++----
+ 5 files changed, 50 insertions(+), 27 deletions(-)
+$ cd /workspace/gqlgen && go build ./... 2>&1 | head; echo "BUILD EXIT $?"
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/vektah: permission denied
+example/scalars/generated.go:8:2: package external is not in std (/usr/local/go/src/external)
+test/generated.go:8:2: package remote_api is not in std (/usr/local/go/src/remote_api)
+BUILD EXIT 0
+# think: Module-mode build fails only on vendored example packages
+Your thought has been logged.
+$ cd /workspace/gqlgen && go build ./codegen/... ./graphql/... ./neelance/... ./handler/... ./client/... 2>&1 | head; echo "CORE BUILD EXIT $?"
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/vektah: permission denied
+CORE BUILD EXIT 0
+# finish: Summarize the two issue fixes and verification
+I implemented fixes for both issues described.
+
+## Issue #170 — Panics if run in package main / bad input
+**Root cause:** `Imports.add()` in `codegen/import_build.go` called `panic(err)` whenever `build.Default.Import` failed (e.g. for a malformed model path like `example.com/foo-bar`, which `pkgAndType` splits into package `example` + type `com/foo-bar`, then fails to resolve package `example`). Command-line tools shouldn't panic on bad input.
+
+**Fix:** Made `add()` return `(*Import, error)` instead of panicking, and propagated the error up the call chain:
+- `import_build.go`: `add()` and `buildImports()` now return errors.
+- `type_build.go`: `bindTypes()` now returns an error.
+- `build.go`: `models()` and `bind()` handle and propagate these errors.
+
+Now bad input produces a clean error message (`model plan failed: cannot find package "example" ...`, exit code 1) instead of a panic + goroutine stack trace.
+
+## Issue #180 — Custom scalar marshallers in external packages generate invalid code
+**Root cause:** In `bindObject` (`codegen/util.go`), when a struct field needs a cast to its underlying type (e.g. `type Banned bool` used for a `Boolean` GQL field), the cast type string was built using `imp.Alias`. But import aliases are only assigned later in `Imports.finalize()`, so `imp.Alias` was still empty at that point. For types in an external package this produced invalid code like `it.IsBanned = .Banned(castTmp)` (missing package qualifier).
+
+**Fix:** Changed `Type.CastType` from a `string` to a `*Ref` (in `codegen/type.go`) and stored the resolved `*Import` pointer in it. Since `Ref.FullName()`/`PkgDot()` read `Import.Alias` lazily at template-render time (after `finalize()`), the alias now resolves correctly, producing e.g. `it.IsBanned = model.Banned(castTmp)`. Positional `Type{}` literals in `build.go` were updated from `""` to `nil` accordingly.
+
+## Verification
+- Built a faithful GOPATH reproduction (matching the example reorganization from #179, with the scalar marshallers in an external/`model` package). Before the fix the generated code had `it.IsBanned = .Banned(castTmp)` and failed to compile; after the fix it generates `model.Banned(castTmp)` and compiles cleanly.
+- Confirmed the bad-input scenario no longer panics.
+- All `codegen` package tests pass (16s), and all `example/...`, `graphql/...`, `neelance/...` tests pass.
+- Regenerated every example in the repo (scalars, starwars, todo, selection, chat, dataloader) — output is byte-for-byte identical to the committed files (no regressions).
+
+**Notes:** Two pre-existing failures (`TestComplexInputTypes`, `TestKeywordInputFields`) and one `go vet` warning (`util.go:164`, a line I did not touch) occur only when running from `/workspace` in module mode; they fail identically on the base commit (verified via `git stash`) and are caused by the repo living outside `GOPATH` — unrelated to these issues. When run from a `GOPATH` location, the entire test suite passes.
+
+Changed files: `codegen/build.go`, `codegen/import_build.go`, `codegen/type.go`, `codegen/type_build.go`, `codegen/util.go`.

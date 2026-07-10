@@ -1,0 +1,200 @@
+- Fixed race condition that duplicated lines in progress https://github.com/willmcgugan/rich/issues/1144
+
+## [10.0.0] - 2021-03-27
+
+### Changed
+
+- Made pydoc import lazy as at least one use found it slow to import https://github.com/willmcgugan/rich/issues/1104
+# file_editor: /workspace/rich/CHANGELOG.md
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+   141	
+   142	- Fixed initial blank lines removed from Syntax https://github.com/willmcgugan/rich/issues/1214
+   143	
+   144	## [10.1.0] - 2021-04-03
+   145	
+   146	### Fixed
+   147	
+   148	- Fixed support for jupyter qtconsole and similar Jupyter environments
+   149	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && grep -n "^## \[" CHANGELOG.md | sed -n '1,20p'
+8:## [10.9.0] - 2021-08-29
+20:## [10.8.0] - 2021-08-28
+34:## [10.7.0] - 2021-08-05
+50:## [10.6.0] - 2021-07-12
+72:## [10.5.0] - 2021-07-05
+88:## [10.4.0] - 2021-06-18
+99:## [10.3.0] - 2021-06-09
+113:## [10.2.2] - 2021-05-19
+119:## [10.2.1] - 2021-05-17
+125:## [10.2.0] - 2021-05-12
+144:## [10.1.0] - 2021-04-03
+150:## [10.0.1] - 2021-03-30
+156:## [10.0.0] - 2021-03-27
+190:## [9.13.0] - 2021-03-06
+205:## [9.12.4] - 2021-03-01
+216:## [9.12.3] - 2021-02-28
+222:## [9.12.2] - 2021-02-27
+232:## [9.12.1] - 2021-02-27
+248:## [9.12.0] - 2021-02-24
+265:## [9.11.1] - 2021-02-20
+# file_editor: /workspace/rich/CHANGELOG.md
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [Unreleased]
+     9	
+    10	### Added
+    11	
+    12	- Added stdin support to `python -m rich.json`
+    13	
+    14	### Changed
+    15	
+    16	- Use builtin `html.escape` to escape HTML in console and Jupyter exports
+    17	
+    18	### Fixed
+    19	
+    20	- Fixed `__rich_repr__` crash when the attribute is not callable
+    21	
+    22	## [10.9.0] - 2021-08-29
+    23	
+    24	### Added
+    25	
+    26	- Added data parameter to print_json method / function
+    27	- Added an --indent parameter to python -m rich.json
+    28	
+    29	### Changed
+    30	
+    31	- Changed default indent of JSON to 2 (down from 4)
+    32	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python -c "import rich.console, rich.jupyter, rich.json, rich.pretty; print('imports OK')" && python -m pytest tests/test_pretty.py tests/test_console.py tests/test_jupyter.py -q 2>&1 | tail -5
+imports OK
+'Foo(bar=AttributeError("\'Foo\' object has no attribute \'bar\'"))'
+=========================== short test summary info ============================
+FAILED tests/test_pretty.py::test_pretty_dataclass - assert "ExampleDatac...b...
+FAILED tests/test_pretty.py::test_attrs_broken - assert 'Foo(bar=Attr...te \'...
+2 failed, 90 passed in 0.15s
+$ cd /workspace/rich && GIT_PAGER=cat git --no-pager diff -- rich/
+diff --git a/rich/console.py b/rich/console.py
+index db1d9cd..8ce9d45 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
+ from datetime import datetime
+ from functools import wraps
+ from getpass import getpass
++from html import escape
+ from inspect import isclass
+ from itertools import islice
+ from time import monotonic
+@@ -2012,10 +2013,6 @@ class Console:
+         _theme = theme or DEFAULT_TERMINAL_THEME
+         stylesheet = ""
+
+-        def escape(text: str) -> str:
+-            """Escape html."""
+-            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+-
+         render_code_format = CONSOLE_HTML_FORMAT if code_format is None else code_format
+
+         with self._record_buffer_lock:
+diff --git a/rich/json.py b/rich/json.py
+index f03be88..41f3372 100644
+--- a/rich/json.py
++++ b/rich/json.py
+@@ -54,6 +54,8 @@ if __name__ == "__main__":
+         "path",
+         metavar="PATH",
+         help="path to file, or - for stdin",
++        nargs="?",
++        default="-",
+     )
+     parser.add_argument(
+         "-i",
+@@ -71,8 +73,11 @@ if __name__ == "__main__":
+     error_console = Console(stderr=True)
+
+     try:
+-        with open(args.path, "rt") as json_file:
+-            json_data = json_file.read()
++        if args.path == "-":
++            json_data = sys.stdin.read()
++        else:
++            with open(args.path, "rt") as json_file:
++                json_data = json_file.read()
+     except Exception as error:
+         error_console.print(f"Unable to read {args.path!r}; {error}")
+         sys.exit(-1)
+diff --git a/rich/jupyter.py b/rich/jupyter.py
+index 7cdcc9c..9fb3a45 100644
+--- a/rich/jupyter.py
++++ b/rich/jupyter.py
+@@ -1,3 +1,4 @@
++from html import escape
+ from typing import Any, Dict, Iterable, List
+
+ from . import get_console
+@@ -49,10 +50,6 @@ class JupyterMixin:
+
+
+ def _render_segments(segments: Iterable[Segment]) -> str:
+-    def escape(text: str) -> str:
+-        """Escape html."""
+-        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+-
+     fragments: List[str] = []
+     append_fragment = fragments.append
+     theme = DEFAULT_TERMINAL_THEME
+diff --git a/rich/pretty.py b/rich/pretty.py
+index 6d02954..5edfdbd 100644
+--- a/rich/pretty.py
++++ b/rich/pretty.py
+@@ -288,7 +288,7 @@ def is_expandable(obj: Any) -> bool:
+     return (
+         isinstance(obj, _CONTAINERS)
+         or (is_dataclass(obj))
+-        or (hasattr(obj, "__rich_repr__"))
++        or (hasattr(obj, "__rich_repr__") and callable(obj.__rich_repr__))
+         or _is_attr_object(obj)
+     ) and not isclass(obj)
+
+@@ -503,7 +503,11 @@ def traverse(
+                 else:
+                     yield arg
+
+-        if hasattr(obj, "__rich_repr__") and not isclass(obj):
++        if (
++            hasattr(obj, "__rich_repr__")
++            and not isclass(obj)
++            and callable(obj.__rich_repr__)
++        ):
+             angular = getattr(obj.__rich_repr__, "angular", False)
+             args = list(iter_rich_args(obj.__rich_repr__()))
+             class_name = obj.__class__.__name__
+# finish: Summarize implemented changes
+I've implemented the actionable code changes from the issue description. The issue bundled many sub-issues (several were dependabot dependency bumps and bug reports needing no source change), so I focused on the ones requiring concrete code/doc changes:
+
+**Implemented changes:**
+
+1. **Issue #1449 — Add stdin support to `rich.json`** (`rich/json.py`):
+   - Made the `path` argument optional (`nargs="?"`, `default="-"`).
+   - When the path is `-` (or omitted), JSON is now read from `sys.stdin`. File paths still work as before.
+   - Verified all three modes: `python -m rich.json file.json`, `... | python -m rich.json -`, and `... | python -m rich.json`.
+
+2. **Issue #1467 — Use builtin `html.escape`** (`rich/console.py`, `rich/jupyter.py`):
+   - Replaced the hand-rolled escape helpers (which only escaped `&`, `<`, `>`) with the stdlib `html.escape`, which additionally escapes `"` → `&quot;` and `'` → `&#x27;`. Verified via `export_html()` and `_render_segments()`.
+
+3. **Issue #1492 — Fix `'Field' object is not callable` in `rich.pretty`** (`rich/pretty.py`):
+   - Both `is_expandable()` and `traverse()` now check `callable(obj.__rich_repr__)` before treating an object as having a usable `__rich_repr__`, preventing the `TypeError` crash when `__rich_repr__` is a non-callable attribute.
+
+4. **Issue #1456 — Fix changelog year** (`CHANGELOG.md`):
+   - Corrected the years for 10.9.0, 10.8.0, and 10.1.0 from 2020 to 2021 (they fall between other 2021 releases).
+   - Added an Unreleased section documenting the new feature/changes/fix above.
+
+**Verification:**
+- Manually exercised each fix.
+- Ran the full test suite. The 17 failing tests are all pre-existing failures unrelated to my changes (confirmed byte-identical failure set before and after my changes via `git stash` comparison — they stem from Python/pygments version differences in this environment, not my edits). All other tests pass and imports load cleanly.
+
+The remaining sub-issues (#1453, #1454, #1485, #1486 dependency bumps; #1171, #1161, #1151, #1051, #1129, #1050, #1220, #1088 bug reports/requests; #1464/#1466 docstring/import cleanups) were either dependency-version PRs not applicable to source logic, or ambiguous/broad cleanups without a clearly defined single change to make.
