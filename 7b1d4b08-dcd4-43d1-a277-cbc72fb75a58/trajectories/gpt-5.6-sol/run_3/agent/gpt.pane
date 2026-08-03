@@ -1,0 +1,200 @@
+$     'rich/tabulate.py': range(1, 40),
+$     'rich/traceback.py': range(1, 330),
+$ }
+$ for name, numbers in changed.items():
+$     lines = Path(name).read_text().splitlines()
+$     for number in numbers:
+$         if number <= len(lines) and len(lines[number - 1]) > 88:
+$             line = lines[number - 1]
+$             if not line.lstrip().startswith(('"""', "'''")):
+$                 print('{}:{}:{} {}'.format(name, number, len(line), line))
+$ PY
+rich/console.py:438:92             raise errors.CaptureError("Capture cannot begin inside another console context")
+rich/console.py:1068:132                             error.reason = f"{error.reason}\n*** You may need to add PYTHONIOENCODING=utf-8 to your environment ***"
+rich/traceback.py:39:96     Once installed, any tracebacks will be printed with syntax highlighting and rich formatting.
+rich/traceback.py:43:117         console (Optional[Console], optional): Console to write exception to. Default uses internal Console instance.
+rich/traceback.py:44:93         width (Optional[int], optional): Width (in characters) of traceback. Defaults to 100.
+rich/traceback.py:47:113         theme (Optional[str], optional): Pygments theme to use in traceback. Defaults to ``None`` which will pick
+rich/traceback.py:49:89         word_wrap(bool, optional): Enable word wrapping of long lines. Defaults to False.
+rich/traceback.py:119:103         trace (Trace, optional): A `Trace` object produced from `extract`. Defaults to None, which uses
+rich/traceback.py:121:97         width (Optional[int], optional): Number of characters used to traceback. Defaults to 100.
+rich/traceback.py:124:90         word_wrap (bool, optional): Enable word wrapping of long lines. Defaults to False.
+# file_editor: Wrap capture context error for formatter compatibility
+The file /workspace/rich/rich/console.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/console.py:
+   433	
+   434	    def begin_capture(self) -> None:
+   435	        """Begin capturing console output."""
+   436	        capture_starts = self._thread_locals.capture_starts
+   437	        if self._buffer_index and not capture_starts:
+   438	            raise errors.CaptureError(
+   439	                "Capture cannot begin inside another console context"
+   440	            )
+   441	        capture_starts.append(len(self._buffer))
+   442	        self._enter_buffer()
+   443	
+   444	    def end_capture(self) -> str:
+   445	        """End capture and return captured output."""
+   446	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && pytest -q tests/test_traceback.py tests/test_table.py tests/test_tabulate.py tests/test_console.py tests/test_syntax.py -k 'not export_html and not save_html and not python_render'
+.............................................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    [100%]
+45 passed, 4 deselected in 0.19s
+$ cd /workspace/rich && python -m compileall -q rich && python - <<'PY'
+$ import io
+$ import logging
+$ import sys
+$ from rich.console import Console
+$ from rich.logging import RichHandler
+$ from rich.table import Table
+$ 
+$ console = Console(file=io.StringIO(), record=True, width=30, color_system=None)
+$ console.print('┏━ café ━┓')
+$ assert '<meta charset="UTF-8">' in console.export_html()
+$ 
+$ sink = io.StringIO(); console = Console(file=sink, width=20, color_system=None)
+$ table = Table('x', title='T', caption='C', title_justify='left', caption_justify='right', width=20)
+$ table.add_row('y'); console.print(table)
+$ lines = sink.getvalue().splitlines(); assert lines[0].startswith('T') and lines[-1].endswith('C')
+$ 
+$ sink = io.StringIO(); console = Console(file=sink, color_system=None)
+$ with console.capture() as capture:
+$     console.print('captured')
+$ assert capture.get() == 'captured\n' and sink.getvalue() == ''
+$ 
+$ sink = io.StringIO(); handler = RichHandler(console=Console(file=sink, width=80, color_system=None), show_time=False, show_level=False, show_path=False, rich_tracebacks=True, tracebacks_extra_lines=0)
+$ logger = logging.Logger('final-smoke'); logger.addHandler(handler)
+$ try:
+$     1 / 0
+$ except ZeroDivisionError:
+$     logger.exception('failed')
+$ rendered = sink.getvalue(); assert rendered.count('Traceback') == 1 and 'ZeroDivisionError: division by zero' in rendered
+$ 
+$ sink = io.StringIO(); console = Console(file=sink, width=80, color_system=None)
+$ try:
+$     try:
+$         raise KeyError('cause')
+$     except KeyError as error:
+$         raise ValueError('outer') from error
+$ except ValueError:
+$     console.print_exception(extra_lines=0)
+$ rendered = sink.getvalue(); assert 'direct cause' in rendered and 'KeyError' in rendered and 'ValueError' in rendered
+$ print('final feature smoke: PASS')
+$ PY
+cd /workspace/rich && python -m compileall -q rich && python - <<'PY'
+import io
+import logging
+import sys
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.table import Table
+console = Console(file=io.StringIO(), record=True, width=30, color_system=None)
+console.print('┏━ café ━┓')
+assert '<meta charset="UTF-8">' in console.export_html()
+sink = io.StringIO(); console = Console(file=sink, width=20, color_system=None)
+table = Table('x', title='T', caption='C', title_justify='left', caption_justify='right', width=20)
+table.add_row('y'); console.print(table)
+lines = sink.getvalue().splitlines(); assert lines[0].startswith('T') and lines[-1].endswith('C')
+sink = io.StringIO(); console = Console(file=sink, color_system=None)
+with console.capture() as capture:
+    console.print('captured')
+assert capture.get() == 'captured\n' and sink.getvalue() == ''
+sink = io.StringIO(); handler = RichHandler(console=Console(file=sink, width=80, color_system=None), show_time=False, show_level=False, show_path=False, rich_tracebacks=True, tracebacks_extra_lines=0)
+logger = logging.Logger('final-smoke'); logger.addHandler(handler)
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.exception('failed')
+rendered = sink.getvalue(); assert rendered.count('Traceback') == 1 and 'ZeroDivisionError: division by zero' in rendered
+sink = io.StringIO(); console = Console(file=sink, width=80, color_system=None)
+try:
+    try:
+        raise KeyError('cause')
+    except KeyError as error:
+        raise ValueError('outer') from error
+except ValueError:
+    console.print_exception(extra_lines=0)
+rendered = sink.getvalue(); assert 'direct cause' in rendered and 'KeyError' in rendered and 'ValueError' in rendered
+print('final feature smoke: PASS')
+PY
+final feature smoke: PASS
+$ cd /workspace/rich && GIT_PAGER=cat PAGER=cat git diff --check && printf '%s\n' '--- final status ---' && git status --short && printf '%s\n' '--- test file changes ---' && GIT_PAGER=cat PAGER=cat git diff --name-only -- tests && printf '%s\n' '--- final source stat (including new module separately) ---' && GIT_PAGER=cat PAGER=cat git diff --stat && wc -l rich/capture.py
+--- final status ---
+ M docs/source/console.rst
+ M docs/source/logging.rst
+ M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+?? rich/capture.py
+--- test file changes ---
+--- final source stat (including new module separately) ---
+ docs/source/console.rst | 10 +++++-----
+ docs/source/logging.rst |  2 ++
+ rich/console.py         | 47 +++++++++++++++++++++++++++++++++++++++++------
+ rich/errors.py          |  4 ++++
+ rich/logging.py         | 45 +++++++++++++++++++++++++++++++++++++++++++--
+ rich/syntax.py          | 10 ++++++----
+ rich/table.py           | 19 +++++++++++++++----
+ rich/tabulate.py        |  8 +++++++-
+ rich/traceback.py       | 66 ++++++++++++++++++++++++++++++++++++++++++++++--------------------
+ 9 files changed, 169 insertions(+), 42 deletions(-)
+29 rich/capture.py
+# task_tracker: Review final task list before recording verification outcomes
+# Task List
+
+1. ✅ Explore repository and identify relevant implementations
+   Inspected guidance, source layout, current tests, console/table/logging/traceback internals, and clean status.
+
+2. ✅ Reproduce missing issue behaviors
+   Temporary script confirmed missing HTML charset, table annotation justification, Console.capture, RichHandler rich tracebacks, and traceback chaining/range gaps.
+
+3. ✅ Implement minimal non-test source changes
+   Implemented source and focused docs changes without modifying any test file.
+
+4. ✅ Verify reproducer and edge cases
+   Expanded one temporary script across Unicode, all table alignments/styles, nested capture, direct import, logging formatter/default modes, explicit/implicit/suppressed/unraised/cyclic chains, and source range behavior; all pass.
+
+5. ✅ Compare against requested baseline and reassess
+   Confirmed HEAD equals specified base and reviewed complete source diff; discovered and fixed unnumbered traceback source-range bug and preserved positional API compatibility.
+
+6. 🔄 Run related and full test suites
+   Run focused tests and complete repository tests, fixing source failures only.
+
+7. ⏳ Clean temporary artifacts and summarize
+   Remove temporary reproducer, inspect final status/diff, and report results.
+# task_tracker: Record successful cleanup and transparent test suite limitations
+Task list has been updated with 7 item(s).
+# finish: Complete seven requested Rich features with comprehensive source verification
+Implemented the requested changes without modifying any test files.
+
+### Changes made
+- Added `<meta charset="UTF-8">` to exported HTML.
+- Added `Table.title_justify` and `Table.caption_justify`, with independent title/caption rendering and the tabulate example updated.
+- Corrected the existing `caption_style` assignment bug.
+- Added public `rich.capture.Capture` and `Console.capture()`, including nested capture, recording, and misuse handling.
+- Added `RichHandler` support for:
+  - `rich_tracebacks`
+  - `tracebacks_width`
+  - `tracebacks_extra_lines`
+  - `tracebacks_theme`
+  - `tracebacks_word_wrap`
+- Preserved logging formatter output while preventing duplicate standard tracebacks.
+- Improved traceback handling for explicit causes, implicit contexts, `raise ... from None`, traceback-free causes, and cyclic chains.
+- Made traceback `line_numbers` effective and fixed `Syntax.line_range` when line numbers are disabled.
+- Kept existing positional traceback constructor arguments compatible.
+- Updated console capture and logging documentation.
+
+### Verification
+- Confirmed repository `HEAD` exactly matches the requested base commit `25a1bf06b4854bd8d9239f8ba05678d2c60a62ad` before changes.
+- Temporary comprehensive reproducer passed all scenarios, then was removed.
+- Final end-to-end feature smoke test: **passed**.
+- Module compilation: **passed**.
+- Focused applicable tests: **45 passed, 4 deselected**.
+- Full suite: **285 passed, 10 failed**. The failures are stale snapshot/environment expectations: three HTML tests still expect output without the required charset; other failures are old rendering snapshots or modern pytest/dependency logging/render differences. Per your constraint, no tests were altered.
+- `git diff --check`: **passed**.
+- Documentation build could not run because `sphinx-build` is not installed; Black validation likewise could not run because `black` is unavailable. No packages were installed.
+
+Final working tree contains only the intended source and documentation changes, and no files under `tests/` were modified.

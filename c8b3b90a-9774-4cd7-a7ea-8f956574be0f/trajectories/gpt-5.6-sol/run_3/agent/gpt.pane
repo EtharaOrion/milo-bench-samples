@@ -1,0 +1,200 @@
+   109			f.GoFieldType = GoFieldMethod
+   110			f.GoReceiverName = "ec"
+   111			f.GoFieldName = "__resolve_entities"
+   112			f.MethodHasContext = true
+   113			return nil
+   114		case f.Name == "_service":
+   115			f.GoFieldType = GoFieldMethod
+   116			f.GoReceiverName = "ec"
+   117			f.GoFieldName = "__resolve__service"
+   118			f.MethodHasContext = true
+   119			return nil
+   120		case obj.Root:
+   121			f.IsResolver = true
+   122			return nil
+   123		case b.Config.Models[obj.Name].Fields[f.Name].Resolver:
+   124			f.IsResolver = true
+   125			return nil
+   126		case obj.Type == config.MapType:
+   127			f.GoFieldType = GoFieldMap
+   128			return nil
+   129		case b.Config.Models[obj.Name].Fields[f.Name].FieldName != "":
+   130			f.GoFieldName = b.Config.Models[obj.Name].Fields[f.Name].FieldName
+# file_editor: Inspect field resolver classification tests
+NOTE: We only show up to 116 since there're only 116 lines in this file.
+Here's the result of running `cat -n` on /workspace/gqlgen/codegen/field_test.go:
+     1	package codegen
+     2	
+     3	import (
+     4		"go/ast"
+     5		"go/importer"
+     6		"go/parser"
+     7		"go/token"
+     8		"go/types"
+     9		"testing"
+    10	
+    11		"github.com/99designs/gqlgen/codegen/config"
+    12		"github.com/stretchr/testify/require"
+    13	)
+    14	
+    15	func TestFindField(t *testing.T) {
+    16		input := `
+    17	package test
+    18	
+    19	type Std struct {
+    20		Name string
+    21		Value int
+    22	}
+    23	type Anon struct {
+    24		Name string
+    25		Tags
+    26	}
+    27	type Tags struct {
+    28		Bar string ` + "`" + `gqlgen:"foo"` + "`" + `
+    29		Foo int    ` + "`" + `gqlgen:"bar"` + "`" + `
+    30	}
+    31	type Amb struct {
+    32		Bar string ` + "`" + `gqlgen:"foo"` + "`" + `
+    33		Foo int    ` + "`" + `gqlgen:"foo"` + "`" + `
+    34	}
+    35	type Embed struct {
+    36		Std
+    37		Test string
+    38	}
+    39	`
+    40		scope, err := parseScope(input, "test")
+    41		require.NoError(t, err)
+    42	
+    43		std := scope.Lookup("Std").Type().(*types.Named)
+    44		anon := scope.Lookup("Anon").Type().(*types.Named)
+    45		tags := scope.Lookup("Tags").Type().(*types.Named)
+    46		amb := scope.Lookup("Amb").Type().(*types.Named)
+    47		embed := scope.Lookup("Embed").Type().(*types.Named)
+    48	
+    49		tests := []struct {
+    50			Name        string
+    51			Named       *types.Named
+    52			Field       string
+    53			Tag         string
+    54			Expected    string
+    55			ShouldError bool
+    56		}{
+    57			{"Finds a field by name with no tag", std, "name", "", "Name", false},
+    58			{"Finds a field by name when passed tag but tag not used", std, "name", "gqlgen", "Name", false},
+    59			{"Ignores tags when not passed a tag", tags, "foo", "", "Foo", false},
+    60			{"Picks field with tag over field name when passed a tag", tags, "foo", "gqlgen", "Bar", false},
+    61			{"Errors when ambigious", amb, "foo", "gqlgen", "", true},
+    62			{"Finds a field that is in embedded struct", anon, "bar", "", "Bar", false},
+    63			{"Finds field that is not in embedded struct", embed, "test", "", "Test", false},
+    64		}
+    65	
+    66		for _, tt := range tests {
+    67			b := builder{Config: &config.Config{StructTag: tt.Tag}}
+    68			target, err := b.findBindTarget(tt.Named, tt.Field)
+    69			if tt.ShouldError {
+    70				require.Nil(t, target, tt.Name)
+    71				require.Error(t, err, tt.Name)
+    72			} else {
+    73				require.NoError(t, err, tt.Name)
+    74				require.Equal(t, tt.Expected, target.Name(), tt.Name)
+    75			}
+    76		}
+    77	}
+    78	
+    79	func parseScope(input interface{}, packageName string) (*types.Scope, error) {
+    80		// test setup to parse the types
+    81		fset := token.NewFileSet()
+    82		f, err := parser.ParseFile(fset, "test.go", input, 0)
+    83		if err != nil {
+    84			return nil, err
+    85		}
+    86	
+    87		conf := types.Config{Importer: importer.Default()}
+    88		pkg, err := conf.Check(packageName, fset, []*ast.File{f}, nil)
+    89		if err != nil {
+    90			return nil, err
+    91		}
+    92	
+    93		return pkg.Scope(), nil
+    94	}
+    95	
+    96	func TestEqualFieldName(t *testing.T) {
+    97		tt := []struct {
+    98			Name     string
+    99			Source   string
+   100			Target   string
+   101			Expected bool
+   102		}{
+   103			{Name: "words with same case", Source: "test", Target: "test", Expected: true},
+   104			{Name: "words different case", Source: "test", Target: "tEsT", Expected: true},
+   105			{Name: "different words", Source: "foo", Target: "bar", Expected: false},
+   106			{Name: "separated with underscore", Source: "the_test", Target: "TheTest", Expected: true},
+   107			{Name: "empty values", Source: "", Target: "", Expected: true},
+   108		}
+   109	
+   110		for _, tc := range tt {
+   111			t.Run(tc.Name, func(t *testing.T) {
+   112				result := equalFieldName(tc.Source, tc.Target)
+   113				require.Equal(t, tc.Expected, result)
+   114			})
+   115		}
+   116	}
+$ cd /workspace/gqlgen && go test ./graphql ./codegen ./codegen/templates ./codegen/testserver && go run /workspace/repro_issue_1291.go
+ok      github.com/99designs/gqlgen/graphql     (cached)
+ok      github.com/99designs/gqlgen/codegen     (cached)
+ok      github.com/99designs/gqlgen/codegen/templates   (cached)
+ok      github.com/99designs/gqlgen/codegen/testserver  (cached)
+PASS: all directive error identity, metadata, wrapping, and path cases passed
+$ rm -f /workspace/repro_issue_1291.go && cd /workspace/gqlgen && git status --short && git --no-pager diff --check && printf '%s\n' '--- final stat ---' && git --no-pager diff --stat 03cebf201ec911411c2c1463ff9b05dfe574bd40 && printf '%s\n' '--- changed test files ---' && git status --short | grep '_test\.go' || true
+M README.md
+ M codegen/field.gotpl
+ M docs/content/getting-started.md
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+--- final stat ---
+ README.md                       | 25 +++++++++++++------------
+ codegen/field.gotpl             |  1 +
+ docs/content/getting-started.md |  6 +++---
+ graphql/context_field.go        |  2 ++
+ graphql/context_field_input.go  | 19 +++++++++++++++++--
+ graphql/context_response.go     |  6 ++++++
+ 6 files changed, 42 insertions(+), 17 deletions(-)
+--- changed test files ---
+# task_tracker: Record final verification and environment-blocked legacy suites
+Task list has been updated with 6 item(s).
+# finish: Implement directive errors resolver metadata and documentation fixes
+Implemented all four requested changes without modifying any test files.
+
+### Changes
+- Preserved original `INPUT_FIELD_DEFINITION` directive errors until the configured error presenter runs, while retaining nested GraphQL input paths.
+  - Added an internal path-carrying error wrapper in `graphql/context_field_input.go`.
+  - Updated `graphql/context_response.go` to present the original error first, then apply its input path.
+  - Existing `*gqlerror.Error` values continue to preserve paths and extensions unchanged.
+- Added `FieldContext.IsResolver` in `graphql/context_field.go`.
+- Populated `IsResolver` from `$field.IsResolver` in `codegen/field.gotpl`, independently of `IsMethod`.
+- Corrected schema filename inconsistencies in `docs/content/getting-started.md`.
+- Corrected spelling, grammar, and capitalization typos in `README.md`.
+
+### Reproduction and edge verification
+A temporary `go run` reproducer first confirmed the bug: the custom presenter received `*gqlerror.Error` rather than the directive handler’s original custom error. After the fix, it passed comprehensive cases covering:
+- Original custom-error identity
+- Custom and `ExtendedError` metadata
+- Wrapped custom causes via `errors.As`
+- Existing `*gqlerror.Error` paths/extensions
+- Plain errors and nil errors
+- Repeated nested wrapping and deepest-path preservation
+
+The temporary reproducer was removed after validation.
+
+### Tests
+Passing:
+- `go test ./graphql`
+- `go test ./codegen`
+- `go test ./codegen/templates`
+- `go test ./codegen/testserver`
+- Targeted directive and middleware tests
+- Final comprehensive reproducer
+- `git diff --check`
+
+`go test ./...` was also attempted. All affected packages passed, but several unrelated legacy generator suites fail with the installed Go toolchain because this revision pins an old `golang.org/x/tools/go/packages`. Failures include `package ... without types` internal errors and a `go/types` nil-pointer panic in config/rewrite/plugin generator tests. A fixture deleted by one crashing generator test was restored, and the final working tree contains only the six intended non-test file modifications. No test files were changed.

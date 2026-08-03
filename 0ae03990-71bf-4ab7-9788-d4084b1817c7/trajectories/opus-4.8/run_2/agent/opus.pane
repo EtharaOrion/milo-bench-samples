@@ -1,0 +1,200 @@
+   249	                " `pip install google-cloud-documentai-toolbox`"
+   250	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain/libs/langchain && .venv/bin/ruff check langchain/chat_models/ernie.py langchain/chat_models/meta.py langchain/llms/bedrock.py langchain/llms/vllm.py langchain/chains/ernie_functions/ langchain/output_parsers/ernie_functions.py langchain/utils/ernie_functions.py langchain/retrievers/embedchain.py langchain/tools/azure_cognitive_services/ langchain/vectorstores/redis/ langchain/document_loaders/mediawikidump.py langchain/document_loaders/parsers/docai.py langchain/vectorstores/astradb.py langchain/vectorstores/deeplake.py langchain/embeddings/azure_openai.py langchain/utilities/bing_search.py langchain/utilities/sql_database.py langchain/document_loaders/youtube.py langchain/agents/structured_chat/base.py 2>&1 | tail -30
+$ cd /workspace/langchain/libs/langchain && .venv/bin/black --check langchain/chains/ernie_functions/ langchain/output_parsers/ernie_functions.py langchain/utils/ernie_functions.py langchain/retrievers/embedchain.py langchain/tools/azure_cognitive_services/text_analytics_health.py langchain/vectorstores/redis/filters.py langchain/document_loaders/parsers/docai.py langchain/chat_models/meta.py 2>&1 | tail
+bash: .venv/bin/black: No such file or directory
+$ cd /workspace/langchain/libs/langchain && .venv/bin/ruff format --check langchain/chains/ernie_functions/ langchain/output_parsers/ernie_functions.py langchain/utils/ernie_functions.py langchain/retrievers/embedchain.py langchain/tools/azure_cognitive_services/text_analytics_health.py langchain/vectorstores/redis/filters.py langchain/document_loaders/parsers/docai.py langchain/chat_models/meta.py langchain/chat_models/ernie.py 2>&1 | tail
+Would reformat: langchain/document_loaders/parsers/docai.py
+1 file would be reformatted, 9 files left unchanged
+$ cd /workspace/langchain/libs/langchain && .venv/bin/ruff format langchain/document_loaders/parsers/docai.py && .venv/bin/ruff check langchain/document_loaders/parsers/docai.py && sed -n '232,270p' langchain/document_loaders/parsers/docai.py
+1 file reformatted
+    def parse_from_results(
+        self, results: List[DocAIParsingResults]
+    ) -> Iterator[Document]:
+        try:
+            from google.cloud.documentai import Document as DocumentaiDocument
+            from google.cloud.documentai_toolbox.utilities.gcs_utilities import (
+                split_gcs_uri,
+            )
+            from google.cloud.documentai_toolbox.wrappers.document import (
+                _get_storage_client,
+            )
+            from google.cloud.documentai_toolbox.wrappers.page import (
+                _text_from_layout,
+            )
+        except ImportError as exc:
+            raise ImportError(
+                "documentai_toolbox package not found, please install it with"
+                " `pip install google-cloud-documentai-toolbox`"
+            ) from exc
+        for result in results:
+            gcs_bucket_name, gcs_prefix = split_gcs_uri(result.parsed_path)
+            blob_list = _get_storage_client().list_blobs(
+                gcs_bucket_name, prefix=gcs_prefix
+            )
+            for blob in blob_list:
+                if blob.name.endswith(".json"):
+                    blob_as_bytes = blob.download_as_bytes()
+                    document = DocumentaiDocument.from_json(
+                        blob_as_bytes, ignore_unknown_fields=True
+                    )
+                    yield from (
+                        Document(
+                            page_content=_text_from_layout(page.layout, document.text),
+                            metadata={
+                                "page": page.page_number,
+                                "source": result.source_path,
+                            },
+                        )
+                        for page in document.pages
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python -c "
+$ from langchain.document_loaders.parsers.docai import DocAIParser
+$ from langchain.document_loaders.mediawikidump import MWDumpLoader
+$ from langchain.chains.ernie_functions import create_ernie_fn_chain, create_structured_output_chain
+$ from langchain.retrievers import EmbedchainRetriever
+$ from langchain.tools import AzureCogsTextAnalyticsHealthTool
+$ from langchain.vectorstores.redis.filters import RedisTag, RedisNum, RedisText
+$ from langchain.llms.vllm import VLLMOpenAI
+$ print('OK all imports')
+$ "
+OK all imports
+$ cd /workspace/langchain && git status --short && echo "---STAT---" && git --no-pager diff --stat
+M libs/langchain/langchain/agents/agent_toolkits/azure_cognitive_services.py
+ M libs/langchain/langchain/agents/structured_chat/base.py
+ M libs/langchain/langchain/chat_models/bedrock.py
+ M libs/langchain/langchain/chat_models/ernie.py
+ M libs/langchain/langchain/chat_models/hunyuan.py
+ M libs/langchain/langchain/document_loaders/mediawikidump.py
+ M libs/langchain/langchain/document_loaders/parsers/docai.py
+ M libs/langchain/langchain/document_loaders/youtube.py
+ M libs/langchain/langchain/embeddings/azure_openai.py
+ M libs/langchain/langchain/llms/bedrock.py
+ M libs/langchain/langchain/llms/vertexai.py
+ M libs/langchain/langchain/llms/vllm.py
+ M libs/langchain/langchain/retrievers/__init__.py
+ M libs/langchain/langchain/tools/__init__.py
+ M libs/langchain/langchain/tools/azure_cognitive_services/__init__.py
+ M libs/langchain/langchain/utilities/bing_search.py
+ M libs/langchain/langchain/utilities/sql_database.py
+ M libs/langchain/langchain/vectorstores/astradb.py
+ M libs/langchain/langchain/vectorstores/deeplake.py
+ M libs/langchain/langchain/vectorstores/redis/base.py
+ M libs/langchain/langchain/vectorstores/redis/filters.py
+ M libs/langchain/pyproject.toml
+?? libs/langchain/langchain/chains/ernie_functions/
+?? libs/langchain/langchain/chat_models/meta.py
+?? libs/langchain/langchain/output_parsers/ernie_functions.py
+?? libs/langchain/langchain/retrievers/embedchain.py
+?? libs/langchain/langchain/tools/azure_cognitive_services/text_analytics_health.py
+?? libs/langchain/langchain/utils/ernie_functions.py
+---STAT---
+ libs/langchain/langchain/agents/agent_toolkits/azure_cognitive_services.py |   2 ++
+ libs/langchain/langchain/agents/structured_chat/base.py                    |   2 +-
+ libs/langchain/langchain/chat_models/bedrock.py                            |   3 +++
+ libs/langchain/langchain/chat_models/ernie.py                              |  13 ++++++++++++-
+ libs/langchain/langchain/chat_models/hunyuan.py                            |   2 +-
+ libs/langchain/langchain/document_loaders/mediawikidump.py                 |  54 +++++++++++++++++++++++++++++++++++-------------------
+ libs/langchain/langchain/document_loaders/parsers/docai.py                 |  47 +++++++++++++++++++++++++++--------------------
+ libs/langchain/langchain/document_loaders/youtube.py                       |   8 +++++---
+ libs/langchain/langchain/embeddings/azure_openai.py                        |   4 ++++
+ libs/langchain/langchain/llms/bedrock.py                                   |   5 ++++-
+ libs/langchain/langchain/llms/vertexai.py                                  |   2 +-
+ libs/langchain/langchain/llms/vllm.py                                      |  18 +++++++++++-------
+ libs/langchain/langchain/retrievers/__init__.py                            |   2 ++
+ libs/langchain/langchain/tools/__init__.py                                 |  11 +++++++++++
+ libs/langchain/langchain/tools/azure_cognitive_services/__init__.py        |   4 ++++
+ libs/langchain/langchain/utilities/bing_search.py                          |   3 +++
+ libs/langchain/langchain/utilities/sql_database.py                         |   4 ++++
+ libs/langchain/langchain/vectorstores/astradb.py                           |   6 ++----
+ libs/langchain/langchain/vectorstores/deeplake.py                          |   2 +-
+ libs/langchain/langchain/vectorstores/redis/base.py                        |  15 +++++++++++----
+ libs/langchain/langchain/vectorstores/redis/filters.py                     | 109 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------------------------------------
+ libs/langchain/pyproject.toml                                              |   2 +-
+ 22 files changed, 215 insertions(+), 103 deletions(-)
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python -m pytest tests/unit_tests/llms/ -q 2>&1 | tail -8
+tests/unit_tests/llms/test_utils.py::test_enforce_stop_tokens_none PASSED [100%]
+
+============================= slowest 5 durations ==============================
+0.13s call     tests/unit_tests/llms/test_imports.py::test_all_imports
+0.01s call     tests/unit_tests/llms/test_base.py::test_custom_caching
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+======================== 22 passed, 17 skipped in 0.69s ========================
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python -c "
+$ from langchain.utils.openai import is_openai_v1
+$ print('is_v1:', is_openai_v1())
+$ " 2>&1 | tail
+^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/metadata/__init__.py", line 1009, in version
+    return distribution(distribution_name).version
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/metadata/__init__.py", line 982, in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/metadata/__init__.py", line 565, in from_name
+    raise PackageNotFoundError(name)
+importlib.metadata.PackageNotFoundError: No package metadata was found for openai
+$ cd /workspace/langchain/libs/langchain && .venv/bin/python -c "
+$ from langchain.chains.ernie_functions import create_ernie_fn_chain, create_structured_output_chain
+$ from langchain.chat_models import ErnieBotChat
+$ from langchain.prompts import ChatPromptTemplate
+$ from langchain.pydantic_v1 import BaseModel, Field
+$ 
+$ class Dog(BaseModel):
+$     '''Identifying information about a dog.'''
+$     name: str = Field(..., description='name')
+$     color: str = Field(..., description='color')
+$ 
+$ llm = ErnieBotChat(ernie_client_id='x', ernie_client_secret='y')
+$ prompt = ChatPromptTemplate.from_messages([('user','{input}')])
+$ chain = create_structured_output_chain(Dog, llm, prompt)
+$ print('structured chain ok, llm_kwargs:', list(chain.llm_kwargs.keys()))
+$ chain2 = create_ernie_fn_chain([Dog], llm, prompt)
+$ print('fn chain ok, function_call:', chain2.llm_kwargs.get('function_call'))
+$ " 2>&1 | tail
+cd /workspace/langchain/libs/langchain && .venv/bin/python -c "
+from langchain.chains.ernie_functions import create_ernie_fn_chain, create_structured_output_chain
+from langchain.chat_models import ErnieBotChat
+from langchain.prompts import ChatPromptTemplate
+from langchain.pydantic_v1 import BaseModel, Field
+class Dog(BaseModel):
+    '''Identifying information about a dog.'''
+    name: str = Field(..., description='name')
+    color: str = Field(..., description='color')
+llm = ErnieBotChat(ernie_client_id='x', ernie_client_secret='y')
+prompt = ChatPromptTemplate.from_messages([('user','{input}')])
+chain = create_structured_output_chain(Dog, llm, prompt)
+print('structured chain ok, llm_kwargs:', list(chain.llm_kwargs.keys()))
+chain2 = create_ernie_fn_chain([Dog], llm, prompt)
+print('fn chain ok, function_call:', chain2.llm_kwargs.get('function_call'))
+" 2>&1 | tail
+structured chain ok, llm_kwargs: ['functions', 'function_call']
+fn chain ok, function_call: {'name': 'Dog'}
+# task_tracker: Mark all tasks complete
+Task list has been updated with 20 item(s).
+# finish: Completed implementation of bundled langchain issue fixes
+I implemented the source-code changes needed to satisfy the functional issues in the bundle. Documentation-only/test-only items (#13492, #13502, #13535, #13540, #13588, #13520) were intentionally left, and #12780/#13299 were already correct in this codebase.
+
+Key changes by issue:
+
+- **#10480 StructuredChatAgent** (`agents/structured_chat/base.py`): Fixed `args_schema` brace escaping from quadruple `{{{{ }}}}` to double `{{ }}`, so the final prompt shows single braces. Verified output now renders `args: {'tool_input': {'type': 'string'}}`.
+- **#13507 VLLMOpenAI** (`llms/vllm.py`): Only add `api_key`/`api_base` to invocation params when not on openai>=1.0 (avoids `create() got an unexpected keyword argument 'api_key'`).
+- **#13496 Hunyuan** (`chat_models/hunyuan.py`): `hunyuan_app_id` type changed `str` → `int`.
+- **#7928 SQLDatabase** (`utilities/sql_database.py`): Added Oracle dialect handling using `ALTER SESSION SET CURRENT_SCHEMA`.
+- **#13403 Bedrock llama2** (`chat_models/meta.py` new, `chat_models/bedrock.py`, `llms/bedrock.py`): Added `meta` provider support (llama prompt conversion, input/output adapters, output key map).
+- **#13525 Bing** (`utilities/bing_search.py`): Added `search_kwargs` merged into request params.
+- **#13549 MWDumpLoader** (`document_loaders/mediawikidump.py`): Load all namespaces by default; added `lazy_load` and helper methods; only filter when namespaces provided.
+- **#13451 VertexAI** (`llms/vertexai.py`): `count_tokens([text])` (list required).
+- **#13512 AstraDB** (`vectorstores/astradb.py`): Use `includeSimilarity` option instead of `$similarity` projection.
+- **#13388 DeepLake** (`vectorstores/deeplake.py`): Use `self._id_tensor_name` in `return_tensors` for backwards compatibility.
+- **#13210 DocAIParser** (`document_loaders/parsers/docai.py`): Removed `WrappedDocument`; parse `documentai.Document` directly via toolbox `_text_from_layout`/`_get_storage_client`.
+- **#13523 YoutubeLoader** (`document_loaders/youtube.py`): `translation` defaults to `None` and is applied whenever set (fixes transcripts not translating when found in requested language).
+- **#13539 Azure embeddings** (`embeddings/azure_openai.py`): Cap `chunk_size` to max 16 inputs per batch.
+- **#13320 ERNIE function calling** (new `chains/ernie_functions/`, `output_parsers/ernie_functions.py`, `utils/ernie_functions.py`; `chat_models/ernie.py`): Added `create_ernie_fn_chain`, `create_structured_output_chain`, runnables, parsers, and function_call parsing in chat results.
+- **#13381 Redis** (`vectorstores/redis/filters.py`, `vectorstores/redis/base.py`): Rewrote filter typing/string formatting, handle empty/"*" filters, fixed multiple-tag combination and `RedisNum`-with-0 bug; fixed `key_prefix` handling in `from_existing_index`.
+- **#13553 Embedchain retriever** (new `retrievers/embedchain.py`, registered in `retrievers/__init__.py`).
+- **#13448 Azure cognitive health** (new `tools/azure_cognitive_services/text_analytics_health.py`, registered in tool `__init__`s and the toolkit).
+- **#13613 bump** (`pyproject.toml`): version 0.0.338 → 0.0.339.
+
+Verification: ran the relevant unit test suites (agents, chat_models, llms, document_loaders, vectorstores/redis, chains, output_parsers, utilities, embeddings) — all pass. Ruff lint/format pass on all changed/new files. The only intentionally-now-failing tests are `tests/unit_tests/retrievers/test_imports.py` and `tests/unit_tests/tools/test_imports.py` / `test_public_api.py`, which the corresponding upstream PRs (#13553, #13448) update to include the new `EmbedchainRetriever` and `AzureCogsTextAnalyticsHealthTool` — these are part of the test files you indicated are already handled.

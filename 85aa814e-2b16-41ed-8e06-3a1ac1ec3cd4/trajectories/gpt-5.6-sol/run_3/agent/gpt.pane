@@ -1,0 +1,200 @@
+    --> src/parser/matches/arg_matches.rs:1097:9
+     |
+1097 |         &self,
+     |         ^^^^^ the lifetime is elided here
+1098 |         id: &str,
+1099 |     ) -> Result<Option<ValuesRef<T>>, MatchesError> {
+     |                        ^^^^^^^^^^^^ the same lifetime is hidden here
+     |
+     = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+     |
+1099 |     ) -> Result<Option<ValuesRef<'_, T>>, MatchesError> {
+     |                                  +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> src/parser/matches/matched_arg.rs:102:32
+    |
+102 |     pub(crate) fn vals_flatten(&self) -> Flatten<Iter<Vec<AnyValue>>> {
+    |                                ^^^^^             ^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                                |
+    |                                the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+102 |     pub(crate) fn vals_flatten(&self) -> Flatten<Iter<'_, Vec<AnyValue>>> {
+    |                                                       +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> src/parser/matches/matched_arg.rs:110:36
+    |
+110 |     pub(crate) fn raw_vals_flatten(&self) -> Flatten<Iter<Vec<OsString>>> {
+    |                                    ^^^^^             ^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                                    |
+    |                                    the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+110 |     pub(crate) fn raw_vals_flatten(&self) -> Flatten<Iter<'_, Vec<OsString>>> {
+    |                                                           +++
+# file_editor: Capture final parser guard line references for summary
+Here's the result of running `cat -n` on /workspace/clap/src/parser/parser.rs:
+   101	            // Correct pos_counter.
+   102	            pos_counter = {
+   103	                let is_second_to_last = pos_counter + 1 == positional_count;
+   104	
+   105	                // The last positional argument, or second to last positional
+   106	                // argument may be set to .multiple_values(true) or `.multiple_occurrences(true)`
+   107	                let low_index_mults = is_second_to_last
+   108	                    && self
+   109	                        .cmd
+   110	                        .get_positionals()
+   111	                        .any(|a| a.is_multiple() && (positional_count != a.index.unwrap_or(0)))
+   112	                    && self
+   113	                        .cmd
+   114	                        .get_positionals()
+   115	                        .last()
+   116	                        .map_or(false, |p_name| !p_name.is_last_set());
+   117	
+   118	                let missing_pos = self.cmd.is_allow_missing_positional_set()
+   119	                    && is_second_to_last
+   120	                    && !trailing_values;
+   121	
+   122	                debug!(
+   123	                    "Parser::get_matches_with: Positional counter...{}",
+   124	                    pos_counter
+   125	                );
+   126	                debug!(
+   127	                    "Parser::get_matches_with: Low index multiples...{:?}",
+   128	                    low_index_mults
+   129	                );
+   130	
+   131	                if (low_index_mults || missing_pos)
+   132	                    && !matches!(parse_state, ParseState::Opt(_))
+   133	                    && self
+   134	                        .cmd
+   135	                        .get_positionals()
+   136	                        .find(|a| a.index == Some(pos_counter))
+   137	                        .map_or(false, |a| !self.is_new_arg(&arg_os, a))
+   138	                {
+   139	                    let skip_current = if let Some(n) = raw_args.peek(&args_cursor) {
+   140	                        if let Some(arg) = self
+   141	                            .cmd
+   142	                            .get_positionals()
+   143	                            .find(|a| a.index == Some(pos_counter))
+   144	                        {
+   145	                            // If next value looks like a new_arg or it's a
+   146	                            // subcommand, skip positional argument under current
+   147	                            // pos_counter(which means current value cannot be a
+   148	                            // positional argument with a value next to it), assume
+   149	                            // current value matches the next arg.
+   150	                            self.is_new_arg(&n, arg)
+   151	                                || self
+   152	                                    .possible_subcommand(n.to_value(), valid_arg_found)
+   153	                                    .is_some()
+   154	                        } else {
+   155	                            true
+   156	                        }
+   157	                    } else {
+   158	                        true
+   159	                    };
+   160	
+   161	                    if skip_current {
+   162	                        debug!("Parser::get_matches_with: Bumping the positional counter...");
+   163	                        pos_counter + 1
+   164	                    } else {
+   165	                        pos_counter
+   166	                    }
+   167	                } else if trailing_values
+   168	                    && (self.cmd.is_allow_missing_positional_set() || contains_last)
+   169	                {
+   170	                    // Came to -- and one positional has .last(true) set, so we go immediately
+   171	                    // to the last (highest index) positional
+   172	                    debug!("Parser::get_matches_with: .last(true) and --, setting last pos");
+   173	                    positional_count
+   174	                } else {
+   175	                    pos_counter
+# file_editor: Capture final ArgAction documentation line references
+Here's the result of running `cat -n` on /workspace/clap/src/builder/action.rs:
+    23	#[derive(Clone, Debug)]
+    24	#[non_exhaustive]
+    25	#[allow(missing_copy_implementations)] // In the future, we may accept `Box<dyn ...>`
+    26	pub enum ArgAction {
+    27	    /// When encountered, store the associated value(s) in [`ArgMatches`][crate::ArgMatches],
+    28	    /// replacing any previous values.
+    29	    ///
+    30	    /// # Examples
+    31	    ///
+    32	    /// ```rust
+    33	    /// # use clap::Command;
+    34	    /// # use clap::Arg;
+    35	    /// let cmd = Command::new("mycmd")
+    36	    ///     .arg(
+    37	    ///         Arg::new("flag")
+    38	    ///             .long("flag")
+    39	    ///             .action(clap::ArgAction::Set)
+    40	    ///     );
+    41	    ///
+    42	    /// let matches = cmd.try_get_matches_from(["mycmd", "--flag", "value"]).unwrap();
+    43	    /// assert!(matches.contains_id("flag"));
+    44	    /// assert_eq!(matches.occurrences_of("flag"), 0);
+    45	    /// assert_eq!(
+    46	    ///     matches.get_many::<String>("flag").unwrap_or_default().map(|v| v.as_str()).collect::<Vec<_>>(),
+    47	    ///     vec!["value"]
+    48	    /// );
+    49	    /// ```
+    50	    Set,
+    51	    /// When encountered, store the associated value(s) in [`ArgMatches`][crate::ArgMatches],
+    52	    /// appending to any previous values.
+    53	    ///
+    54	    /// # Examples
+    55	    ///
+    56	    /// ```rust
+    57	    /// # use clap::Command;
+    58	    /// # use clap::Arg;
+$ git -C /workspace/clap status --short && git -C /workspace/clap --no-pager diff --check
+M src/builder/action.rs
+ M src/parser/parser.rs
+# task_tracker: Mark implementation, verification, and cleanup tasks complete
+Task list has been updated with 6 item(s).
+# finish: Complete parser fix, documentation clarification, and comprehensive verification
+Implemented the fix with minimal non-test changes. No test files were modified.
+
+### Changes
+- `src/parser/parser.rs:131`
+  - Positional-counter correction now runs only when:
+    - the parser is not consuming a pending option value, and
+    - the current token is actually eligible to be positional.
+  - This prevents values for `--one` / `--two`, and valueless flags such as `--yes`, from prematurely advancing from the variadic `input` positional to `output`.
+- `src/builder/action.rs:27` and `src/builder/action.rs:51`
+  - Clarified that `ArgAction::Set` replaces previous values while `ArgAction::Append` appends to them, reducing API guesswork.
+
+### Reproduction and edge verification
+Created and ran a temporary `repro_3959` binary. The original command now produces the intended parse:
+- input: `3 4 5 6 7`
+- output: `8`
+- one: `1`
+- two: `2`
+- yes: `false`
+
+The executable assertions also covered adjacent flags, long and short options, attached option values, options after positionals, minimum required positional counts, and `allow_missing_positional`. All passed. The temporary binary was then removed.
+
+### Tests
+Passed:
+- Exact reproduction and edge-case binary
+- Focused low-index positional tests
+- Focused `allow_missing_positional` tests
+- `ArgAction` doctests
+- Full builder suite: **1,582 passed**
+- All clap unit and integration tests via `cargo test -p clap --lib --tests`
+- Minimal supported feature build: `cargo check -p clap --no-default-features --features std`
+- `git diff --check`
+
+### Environment-only limitations
+- Full workspace testing could not resolve unrelated workspace dependencies because downloads were blocked and some pre-populated Cargo cache files were unreadable.
+- The complete clap doctest run had one unrelated failure caused by Rust 1.96 changing `PhantomData` debug formatting; the repository targets Rust 1.58-era behavior.
+- `cargo fmt` was unavailable because the installed toolchain lacks `rustfmt`; the final diff has no whitespace errors.
+
+Final diff is limited to `src/parser/parser.rs` and `src/builder/action.rs`.

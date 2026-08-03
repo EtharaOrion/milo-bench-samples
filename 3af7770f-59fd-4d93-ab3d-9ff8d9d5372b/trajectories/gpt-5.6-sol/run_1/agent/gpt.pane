@@ -1,0 +1,200 @@
+ M internal/code/alias_1.23.go
+$ cd /workspace/gqlgen && GIT_CONFIG_NOSYSTEM=1 HOME=/tmp GIT_PAGER=cat git --no-pager diff --check --no-ext-diff
+$ cd /workspace/gqlgen && PATH=/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.22.12.linux-arm64/bin:$PATH GOTOOLCHAIN=local GOPATH=/tmp/gqlgen-gopath go mod verify && cd /workspace/gqlgen/_examples && go mod verify
+all modules verified
+all modules verified
+$ cd /workspace/gqlgen && GIT_CONFIG_NOSYSTEM=1 HOME=/tmp GIT_PAGER=cat PAGER=cat git --no-pager diff --no-ext-diff --no-color -- codegen/templates/templates.go internal/code/alias_1.23.go docs/content/recipes/subscriptions.md go.mod _examples/go.mod _examples/websocket-initfunc/server/go.mod integration/package.json | cat && printf '%s\n' '--- final status ---' && git status --short && changed=$(GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git --no-pager diff --name-only --no-ext-diff); if printf '%s\n' "$changed" | grep -E '(^|/).*(_test\.go|/testdata/)'; then exit 1; else echo 'No tests or testdata modified'; fi
+diff --git a/_examples/go.mod b/_examples/go.mod
+index 97d99666..c14e7b7b 100644
+--- a/_examples/go.mod
++++ b/_examples/go.mod
+@@ -12,7 +12,7 @@ require (
+        github.com/rs/cors v1.11.1
+        github.com/stretchr/testify v1.9.0
+        github.com/vektah/dataloaden v0.3.0
+-       github.com/vektah/gqlparser/v2 v2.5.16
++       github.com/vektah/gqlparser/v2 v2.5.17
+        golang.org/x/sync v0.8.0
+ )
+
+diff --git a/_examples/websocket-initfunc/server/go.mod b/_examples/websocket-initfunc/server/go.mod
+index 6d2c8282..210e1909 100644
+--- a/_examples/websocket-initfunc/server/go.mod
++++ b/_examples/websocket-initfunc/server/go.mod
+@@ -7,7 +7,7 @@ require (
+        github.com/go-chi/chi v1.5.4
+        github.com/gorilla/websocket v1.5.0
+        github.com/rs/cors v1.11.1
+-       github.com/vektah/gqlparser/v2 v2.5.16
++       github.com/vektah/gqlparser/v2 v2.5.17
+ )
+
+ require (
+diff --git a/codegen/templates/templates.go b/codegen/templates/templates.go
+index 5a4374f0..121ae5e9 100644
+--- a/codegen/templates/templates.go
++++ b/codegen/templates/templates.go
+@@ -493,20 +493,11 @@ func wordWalker(str string, f func(*wordInfo)) {
+                matchCommonInitial := false
+                upperWord := strings.ToUpper(word)
+                if initialisms[upperWord] {
+-                       // If the uppercase word (string(runes[w:i]) is "ID" or "IP"
+-                       // AND
+-                       // the word is the first two characters of the str
+-                       // AND
+-                       // that is not the end of the word
+-                       // AND
+-                       // the length of the string is greater than 3
+-                       // AND
+-                       // the third rune is an uppercase one
+-                       // THEN
+-                       // do NOT count this as an initialism.
++                       // ID and IP at the start of an uppercase word such as IDENTITY
++                       // are not initialisms.
+                        switch upperWord {
+                        case "ID", "IP":
+-                               if word == str[:2] && !eow && len(str) > 3 && unicode.IsUpper(runes[3]) {
++                               if !eow && len(runes) > w+3 && unicode.IsUpper(runes[w+3]) {
+                                        continue
+                                }
+                        }
+@@ -730,6 +721,7 @@ var CommonInitialisms = map[string]bool{
+        "API":   true,
+        "ASCII": true,
+        "CPU":   true,
++       "CSP":   true,
+        "CSS":   true,
+        "CSV":   true,
+        "DNS":   true,
+diff --git a/docs/content/recipes/subscriptions.md b/docs/content/recipes/subscriptions.md
+index 4cf72204..2884af43 100644
+--- a/docs/content/recipes/subscriptions.md
++++ b/docs/content/recipes/subscriptions.md
+@@ -122,7 +122,7 @@ func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.T
+        // For this example we'll simply use a Goroutine with a simple loop.
+        go func() {
+                // Handle deregistration of the channel here. Note the `defer`
+-    defer close(ch)
++               defer close(ch)
+
+                for {
+                        // In our example we'll send the current time every second.
+diff --git a/go.mod b/go.mod
+index 55de81db..3b7311d7 100644
+--- a/go.mod
++++ b/go.mod
+@@ -16,7 +16,7 @@ require (
+        github.com/sosodev/duration v1.3.1
+        github.com/stretchr/testify v1.9.0
+        github.com/urfave/cli/v2 v2.27.4
+-       github.com/vektah/gqlparser/v2 v2.5.16
++       github.com/vektah/gqlparser/v2 v2.5.17
+        golang.org/x/text v0.18.0
+        golang.org/x/tools v0.24.0
+        google.golang.org/protobuf v1.34.2
+diff --git a/integration/package.json b/integration/package.json
+index 1530950d..f524d24a 100644
+--- a/integration/package.json
++++ b/integration/package.json
+@@ -20,7 +20,7 @@
+         "graphql-ws": "^5.16.0",
+         "typescript": "^5.6.2",
+         "urql": "^4.1.0",
+-        "vite": "^5.4.6",
++        "vite": "^5.4.8",
+         "vitest": "^2.1.1"
+     }
+ }
+diff --git a/internal/code/alias_1.23.go b/internal/code/alias_1.23.go
+index fa0b216c..dc554a5d 100644
+--- a/internal/code/alias_1.23.go
++++ b/internal/code/alias_1.23.go
+@@ -8,12 +8,13 @@ import (
+
+ // Unalias unwraps an alias type
+ func Unalias(t types.Type) types.Type {
+-       if p, ok := t.(*types.Pointer); ok {
+-               // If the type come from auto-binding,
+-               // it will be a pointer to an alias type.
+-               // (e.g: `type Cursor = entgql.Cursor[int]`)
+-               // *ent.Cursor is the type we got from auto-binding.
+-               return types.NewPointer(Unalias(p.Elem()))
++       t = types.Unalias(t)
++       switch t := t.(type) {
++       case *types.Pointer:
++               return types.NewPointer(Unalias(t.Elem()))
++       case *types.Slice:
++               return types.NewSlice(Unalias(t.Elem()))
++       default:
++               return t
+        }
+-       return types.Unalias(t)
+ }
+--- final status ---
+ M _examples/go.mod
+ M _examples/go.sum
+ M _examples/websocket-initfunc/server/go.mod
+ M _examples/websocket-initfunc/server/go.sum
+ M codegen/templates/templates.go
+ M docs/content/recipes/subscriptions.md
+ M go.mod
+ M go.sum
+ M integration/package-lock.json
+ M integration/package.json
+ M internal/code/alias_1.23.go
+No tests or testdata modified
+# task_tracker: Review final task status before recording verification results
+# Task List
+
+1. ✅ Explore repository and identify affected non-test files
+   Located integration manifests/lockfile, templates initialism walker/map, scalar type template/binder, subscriptions recipe, and gqlparser module pins.
+
+2. ✅ Reproduce functional regressions with standalone Go script
+   Standalone go run reproducer confirmed USER_IDENTITY and analogous non-first ID/IP prefixes were split incorrectly; exact Any generation and Go-version-specific alias path were exercised.
+
+3. ✅ Implement minimal source, dependency, and documentation changes
+   Updated relative initialism detection and CSP, recursively normalized aliases through pointers/slices for Go 1.23 Any arrays, bumped integration Vite/Rollup and gqlparser, and fixed subscriptions indentation.
+
+4. ✅ Verify reproductions and edge cases
+   Expanded go run reproducer passed first/later-word ID/IP cases, retained true ID initialisms, CSP/CSPs, multiple Any nullability/nesting shapes, and direct nested alias normalization under go1.23 build tags.
+
+5. 🔄 Run related and full repository test suites
+   Review working changes, run targeted tests and all feasible repository tests, then fix any source failures.
+# task_tracker: Record passing verification and unrelated external test blocker
+Task list has been updated with 5 item(s).
+# finish: Complete dependency, initialism, Any alias, and documentation fixes
+Implemented all requested non-test changes in `/workspace/gqlgen`.
+
+### Changes made
+- **Vite / Rollup**
+  - Updated Vite from `5.4.6` to final requested `5.4.8` in `integration/package.json` and lockfile.
+  - Updated Rollup from `4.21.0` to `4.22.4`, including all 16 platform-specific optional packages and both lockfile sections.
+- **Initialisms**
+  - Fixed `ID`/`IP` detection when they appear at the start of any later word, so `USER_IDENTITY` becomes `UserIdentity` rather than `UserIDEntity`.
+  - Preserved valid cases such as `IDFoo` and `USER_IDFoo`.
+  - Added `CSP` to common initialisms, supporting `CSP` and `CSPs`.
+- **Arrays/lists of `Any` on Go 1.23**
+  - Updated Go 1.23 alias normalization to recurse through pointers and slices, preventing aliases such as `any` inside `[Any]` from being misclassified and gaining an extra pointer.
+  - Verified nullable, non-null, and nested Any-list shapes.
+- **Documentation**
+  - Corrected the tab indentation for `defer close(ch)` in `subscriptions.md`.
+- **gqlparser**
+  - Updated `github.com/vektah/gqlparser/v2` from `2.5.16` to `2.5.17` in the root module, examples module, and isolated websocket example module, with checksums.
+
+### Verification
+- Standalone `go run` reproducer confirmed the original `USER_IDENTITY` failure before the fix.
+- Expanded reproducer passed after the fix, covering later-word ID/IP cases, genuine initialisms, CSP/CSPs, nested aliases, and several `[Any]` nullability combinations.
+- Targeted tests passed:
+  - `./codegen/templates`
+  - `./codegen/config`
+  - `./api`
+  - `./internal/code` through the Go 1.23 build path
+- All non-network-sensitive root packages passed through the Go 1.23 alias path.
+- Full `_examples` suite passed.
+- Isolated websocket example passed using a temporary workspace replacement.
+- `go mod verify` passed for root and examples modules.
+- `git diff --check` passed.
+- No test or testdata files remain modified.
+
+### Known external limitation
+The complete root `go test ./... -trimpath` run passed every package except `graphql/playground`. `TestApolloSandboxHandler_Integrity` fetches a remote Apollo script whose current SHA-256 differs from the repository’s pinned expected hash. I left it unchanged because it is unrelated external-content drift and modifying it would violate your requirement not to alter tests. Integration npm tests were not run because Node/npm are absent and you explicitly requested no package installation.

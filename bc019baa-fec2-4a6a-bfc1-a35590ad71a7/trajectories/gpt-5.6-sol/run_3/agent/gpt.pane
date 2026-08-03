@@ -1,0 +1,200 @@
+
+
+
+
+diff --git a/README.md b/README.md
+index 2ffaaf89..3d9c355f 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-<p>
++<p align="center">
+   <a href="https://tailwindcss.com/#gh-light-mode-only" target="_blank">
+     <img src="./.github/logo-light.svg" alt="Tailwind CSS" width="350" height="70">
+   </a>
+diff --git a/package.json b/package.json
+index faf09d7b..3e557e54 100644
+--- a/package.json
++++ b/package.json
+@@ -46,16 +46,16 @@
+     "@swc/core": "^1.2.218",
+     "@swc/jest": "^0.2.22",
+     "@swc/register": "^0.1.10",
+-    "autoprefixer": "^10.4.7",
++    "autoprefixer": "^10.4.8",
+     "cssnano": "^5.1.12",
+     "esbuild": "^0.14.48",
+-    "eslint": "^8.19.0",
++    "eslint": "^8.20.0",
+     "eslint-config-prettier": "^8.5.0",
+     "eslint-plugin-prettier": "^4.2.1",
+     "jest": "^28.1.3",
+     "jest-diff": "^28.1.3",
+     "prettier": "^2.7.1",
+-    "prettier-plugin-tailwindcss": "^0.1.12",
++    "prettier-plugin-tailwindcss": "^0.1.13",
+     "rimraf": "^3.0.0",
+     "source-map-js": "^1.0.2"
+   },
+diff --git a/src/lib/expandApplyAtRules.js b/src/lib/expandApplyAtRules.js
+index f5e84a31..4e72bfe6 100644
+--- a/src/lib/expandApplyAtRules.js
++++ b/src/lib/expandApplyAtRules.js
+@@ -500,11 +500,13 @@ function processApply(root, context, localCache) {
+         }
+
+         // Insert it
+-        siblings.push([
+-          // Ensure that when we are sorting, that we take the layer order into account
+-          { ...meta, sort: meta.sort | context.layerOrder[meta.layer] },
+-          root.nodes[0],
+-        ])
++        if (root.nodes[0]) {
++          siblings.push([
++            // Ensure that when we are sorting, that we take the layer order into account
++            { ...meta, sort: meta.sort | context.layerOrder[meta.layer] },
++            root.nodes[0],
++          ])
++        }
+       }
+     }
+
+diff --git a/src/lib/generateRules.js b/src/lib/generateRules.js
+index b7843258..6de220e2 100644
+--- a/src/lib/generateRules.js
++++ b/src/lib/generateRules.js
+@@ -129,7 +129,7 @@ function applyVariant(variant, matches, context) {
+   }
+
+   let args
+-  let isArbitraryVariant = false
++  let isArbitraryVariant = isArbitraryValue(variant)
+
+   // Find partial arbitrary variants
+   if (variant.endsWith(']') && !variant.startsWith('[')) {
+@@ -138,15 +138,13 @@ function applyVariant(variant, matches, context) {
+   }
+
+   // Register arbitrary variants
+-  if (isArbitraryValue(variant) && !context.variantMap.has(variant)) {
++  if (isArbitraryVariant && !context.variantMap.has(variant)) {
+     let selector = normalize(variant.slice(1, -1))
+
+     if (!isValidVariantFormatString(selector)) {
+       return []
+     }
+
+-    isArbitraryVariant = true
+-
+     let fn = parseVariant(selector)
+
+     let sort = Array.from(context.variantOrder.values()).pop() << 1n
+diff --git a/src/util/resolveConfig.js b/src/util/resolveConfig.js
+index 5472da08..d986df2c 100644
+--- a/src/util/resolveConfig.js
++++ b/src/util/resolveConfig.js
+@@ -179,8 +179,7 @@ function resolveFunctionKeys(object) {
+       while (val !== undefined && val !== null && index < path.length) {
+         val = val[path[index++]]
+
+-        let shouldResolveAsFn =
+-          isFunction(val) && (path.alpha === undefined || index < path.length - 1)
++        let shouldResolveAsFn = isFunction(val) && (path.alpha === undefined || index < path.length)
+
+         val = shouldResolveAsFn ? val(resolvePath, configUtils) : val
+       }
+$ rm /workspace/tailwindcss/reproduce-issues.ts && cd /workspace/tailwindcss && git status --short && PAGER=cat GIT_PAGER=cat git diff --check
+M README.md
+ M package-lock.json
+ M package.json
+ M src/lib/expandApplyAtRules.js
+ M src/lib/generateRules.js
+ M src/util/resolveConfig.js
+$ cd /workspace/tailwindcss && node - <<'NODE'
+$ const manifest = require('./package.json')
+$ const lock = require('./package-lock.json')
+$ for (const name of ['eslint', 'prettier-plugin-tailwindcss', 'autoprefixer']) {
+$   console.log(`${name}: ${manifest.devDependencies[name]} (locked ${lock.packages[`node_modules/${name}`].version})`)
+$ }
+$ NODE
+$ printf '%s\n' 'Changed files:'
+$ PAGER=cat GIT_PAGER=cat git diff --name-only
+$ printf '%s\n' 'Test files changed:'
+$ PAGER=cat GIT_PAGER=cat git diff --name-only -- tests || true
+cd /workspace/tailwindcss && node - <<'NODE'
+const manifest = require('./package.json')
+const lock = require('./package-lock.json')
+for (const name of ['eslint', 'prettier-plugin-tailwindcss', 'autoprefixer']) {
+  console.log(`${name}: ${manifest.devDependencies[name]} (locked ${lock.packages[`node_modules/${name}`].version})`)
+}
+NODE
+
+eslint: ^8.20.0 (locked 8.20.0)
+prettier-plugin-tailwindcss: ^0.1.13 (locked 0.1.13)
+autoprefixer: ^10.4.8 (locked 10.4.8)
+
+
+printf '%s\n' 'Changed files:'
+Changed files:
+
+
+PAGER=cat GIT_PAGER=cat git diff --name-only
+README.md
+package-lock.json
+package.json
+src/lib/expandApplyAtRules.js
+src/lib/generateRules.js
+src/util/resolveConfig.js
+
+
+printf '%s\n' 'Test files changed:'
+Test files changed:
+
+
+PAGER=cat GIT_PAGER=cat git diff --name-only -- tests || true
+# task_tracker: Review final task list before marking audit complete
+# Task List
+
+1. ✅ Explore repository and identify affected non-test files
+   Inspected source paths, manifests, README, existing tests, and repository status; no AGENTS.md is present.
+
+2. ✅ Create and run TypeScript reproduction script
+   Created reproduce-issues.ts. Requested ts-node binary is unavailable; ran with installed swc-node and confirmed all three exact runtime failures before implementation.
+
+3. ✅ Implement minimal source and dependency changes
+   Updated generateRules, resolveConfig, expandApplyAtRules, README alignment, package manifest, and lockfile for all seven issues.
+
+4. ✅ Expand reproduction coverage and verify edge cases
+   Expanded temporary script for repeated/stacked variants, normal prefixed variants, two- and three-part alpha paths, defaults, nested custom apply, important behavior, built-in negatives, metadata, and README; all pass.
+
+5. ✅ Run targeted and full repository tests
+   Targeted 6 suites passed (189 tests). Full npm test passed generation, 79 suites/803 tests/4 snapshots, and full ESLint.
+
+6. 🔄 Audit requirements and clean temporary artifacts
+   Re-read issues, inspect working-tree diff without prohibited history lookup, remove reproduction script, and summarize.
+# task_tracker: Complete final audit and cleanup task
+Task list has been updated with 6 item(s).
+# finish: Complete seven issue fixes with full tests passing
+Implemented all seven requested changes without modifying any tests.
+
+### Runtime fixes
+- **Repeated arbitrary variants with prefixes:** arbitrary-variant metadata now remains correct when a cached arbitrary variant is reused, preventing classes inside the variant from gaining the configured prefix.
+- **Custom color opacity in `theme()`:** corrected the function-resolution boundary so two-part paths such as `colors.foobar / 80%` resolve intermediate theme functions while preserving the terminal color function for alpha application.
+- **Dash-prefixed custom utilities in `@apply`:** fully pruned generated matches are no longer inserted as undefined PostCSS nodes, allowing locally defined classes such as `.-h-ms-1` to apply correctly.
+
+### Other requested changes
+- Centered the README project logo heading.
+- Updated and locked:
+  - `eslint`: `8.19.0` → `8.20.0`
+  - `prettier-plugin-tailwindcss`: `0.1.12` → `0.1.13`
+  - `autoprefixer`: `10.4.7` → `10.4.8`
+
+### Verification
+- Created a temporary TypeScript reproduction script and confirmed all three runtime failures before fixing them.
+- The requested `ts-node` executable was not installed, so I ran the script with the repository’s existing `swc-node` TypeScript runner instead.
+- Expanded reproduction coverage for repeated and stacked arbitrary variants, normal prefixed variants, two- and three-part alpha paths, fallback values, nested custom applies, important declarations, built-in negative utilities, dependency versions, and README alignment. All passed.
+- Targeted tests: **6 suites, 189 tests passed**.
+- Full `npm test -- --runInBand`: **79 suites, 803 tests, and 4 snapshots passed**, followed by successful full ESLint validation.
+- `git diff --check` passed.
+- Temporary reproduction script removed.
+- Confirmed no test files were changed.

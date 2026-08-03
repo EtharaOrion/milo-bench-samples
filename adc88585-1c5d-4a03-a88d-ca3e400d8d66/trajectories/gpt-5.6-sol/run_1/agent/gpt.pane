@@ -1,0 +1,200 @@
+     }
+@@ -134,8 +135,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(status, "Post status must not be null");
+
+         // Find all post ids
+-        Set<Integer> postIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(categoryId, status);
++        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
++            listCategoryIdsRecursively(categoryId), Collections.singleton(status));
+
+         return postRepository.findAllById(postIds);
+     }
+@@ -146,8 +147,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(status, "Post status must not be null");
+
+         // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(categoryId, status);
++        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
++            listCategoryIdsRecursively(categoryId), status);
+
+         return postRepository.findAllById(postIds);
+     }
+@@ -163,10 +164,7 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+             throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+         }
+
+-        Set<Integer> postsIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(category.getId(), status);
+-
+-        return postRepository.findAllById(postsIds);
++        return listPostBy(category.getId(), status);
+     }
+
+     @Override
+@@ -180,10 +178,7 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+             throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+         }
+
+-        Set<Integer> postsIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(category.getId(), status);
+-
+-        return postRepository.findAllById(postsIds);
++        return listPostBy(category.getId(), status);
+     }
+
+     @Override
+@@ -192,7 +187,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(pageable, "Page info must not be null");
+
+         // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryId(categoryId);
++        Set<Integer> postIds = postCategoryRepository
++            .findAllPostIdsByCategoryIdIn(listCategoryIdsRecursively(categoryId));
+
+         return postRepository.findAllByIdIn(postIds, pageable);
+     }
+@@ -204,8 +200,8 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(pageable, "Page info must not be null");
+
+         // Find all post ids
+-        Set<Integer> postIds = postCategoryRepository
+-            .findAllPostIdsByCategoryId(categoryId, status);
++        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
++            listCategoryIdsRecursively(categoryId), Collections.singleton(status));
+
+         return postRepository.findAllByIdIn(postIds, pageable);
+     }
+@@ -217,12 +213,20 @@ public class PostCategoryServiceImpl extends AbstractCrudService<PostCategory, I
+         Assert.notNull(pageable, "Page info must not be null");
+
+         // Find all post ids
+-        Set<Integer> postIds =
+-            postCategoryRepository.findAllPostIdsByCategoryId(categoryId, status);
++        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
++            listCategoryIdsRecursively(categoryId), status);
+
+         return postRepository.findAllByIdIn(postIds, pageable);
+     }
+
++    private Set<Integer> listCategoryIdsRecursively(Integer categoryId) {
++        Set<Integer> categoryIds = new LinkedHashSet<>();
++        categoryIds.add(categoryId);
++        categoryIds.addAll(ServiceUtils.fetchProperty(
++            categoryService.listAllByParentId(categoryId), Category::getId));
++        return categoryIds;
++    }
++
+     @Override
+     public List<PostCategory> mergeOrCreateByIfAbsent(Integer postId, Set<Integer> categoryIds) {
+         Assert.notNull(postId, "Post id must not be null");
+$ cd /workspace/halo && ./gradlew test
+Downloading https://services.gradle.org/distributions/gradle-7.4-bin.zip
+
+Exception in thread "main" java.net.ConnectException: Connection refused (Connection refused)
+        at java.base/java.net.PlainSocketImpl.socketConnect(Native Method)
+        at java.base/java.net.AbstractPlainSocketImpl.doConnect(AbstractPlainSocketImpl.java:412)
+        at java.base/java.net.AbstractPlainSocketImpl.connectToAddress(AbstractPlainSocketImpl.java:255)
+        at java.base/java.net.AbstractPlainSocketImpl.connect(AbstractPlainSocketImpl.java:237)
+        at java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:392)
+        at java.base/java.net.Socket.connect(Socket.java:615)
+        at java.base/sun.security.ssl.SSLSocketImpl.connect(SSLSocketImpl.java:305)
+        at java.base/sun.net.NetworkClient.doConnect(NetworkClient.java:177)
+        at java.base/sun.net.www.http.HttpClient.openServer(HttpClient.java:509)
+        at java.base/sun.net.www.http.HttpClient.openServer(HttpClient.java:604)
+        at java.base/sun.net.www.protocol.https.HttpsClient.<init>(HttpsClient.java:266)
+        at java.base/sun.net.www.protocol.https.HttpsClient.New(HttpsClient.java:373)
+        at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.getNewHttpClient(AbstractDelegateHttpsURLConnection.java:207)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.plainConnect0(HttpURLConnection.java:1209)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.plainConnect(HttpURLConnection.java:1103)
+        at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:193)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1636)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1564)
+        at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getInputStream(HttpsURLConnectionImpl.java:250)
+        at org.gradle.wrapper.Download.downloadInternal(Download.java:87)
+        at org.gradle.wrapper.Download.download(Download.java:67)
+        at org.gradle.wrapper.Install$1.call(Install.java:68)
+        at org.gradle.wrapper.Install$1.call(Install.java:48)
+        at org.gradle.wrapper.ExclusiveFileAccessManager.access(ExclusiveFileAccessManager.java:69)
+        at org.gradle.wrapper.Install.createDist(Install.java:48)
+        at org.gradle.wrapper.WrapperExecutor.execute(WrapperExecutor.java:107)
+        at org.gradle.wrapper.GradleWrapperMain.main(GradleWrapperMain.java:63)
+# task_tracker: Advance plan to final base and static validation
+Task list has been updated with 5 item(s).
+$ cd /workspace/halo && export CLASSPATH="build/classes/java/main:$(find build/repro-libs -name '*.jar' -printf '%p:' | sed 's/:$//')" && javac -cp "$CLASSPATH" -d build/classes/java/main src/main/java/run/halo/app/controller/content/MainController.java src/main/java/run/halo/app/controller/content/model/PostModel.java src/main/java/run/halo/app/repository/PostCategoryRepository.java src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java && rm -rf /tmp/halo-manual && mkdir -p /tmp/halo-manual/run/halo/app/service/impl /tmp/halo-manual/run/halo/app/handler/file && sed -e '/import lombok.extern.slf4j.Slf4j;/d' -e '/^@Slf4j$/d' -e '/implements AttachmentService {/a\    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AttachmentServiceImpl.class);' src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java > /tmp/halo-manual/run/halo/app/service/impl/AttachmentServiceImpl.java && sed -e '/import lombok.Data;/d' -e '/import lombok.NoArgsConstructor;/d' -e '/import lombok.extern.slf4j.Slf4j;/d' -e '/^@Slf4j$/d' -e '/^    @Data$/d' -e '/^    @NoArgsConstructor$/d' -e '/public class QiniuOssFileHandler/a\    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(QiniuOssFileHandler.class);' src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java > /tmp/halo-manual/run/halo/app/handler/file/QiniuOssFileHandler.java && javac -cp "$CLASSPATH" -d build/classes/java/main /tmp/halo-manual/run/halo/app/service/impl/AttachmentServiceImpl.java /tmp/halo-manual/run/halo/app/handler/file/QiniuOssFileHandler.java && rm -rf /tmp/halo-manual
+$ cd /workspace/halo && rm -f IssueReproduction.java IssueReproduction.class 'IssueReproduction$'*.class build/qiniu-java-sdk-7.8.0.jar && rm -rf build/repro-libs
+$ git -C /workspace/halo status --short; git -C /workspace/halo --no-pager diff --check; printf '\nModified test files:\n'; git -C /workspace/halo --no-pager diff --name-only | grep '^src/test/' || true; printf '\nFinal diff stat:\n'; git -C /workspace/halo --no-pager diff --stat
+M gradle.properties
+ M src/main/java/run/halo/app/controller/content/MainController.java
+ M src/main/java/run/halo/app/controller/content/model/PostModel.java
+ M src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java
+ M src/main/java/run/halo/app/repository/PostCategoryRepository.java
+ M src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java
+ M src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
+
+Modified test files:
+
+Final diff stat:
+ gradle.properties                                                    |  2 +-
+ src/main/java/run/halo/app/controller/content/MainController.java    |  2 ++
+ src/main/java/run/halo/app/controller/content/model/PostModel.java   |  4 ++--
+ src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java     | 16 ++++++----------
+ src/main/java/run/halo/app/repository/PostCategoryRepository.java    | 25 +++++++++++++++++++++++++
+ src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java   | 34 ++++++++++++++++++++++++----------
+ src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java | 40 ++++++++++++++++++++++------------------
+ 7 files changed, 82 insertions(+), 41 deletions(-)
+$ grep -nE 'sendError|getContentById|ignoreFileOperationException|returnBody|handleImageMetadata|findAllPostIdsByCategoryIdIn|listCategoryIdsRecursively' /workspace/halo/src/main/java/run/halo/app/controller/content/MainController.java /workspace/halo/src/main/java/run/halo/app/controller/content/model/PostModel.java /workspace/halo/src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java /workspace/halo/src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java /workspace/halo/src/main/java/run/halo/app/repository/PostCategoryRepository.java /workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java; cat /workspace/halo/gradle.properties
+/workspace/halo/src/main/java/run/halo/app/controller/content/MainController.java:75:            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+/workspace/halo/src/main/java/run/halo/app/controller/content/model/PostModel.java:151:                postService.getContentById(post.getId()).getContent()));
+/workspace/halo/src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java:162:    private Attachment removePermanently(Integer id, boolean ignoreFileOperationException) {
+/workspace/halo/src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java:170:            if (!ignoreFileOperationException) {
+/workspace/halo/src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:89:        putPolicy.put("returnBody",
+/workspace/halo/src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:142:            handleImageMetadata(file, result, () -> {
+/workspace/halo/src/main/java/run/halo/app/repository/PostCategoryRepository.java:80:    Set<Integer> findAllPostIdsByCategoryIdIn(@NonNull Collection<Integer> categoryIds);
+/workspace/halo/src/main/java/run/halo/app/repository/PostCategoryRepository.java:93:    Set<Integer> findAllPostIdsByCategoryIdIn(@NonNull Collection<Integer> categoryIds,
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:127:            .findAllPostIdsByCategoryIdIn(listCategoryIdsRecursively(categoryId));
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:138:        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:139:            listCategoryIdsRecursively(categoryId), Collections.singleton(status));
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:150:        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:151:            listCategoryIdsRecursively(categoryId), status);
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:191:            .findAllPostIdsByCategoryIdIn(listCategoryIdsRecursively(categoryId));
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:203:        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:204:            listCategoryIdsRecursively(categoryId), Collections.singleton(status));
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:216:        Set<Integer> postIds = postCategoryRepository.findAllPostIdsByCategoryIdIn(
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:217:            listCategoryIdsRecursively(categoryId), status);
+/workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:222:    private Set<Integer> listCategoryIdsRecursively(Integer categoryId) {
+version=1.5.5
+$ find /workspace/halo -maxdepth 1 -type f -name 'IssueReproduction*' -print; find /tmp -maxdepth 1 -type d -name 'halo-manual' -print; awk 'length($0)>100 {print FILENAME ":" FNR ":" length($0)}' /workspace/halo/src/main/java/run/halo/app/controller/content/MainController.java /workspace/halo/src/main/java/run/halo/app/controller/content/model/PostModel.java /workspace/halo/src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java /workspace/halo/src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java /workspace/halo/src/main/java/run/halo/app/repository/PostCategoryRepository.java /workspace/halo/src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
+/workspace/halo/src/main/java/run/halo/app/controller/content/MainController.java:82:109
+/workspace/halo/src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java:259:106
+/workspace/halo/src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:156:118
+# task_tracker: Record successful implementation and blocked full-suite infrastructure
+Task list has been updated with 5 item(s).
+# finish: Implement and verify five fixes plus 1.5.5 release
+Implemented the release-1.5 fixes with minimal production-only changes. No test files were modified.
+
+### Changes
+- `/install` now returns HTTP 404 after Halo is initialized, while preserving the install redirect before initialization (`MainController.java:75`).
+- Post detail fallback `meta_description` is generated from persisted post content instead of the unloaded transient field (`PostModel.java:150`). Explicit descriptions remain unchanged.
+- Batch attachment deletion now continues when an upstream file deletion raises `FileOperationException`; single deletion still reports the failure (`AttachmentServiceImpl.java:147-178`).
+- Qiniu upload responses no longer require `imageInfo` fields, allowing non-image attachments. Shared image metadata handling now also supplies a thumbnail-path fallback for non-images (`QiniuOssFileHandler.java:89-90,142-148`).
+- Category post queries now include the root category and all descendants for ID, slug, status, and paginated overloads. New collection-based JPQL queries deduplicate posts assigned to multiple category levels (`PostCategoryRepository.java:71-94`, `PostCategoryServiceImpl.java:121-228`).
+- Updated the release version to `1.5.5` in `gradle.properties`.
+
+### Verification
+- Created and compiled the requested standalone Java reproduction with `javac IssueReproduction.java`.
+- Before changes, `java IssueReproduction` reproduced all five defects.
+- After changes, the expanded harness passed all checks, including:
+  - initialized 404 and uninitialized custom-admin redirect;
+  - generated versus explicit post metadata;
+  - empty, single, and multi-file deletion behavior;
+  - Qiniu non-image policy and thumbnail fallback;
+  - descendant ID/slug/paged queries, duplicate relations, malformed roots, and status filtering;
+  - real Spring Data JPA queries against H2.
+- Manually compiled all changed Java sources successfully using the repository’s bundled dependency jars.
+- Compared against base `f6afac52b3090f078adc9bf4099ae0b2a24b487b`; that commit is the current `HEAD`, and the final diff contains only the seven intended non-test files.
+- `git diff --check` passes, and the temporary reproduction artifacts were removed.
+
+### Full-suite limitation
+`./gradlew test` could not start because Gradle 7.4 is not installed locally and the wrapper’s download from `services.gradle.org` is refused by the environment. No preinstalled Gradle binary or offline JUnit engine was available. This is an infrastructure limitation rather than a test failure; all executable manual and H2 integration checks passed.

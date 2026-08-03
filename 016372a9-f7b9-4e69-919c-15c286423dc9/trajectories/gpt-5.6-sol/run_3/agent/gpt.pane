@@ -1,0 +1,200 @@
+ }
+
+ func (sd SoftDeleteDeleteClause) ModifyStatement(stmt *Statement) {
+-       if stmt.SQL.String() == "" {
++       if stmt.SQL.String() == "" && !stmt.Unscoped {
+                curTime := stmt.DB.NowFunc()
+                stmt.AddClause(clause.Set{{Column: clause.Column{Name: sd.Field.DBName}, Value: curTime}})
+                stmt.SetColumn(sd.Field.DBName, curTime, true)
+diff --git a/statement.go b/statement.go
+index 5a948d3..b86bc3e 100644
+--- a/statement.go
++++ b/statement.go
+@@ -228,9 +228,20 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
+                        writer.WriteString(subdb.Statement.SQL.String())
+                        stmt.Vars = subdb.Statement.Vars
+                default:
+-                       switch rv := reflect.ValueOf(v); rv.Kind() {
++                       rv := reflect.ValueOf(v)
++                       if v := reflect.Indirect(rv); v.IsValid() && v.Type().ConvertibleTo(schema.TimeReflectType) {
++                               v = v.Convert(schema.TimeReflectType)
++                               stmt.Vars = append(stmt.Vars, v.Interface())
++                               stmt.DB.Dialector.BindVarTo(writer, stmt, v.Interface())
++                               continue
++                       }
++
++                       switch rv.Kind() {
+                        case reflect.Slice, reflect.Array:
+-                               if rv.Len() == 0 {
++                               if rv.Kind() == reflect.Slice && rv.Type().Elem() == reflect.TypeOf(uint8(0)) {
++                                       stmt.Vars = append(stmt.Vars, v)
++                                       stmt.DB.Dialector.BindVarTo(writer, stmt, v)
++                               } else if rv.Len() == 0 {
+                                        writer.WriteString("(NULL)")
+                                } else {
+                                        writer.WriteByte('(')
+--- .golangci.yml ---
+linters:
+  enable:
+    - cyclop
+    - exportloopref
+    - gocritic
+    - gofumpt
+    - gosec
+    - ineffassign
+    - misspell
+    - prealloc
+    - unconvert
+    - unparam
+--- diff check ---
+--- status ---
+ M .github/workflows/reviewdog.yml
+ M callbacks/create.go
+ M callbacks/delete.go
+ M callbacks/query.go
+ M callbacks/update.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+?? .golangci.yml
+?? tests/repro/
+# file_editor: Use idiomatic non-empty check for soft-delete WHERE expressions
+The file /workspace/gorm/soft_delete.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/gorm/soft_delete.go:
+    65	func (sd SoftDeleteQueryClause) ModifyStatement(stmt *Statement) {
+    66		if _, ok := stmt.Clauses["soft_delete_enabled"]; !ok && !stmt.Unscoped {
+    67			if c, ok := stmt.Clauses["WHERE"]; ok {
+    68				if where, ok := c.Expression.(clause.Where); ok && len(where.Exprs) > 0 {
+    69					for _, expr := range where.Exprs {
+    70						if orCond, ok := expr.(clause.OrConditions); ok && len(orCond.Exprs) == 1 {
+    71							where.Exprs = []clause.Expression{clause.And(where.Exprs...)}
+    72							c.Expression = where
+    73	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/gorm/tests/repro && go run -mod=mod reproduce_issue.go && cd /workspace/gorm && GORM_DIALECT=sqlite go test -count=1 ./... && cd /workspace/gorm/tests && GORM_DIALECT=sqlite go test -mod=mod -count=1 ./...
+all issue reproductions passed
+ok      gorm.io/gorm    0.003s
+?       gorm.io/gorm/callbacks  [no test files]
+ok      gorm.io/gorm/clause     0.039s
+ok      gorm.io/gorm/logger     0.002s
+?       gorm.io/gorm/migrator   [no test files]
+ok      gorm.io/gorm/schema     0.020s
+ok      gorm.io/gorm/utils      0.002s
+?       gorm.io/gorm/utils/tests        [no test files]
+ok      gorm.io/gorm/tests      10.914s
+?       gorm.io/gorm/tests/repro        [no test files]
+$ rm /workspace/gorm/tests/repro/reproduce_issue.go && rmdir /workspace/gorm/tests/repro && find /workspace/gorm -maxdepth 3 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) -print && git -C /workspace/gorm status --short
+M .github/workflows/reviewdog.yml
+ M callbacks/create.go
+ M callbacks/delete.go
+ M callbacks/query.go
+ M callbacks/update.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+?? .golangci.yml
+# task_tracker: Review task state before final completeness audit
+# Task List
+
+1. ✅ Explore repository and identify affected non-test code
+   Inspected guidance, repository structure, schema alias parsing, WHERE grouping, soft-delete updates, migration ordering, connection APIs, workflows, and existing test coverage.
+
+2. ✅ Reproduce reported failures with temporary Go script
+   Created tests/reproduce_issue.go and confirmed AutoMigrate fails for an anonymous scalar alias with the reported invalid embedded struct error.
+
+3. ✅ Implement minimal non-test source changes
+   Implemented alias schema and binding support, named/OR grouping, soft-delete Save and Unscoped behavior, deterministic migration ordering, Connection API, and lint configuration.
+
+4. ✅ Exercise edge cases through reproduction script
+   Expanded the disposable program to cover scalar/time/byte aliases and round-trips, named OR grouping, lone Or with soft delete, Save on deleted rows, ordered AddColumn calls, and dedicated connection state/error propagation. All pass.
+
+5. 🔄 Run targeted and complete repository test suites
+   Run tests associated with changed functions/files and then all tests; resolve source failures only.
+
+6. ⏳ Review completeness and clean temporary artifacts
+   Re-read requirements, inspect source diff against requested baseline constraints, remove reproduction files, and summarize.
+# task_tracker: Record successful tests and begin final source audit
+Task list has been updated with 6 item(s).
+$ cd /workspace/gorm && go vet ./... && cd /workspace/gorm/tests && GORM_DIALECT=sqlite go vet -mod=mod ./... && cd /workspace/gorm && printf '%s\n' '--- changed tracked files ---' && git diff --name-only && printf '%s\n' '--- test-file changes ---' && git diff --name-only -- '*_test.go' tests || true && printf '%s\n' '--- whitespace ---' && git diff --check && printf '%s\n' '--- final status ---' && git status --short
+--- changed tracked files ---
+.github/workflows/reviewdog.yml
+callbacks/create.go
+callbacks/delete.go
+callbacks/query.go
+callbacks/update.go
+clause/where.go
+finisher_api.go
+migrator/migrator.go
+schema/field.go
+soft_delete.go
+statement.go
+--- test-file changes ---
+--- whitespace ---
+--- final status ---
+ M .github/workflows/reviewdog.yml
+ M callbacks/create.go
+ M callbacks/delete.go
+ M callbacks/query.go
+ M callbacks/update.go
+ M clause/where.go
+ M finisher_api.go
+ M migrator/migrator.go
+ M schema/field.go
+ M soft_delete.go
+ M statement.go
+?? .golangci.yml
+# task_tracker: Review final task list before marking completion
+# Task List
+
+1. ✅ Explore repository and identify affected non-test code
+   Inspected guidance, repository structure, schema alias parsing, WHERE grouping, soft-delete updates, migration ordering, connection APIs, workflows, and existing test coverage.
+
+2. ✅ Reproduce reported failures with temporary Go script
+   Created a disposable Go program and confirmed AutoMigrate failed for an anonymous scalar alias with the reported invalid embedded struct error.
+
+3. ✅ Implement minimal non-test source changes
+   Implemented alias schema and binding support, named/OR grouping, soft-delete Save and Unscoped behavior, deterministic migration ordering, Connection API, and lint configuration.
+
+4. ✅ Exercise edge cases through reproduction script
+   Covered scalar/time/byte/pointer aliases and round-trips, named OR grouping, lone Or with soft delete, Save on deleted rows, sorted AddColumn behavior, custom Unscoped clauses, and dedicated connection state/error propagation. All passed.
+
+5. ✅ Run targeted and complete repository test suites
+   Targeted tests passed; full root and nested integration suites passed with SQLite, including one race-enabled full run. Final post-change full rerun also passed.
+
+6. 🔄 Review completeness and clean temporary artifacts
+   Re-read requirements, inspect source diff against requested baseline constraints, remove reproduction files, and summarize.
+# task_tracker: Complete final audit and close all implementation tasks
+Task list has been updated with 6 item(s).
+# finish: Summarize completed GORM fixes and successful comprehensive validation
+Implemented the requested fixes in `/workspace/gorm` using only non-test files.
+
+### Changes made
+- Fixed anonymous native-type aliases being incorrectly parsed as embedded structs.
+- Added proper schema and bind-variable support for `time.Time` and `[]byte`-derived types, including pointer time aliases.
+- Correctly parenthesized named `OR` expressions when combined with soft-delete predicates.
+- Fixed lone `.Or(...)` conditions so soft-delete filtering remains joined with `AND`.
+- Prevented `Save` from attempting to recreate an existing soft-deleted row.
+- Moved `Unscoped` decisions into soft-delete clauses so unrelated custom model clauses still execute.
+- Made existing-table `AutoMigrate` column processing deterministic by sorting column names.
+- Added `DB.Connection`, allowing multiple commands on one dedicated `sql.Conn`.
+- Added `.golangci.yml`, moved reviewdog’s inline linters into it, and enabled `gofumpt`.
+
+### Validation
+- Confirmed the original alias migration error before changing the source.
+- Reran the original reproduction successfully after the fix.
+- Expanded the disposable reproducer to cover scalar, time, pointer-time, and byte aliases; database round-trips; named and lone OR conditions; soft-deleted `Save`; sorted migration columns; custom clauses under `Unscoped`; and dedicated connection state/error propagation. All checks passed.
+- Removed the disposable reproducer afterward.
+- Confirmed `HEAD` is the requested base commit `3a3b82263a2e6a3d19c2d669ce9d299b76c47f65`.
+- Targeted tests passed.
+- Full root and integration SQLite suites passed, including a race-enabled run.
+- Final commands passed:
+  - `go test -count=1 ./...` in the root module
+  - `GORM_DIALECT=sqlite go test -mod=mod -count=1 ./...` in `tests`
+  - `go vet ./...` in both modules
+  - `git diff --check`
+- Verified no test files were modified.

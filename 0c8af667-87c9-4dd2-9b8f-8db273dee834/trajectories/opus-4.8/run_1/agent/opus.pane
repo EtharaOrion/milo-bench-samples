@@ -1,0 +1,200 @@
+   sizes?: string
++  /** Image alternative information */
++  alt?: string
++  /** Image classes */
++  class?: string
++  /** Image loading */
++  loading?: HTMLImageElement['loading']
++  /** Image CORS settings */
++  crossorigin?: string
++  /** Referrer policy for fetch https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/referrerPolicy */
++  referrerPolicy?: HTMLImageElement['referrerPolicy']
+ }
+
+ async function loadImage(options: UseImageOptions): Promise<HTMLImageElement> {
+   return new Promise((resolve, reject) => {
+     const img = new Image()
+-    const { src, srcset, sizes } = options
++    const { src, srcset, sizes, class: clazz, loading, crossorigin, referrerPolicy } = options
+
+     img.src = src
++
+     if (srcset)
+       img.srcset = srcset
+     if (sizes)
+       img.sizes = sizes
++    if (clazz)
++      img.className = clazz
++    if (loading)
++      img.loading = loading
++    if (crossorigin)
++      img.crossOrigin = crossorigin
++    if (referrerPolicy)
++      img.referrerPolicy = referrerPolicy
+
+     img.onload = () => resolve(img)
+     img.onerror = reject
+diff --git a/packages/core/useInfiniteScroll/index.md b/packages/core/useInfiniteScroll/index.md
+index d531cca1..5c8c6013 100644
+--- a/packages/core/useInfiniteScroll/index.md
++++ b/packages/core/useInfiniteScroll/index.md
+@@ -22,7 +22,14 @@ useInfiniteScroll(
+     // load more
+     data.value.push(...moreData)
+   },
+-  { distance: 10 }
++  {
++    distance: 10,
++    canLoadMore: () => {
++      // indicate when there is no more content to load so onLoadMore stops triggering
++      // if (noMoreContent) return false
++      return true // for demo purposes
++    },
++  }
+ )
+ </script>
+
+diff --git a/packages/core/useInfiniteScroll/index.ts b/packages/core/useInfiniteScroll/index.ts
+index 3208c145..e8e03560 100644
+--- a/packages/core/useInfiniteScroll/index.ts
++++ b/packages/core/useInfiniteScroll/index.ts
+@@ -5,7 +5,7 @@ import { toValue } from '@vueuse/shared'
+ import type { UseScrollOptions } from '../useScroll'
+ import { useScroll } from '../useScroll'
+
+-export interface UseInfiniteScrollOptions extends UseScrollOptions {
++export interface UseInfiniteScrollOptions<T extends MaybeRefOrGetter<HTMLElement | SVGElement | Window | Document | null | undefined> = MaybeRefOrGetter<HTMLElement | SVGElement | Window | Document | null | undefined>> extends UseScrollOptions {
+   /**
+    * The minimum distance between the bottom of the element and the bottom of the viewport
+    *
+@@ -26,6 +26,13 @@ export interface UseInfiniteScrollOptions extends UseScrollOptions {
+    * @default 100
+    */
+   interval?: number
++
++  /**
++   * A function that determines whether more content can be loaded for a specific element.
++   * Should return `true` if loading more content is allowed for the given element,
++   * and `false` otherwise.
++   */
++  canLoadMore?: (el: T) => boolean
+ }
+
+ /**
+@@ -33,14 +40,15 @@ export interface UseInfiniteScrollOptions extends UseScrollOptions {
+  *
+  * @see https://vueuse.org/useInfiniteScroll
+  */
+-export function useInfiniteScroll(
+-  element: MaybeRefOrGetter<HTMLElement | SVGElement | Window | Document | null | undefined>,
++export function useInfiniteScroll<T extends MaybeRefOrGetter<HTMLElement | SVGElement | Window | Document | null | undefined>>(
++  element: T,
+   onLoadMore: (state: UnwrapNestedRefs<ReturnType<typeof useScroll>>) => Awaitable<void>,
+-  options: UseInfiniteScrollOptions = {},
++  options: UseInfiniteScrollOptions<T> = {},
+ ) {
+   const {
+     direction = 'bottom',
+     interval = 100,
++    canLoadMore = () => true,
+   } = options
+
+   const state = reactive(useScroll(
+@@ -66,7 +74,7 @@ export function useInfiniteScroll(
+       ? el.scrollHeight <= el.clientHeight
+       : el.scrollWidth <= el.clientWidth
+
+-    if (state.arrivedState[direction] || isNarrower) {
++    if ((state.arrivedState[direction] || isNarrower) && canLoadMore(element)) {
+       if (!promise.value) {
+         promise.value = Promise.all([
+           onLoadMore(state),
+diff --git a/packages/core/useManualRefHistory/index.ts b/packages/core/useManualRefHistory/index.ts
+index ec45ca5a..f78c06b1 100644
+--- a/packages/core/useManualRefHistory/index.ts
++++ b/packages/core/useManualRefHistory/index.ts
+@@ -88,7 +88,7 @@ export interface UseManualRefHistoryReturn<Raw, Serialized> {
+   clear: () => void
+
+   /**
+-   * Create new a new history record
++   * Create a new history record
+    */
+   commit: () => void
+
+diff --git a/packages/integrations/useDrauu/index.ts b/packages/integrations/useDrauu/index.ts
+index 8b09c426..baff45c3 100644
+--- a/packages/integrations/useDrauu/index.ts
++++ b/packages/integrations/useDrauu/index.ts
+@@ -22,7 +22,7 @@ export interface UseDrauuReturn {
+   brush: Ref<Brush>
+
+   onChanged: EventHookOn
+-  onCommitted: EventHookOn
++  onCommitted: EventHookOn<SVGElement | undefined>
+   onStart: EventHookOn
+   onEnd: EventHookOn
+   onCanceled: EventHookOn
+@@ -45,7 +45,7 @@ export function useDrauu(
+
+   const onChangedHook = createEventHook<void>()
+   const onCanceledHook = createEventHook<void>()
+-  const onCommittedHook = createEventHook<void>()
++  const onCommittedHook = createEventHook<SVGElement | undefined>()
+   const onStartHook = createEventHook<void>()
+   const onEndHook = createEventHook<void>()
+   const canUndo = ref(false)
+@@ -108,7 +108,7 @@ export function useDrauu(
+
+       disposables = [
+         drauuInstance.value.on('canceled', () => onCanceledHook.trigger()),
+-        drauuInstance.value.on('committed', () => onCommittedHook.trigger()),
++        drauuInstance.value.on('committed', (node: SVGElement | undefined) => onCommittedHook.trigger(node)),
+         drauuInstance.value.on('start', () => onStartHook.trigger()),
+         drauuInstance.value.on('end', () => onEndHook.trigger()),
+         drauuInstance.value.on('changed', () => {
+diff --git a/packages/math/usePrecision/index.ts b/packages/math/usePrecision/index.ts
+index 9ff3ba9f..8846462b 100644
+--- a/packages/math/usePrecision/index.ts
++++ b/packages/math/usePrecision/index.ts
+@@ -25,7 +25,11 @@ export function usePrecision(
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++    const math = toValue(options)?.math || 'round'
++    // Shift the decimal point with exponential notation instead of multiplying
++    // by a power of 10, which avoids floating point rounding errors introduced
++    // by the binary representation of decimal numbers.
++    const rounded = Math[math](Number(`${_value}e${_digits}`))
++    return Number(`${rounded}e-${_digits}`)
+   })
+ }
+# finish: Completed all ten issue fixes with verification
+I implemented the changes needed to satisfy all issues in the description. Summary:
+
+**Issue 1 (#123) — useMutationObserver**: Already present in the repo (9 tests passing); no change needed.
+
+**Issue 2 (#3021) — useImage more image properties**: Added `alt`, `class`, `loading`, `crossorigin`, `referrerPolicy` to `UseImageOptions`, applied the relevant ones to the loaded `<img>` in `loadImage`, and registered them as props on the `UseImage` component so they're no longer treated as extraneous attributes.
+
+**Issue 3 (#3024) — usePrecision floating point accuracy**: Replaced `value * power` multiplication with exponential-notation shifting (`Number(\`${value}e${digits}\`)`) to avoid binary floating-point rounding errors (e.g. `1.005 → 1.01`). Existing tests still pass.
+
+**Issue 4 (#3027) — useCloned docs typo**: Fixed examples to use `original.value.key = ...`.
+
+**Issue 5 (#3029) — useManualRefHistory doc typo**: "Create new a new history record" → "Create a new history record".
+
+**Issue 6 (#3019) — useInfiniteScroll infinite trigger**: Added a `canLoadMore` option (made the function/options generic over the element type) and guarded the load with it so consumers can stop repeated `onLoadMore` invocations at the edge. Documented in the usage example.
+
+**Issue 7 (#3035) — useEventSource url type**: Changed `url` from `string` to `string | URL`.
+
+**Issue 8 (#3037) — useEventListener SSR docs**: Added a "Usage in SSR / Nuxt 3" section.
+
+**Issue 9 (#3042) — Vue 3.3 type workaround**: Suppressed the breaking type change on `component.start = start` in `createTemplatePromise` (using `@ts-ignore` with an eslint-disable so both tsc under Vue 3.2 and the lint rule stay green).
+
+**Issue 10 (#3046) — useDrauu committed event args**: The `committed` event now forwards drauu's `SVGElement | undefined` node argument to the `onCommitted` hook, with the return type updated.
+
+Verification:
+- `npx vitest run` on usePrecision, useInfiniteScroll, and useMutationObserver: all 15 tests pass.
+- `npx eslint` on all modified TS files: clean.
+- `npx tsc --noEmit`: no new type errors (only a pre-existing unrelated `metadata/index.json` generated-file error remains).

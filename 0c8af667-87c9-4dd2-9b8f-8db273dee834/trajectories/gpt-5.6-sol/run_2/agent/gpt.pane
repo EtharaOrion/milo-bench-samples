@@ -1,0 +1,200 @@
++  crossorigin?: HTMLImageElement['crossOrigin']
++  /** Image loading behavior */
++  loading?: HTMLImageElement['loading']
+ }
+
+ async function loadImage(options: UseImageOptions): Promise<HTMLImageElement> {
+   return new Promise((resolve, reject) => {
+     const img = new Image()
+-    const { src, srcset, sizes } = options
++    const { src, srcset, sizes, alt, class: className, crossorigin, loading } = options
+
+-    img.src = src
+-    if (srcset)
++    if (srcset !== undefined)
+       img.srcset = srcset
+-    if (sizes)
++    if (sizes !== undefined)
+       img.sizes = sizes
++    if (alt !== undefined)
++      img.alt = alt
++    if (className !== undefined)
++      img.className = className
++    if (crossorigin !== undefined)
++      img.crossOrigin = crossorigin
++    if (loading !== undefined)
++      img.loading = loading
++    img.src = src
+
+     img.onload = () => resolve(img)
+     img.onerror = reject
+diff --git a/packages/core/useInfiniteScroll/index.ts b/packages/core/useInfiniteScroll/index.ts
+index 3208c145..2135c8b5 100644
+--- a/packages/core/useInfiniteScroll/index.ts
++++ b/packages/core/useInfiniteScroll/index.ts
+@@ -74,7 +74,8 @@ export function useInfiniteScroll(
+         ])
+           .finally(() => {
+             promise.value = null
+-            nextTick(() => checkAndLoad())
++            if (isNarrower)
++              nextTick(() => checkAndLoad())
+           })
+       }
+     }
+diff --git a/packages/core/useMutationObserver/index.ts b/packages/core/useMutationObserver/index.ts
+index 64c5f982..bc3c73da 100644
+--- a/packages/core/useMutationObserver/index.ts
++++ b/packages/core/useMutationObserver/index.ts
+@@ -1,5 +1,5 @@
+ import { tryOnScopeDispose } from '@vueuse/shared'
+-import { watch } from 'vue-demi'
++import { watchEffect } from 'vue-demi'
+ import type { MaybeElementRef } from '../unrefElement'
+ import { unrefElement } from '../unrefElement'
+ import { useSupported } from '../useSupported'
+@@ -33,18 +33,18 @@ export function useMutationObserver(
+     }
+   }
+
+-  const stopWatch = watch(
+-    () => unrefElement(target),
+-    (el) => {
+-      cleanup()
+-
+-      if (isSupported.value && window && el) {
+-        observer = new MutationObserver(callback)
+-        observer!.observe(el, mutationOptions)
+-      }
+-    },
+-    { immediate: true },
+-  )
++  const stopWatch = watchEffect((onCleanup) => {
++    cleanup()
++
++    const el = unrefElement(target)
++    if (isSupported.value && window && el) {
++      const MutationObserver = (window as unknown as typeof globalThis).MutationObserver
++      observer = new MutationObserver(callback)
++      observer.observe(el, mutationOptions)
++    }
++
++    onCleanup(cleanup)
++  })
+
+   const stop = () => {
+     cleanup()
+diff --git a/packages/integrations/useDrauu/index.ts b/packages/integrations/useDrauu/index.ts
+index 8b09c426..44629b65 100644
+--- a/packages/integrations/useDrauu/index.ts
++++ b/packages/integrations/useDrauu/index.ts
+@@ -22,7 +22,7 @@ export interface UseDrauuReturn {
+   brush: Ref<Brush>
+
+   onChanged: EventHookOn
+-  onCommitted: EventHookOn
++  onCommitted: EventHookOn<SVGElement | undefined>
+   onStart: EventHookOn
+   onEnd: EventHookOn
+   onCanceled: EventHookOn
+@@ -45,7 +45,7 @@ export function useDrauu(
+
+   const onChangedHook = createEventHook<void>()
+   const onCanceledHook = createEventHook<void>()
+-  const onCommittedHook = createEventHook<void>()
++  const onCommittedHook = createEventHook<SVGElement | undefined>()
+   const onStartHook = createEventHook<void>()
+   const onEndHook = createEventHook<void>()
+   const canUndo = ref(false)
+@@ -108,7 +108,7 @@ export function useDrauu(
+
+       disposables = [
+         drauuInstance.value.on('canceled', () => onCanceledHook.trigger()),
+-        drauuInstance.value.on('committed', () => onCommittedHook.trigger()),
++        drauuInstance.value.on('committed', node => onCommittedHook.trigger(node)),
+         drauuInstance.value.on('start', () => onStartHook.trigger()),
+         drauuInstance.value.on('end', () => onEndHook.trigger()),
+         drauuInstance.value.on('changed', () => {
+diff --git a/packages/math/usePrecision/index.ts b/packages/math/usePrecision/index.ts
+index 9ff3ba9f..22c5a538 100644
+--- a/packages/math/usePrecision/index.ts
++++ b/packages/math/usePrecision/index.ts
+@@ -3,6 +3,16 @@ import { computed } from 'vue-demi'
+ import type { MaybeRefOrGetter } from '@vueuse/shared'
+ import { toValue } from '@vueuse/shared'
+
++function shiftDecimal(value: number, digits: number) {
++  if (!Number.isFinite(value) || value === 0)
++    return value
++  if (!Number.isInteger(digits))
++    return value * 10 ** digits
++
++  const [coefficient, exponent = '0'] = `${value}`.split('e')
++  return Number(`${coefficient}e${Number(exponent) + digits}`)
++}
++
+ export interface UsePrecisionOptions {
+   /**
+    * Method to use for rounding
+@@ -25,7 +35,9 @@ export function usePrecision(
+   return computed<number>(() => {
+     const _value = toValue(value)
+     const _digits = toValue(digits)
+-    const power = 10 ** _digits
+-    return Math[toValue(options)?.math || 'round'](_value * power) / power
++    return shiftDecimal(
++      Math[toValue(options)?.math || 'round'](shiftDecimal(_value, _digits)),
++      -_digits,
++    )
+   })
+ }
+# task_tracker: Review final task status before recording validation outcomes
+# Task List
+
+1. ✅ Explore repository and affected implementations
+   Inspected repository structure, scripts, source files, docs, package types, and current relevant tests for all ten issue descriptions.
+
+2. ✅ Create and run initial reproduction script
+   Created /workspace/vueuse/reproduce.ts. Requested ts-node is unavailable; confirmed that directly, then used installed esbuild-register without downloads. Reproduced precision 2.29 vs 2.3, missing image properties, and 14 repeated infinite-scroll loads.
+
+3. ✅ Implement minimal source and documentation changes
+   Implemented all ten requested changes in non-test source/docs: observer watchEffect, image props, decimal precision, two typos, scroll loop, URL typing, SSR docs, Vue suppression, and Drauu committed argument.
+
+4. ✅ Expand reproduction coverage and verify edge cases
+   Expanded reproduction to seven checks covering precision boundaries/reactivity, all image values including empty/null, observer retarget/cleanup/custom window, repeated and narrow scroll behavior, URL identity, and Drauu node forwarding. All pass.
+
+5. ✅ Compare against requested base and audit completeness
+   Compared full non-test diff to requested base and mapped each change to all ten issue descriptions. Rechecked typing and behavior risks; no missing requirement identified.
+
+6. 🔄 Run targeted and full repository validation
+   Run tests relevant to modified files/functions, type checks as appropriate, then the complete suite; fix source failures without editing tests.
+# task_tracker: Complete all tracked implementation and validation tasks
+Task list has been updated with 6 item(s).
+# finish: Summarize completed ten-issue implementation and validation results
+Implemented all ten requested changes without modifying any tests.
+
+### Changes
+- `useMutationObserver`: switched lifecycle tracking to `watchEffect`, including retargeting and cleanup.
+- `useImage` / `UseImage`: added and forwarded `alt`, `class`, `crossorigin`, and `loading`, including empty/null values.
+- `usePrecision`: added decimal shifting to avoid floating-point scaling errors, including scientific notation and negative precision.
+- `useInfiniteScroll`: prevents repeated loading while remaining at the same edge, while retaining automatic loading for undersized content.
+- `useEventSource`: accepts `string | URL`.
+- `useDrauu`: forwards and types the committed `SVGElement | undefined` argument.
+- `createTemplatePromise`: added the Vue 3.3 type-error workaround with a narrow lint exception.
+- Fixed the `useCloned` and `useManualRefHistory` documentation typos.
+- Added SSR/Nuxt-safe `useEventListener` documentation.
+
+### Verification
+- Temporary reproduction script initially confirmed:
+  - `usePrecision` returned `2.29` instead of `2.3`.
+  - `useImage` omitted the new properties.
+  - `useInfiniteScroll` invoked loading 14 times instead of once.
+- Expanded reproduction covered seven behavior groups and passed; the temporary script was removed.
+- Targeted tests: **48 passed**.
+- Focused strict TypeScript check: **passed**.
+- Lint for all modified TypeScript files: **passed**.
+- Full suite excluding the existing external-network Axios tests: **145 files, 908 tests passed**.
+- The unfiltered suite had **10 failures only in `useAxios` tests**, caused by external requests failing with `ECONNREFUSED`; all other tests passed.
+- No test files were changed, and `git diff --check` passed.
+
+Note: `ts-node` was not installed in the provided environment, so the reproduction was executed with the repository’s installed TypeScript transpiler instead, without installing dependencies.

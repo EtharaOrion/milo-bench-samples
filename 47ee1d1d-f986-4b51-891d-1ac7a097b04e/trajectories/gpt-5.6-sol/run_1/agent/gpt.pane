@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--- status ---
+
+ M package.json
+ M src/graphql.ts
+ M src/handlers/GraphQLHandler.ts
+ M src/utils/request/onUnhandledRequest.ts
+ M yarn.lock
+?? reproduce.ts
+$ cd /workspace/msw && COREPACK_ENABLE_PROJECT_SPEC=0 yarn install --ignore-scripts --frozen-lockfile && node -e "const p=require('./package.json'); console.log(p.dependencies.graphql, require('graphql/package.json').version, p.packageManager || 'no packageManager field')"
+yarn install v1.22.22
+[1/4] Resolving packages...
+warning Resolution field "chokidar@3.4.1" is incompatible with requested version "chokidar@^2.1.8"
+[2/4] Fetching packages...
+[3/4] Linking dependencies...
+[4/4] Building fresh packages...
+warning Ignored scripts due to flag.
+Done in 1.93s.
+^16.0.1 16.0.1 no packageManager field
+$ cd /workspace/msw && ./node_modules/.bin/eslint "{cli,config,src,test}/**/*.ts"
+$ cd /workspace/msw && rm reproduce.ts && git status --short && GIT_PAGER=cat git diff --check
+M package.json
+ M src/graphql.ts
+ M src/handlers/GraphQLHandler.ts
+ M src/utils/request/onUnhandledRequest.ts
+ M yarn.lock
+# task_tracker: Review final task states before recording verification results
+# Task List
+
+1. ✅ Explore repository and affected behavior
+   Inspected checkout at base commit, affected source, package configuration, callback tests/types, and GraphQL operation typing.
+
+2. ✅ Create and run reproduction script
+   Created reproduce.ts and confirmed missing callback delegation plus GraphQL v16 range failure under ts-node.
+
+3. ✅ Implement minimal source changes
+   Added built-in warning/error callback delegates, upgraded GraphQL dependency, used GraphQL v16 enum values, and retained historical string compatibility.
+
+4. ✅ Verify reproduction and edge cases
+   Reproduction covers filtered suppression, warning/error delegates, suggestions, one-argument callbacks, GraphQL parsing/variables, DocumentNodes, and handler operation types; all pass.
+
+5. 🔄 Run focused and full test suites
+   Focused GraphQL tests pass; start full unit/integration suites and account for stale tests or baseline environment failures without modifying tests.
+
+6. ⏳ Review completeness against requested base
+   Compare working changes against base commit as requested, re-read requirements, and verify no gap remains.
+# task_tracker: Mark implementation and comprehensive verification complete
+Task list has been updated with 6 item(s).
+$ cd /workspace/msw && nl -ba src/utils/request/onUnhandledRequest.ts | sed -n '15,32p;135,148p' && nl -ba src/graphql.ts | sed -n '1,3p;82,105p' && nl -ba src/handlers/GraphQLHandler.ts | sed -n '30,42p' && nl -ba package.json | sed -n '72,78p' && nl -ba yarn.lock | sed -n '4878,4884p' && printf '\n' && git status --short
+15  const MAX_SUGGESTION_COUNT = 4
+    16  const TYPE_MATCH_DELTA = 0.5
+    17
+    18  export type UnhandledRequestCallback = (
+    19    request: MockedRequest,
+    20    print: {
+    21      warning(): void
+    22      error(): void
+    23    },
+    24  ) => void
+    25
+    26  export type UnhandledRequestStrategy =
+    27    | 'bypass'
+    28    | 'warn'
+    29    | 'error'
+    30    | UnhandledRequestCallback
+    31
+    32  interface RequestHandlerGroups {
+   135  export function onUnhandledRequest(
+   136    request: MockedRequest,
+   137    handlers: RequestHandler[],
+   138    strategy: UnhandledRequestStrategy = 'warn',
+   139  ): void {
+   140    if (typeof strategy === 'function') {
+   141      strategy(request, {
+   142        warning: () => onUnhandledRequest(request, handlers, 'warn'),
+   143        error: () => onUnhandledRequest(request, handlers, 'error'),
+   144      })
+   145      return
+   146    }
+   147
+   148    /**
+     1  import { DocumentNode, OperationTypeNode } from 'graphql'
+     2  import { ResponseResolver } from './handlers/RequestHandler'
+     3  import {
+    82     *   return res(ctx.data({ user: { name: 'John' } }))
+    83     * })
+    84     * @see {@link https://mswjs.io/docs/api/graphql/query `graphql.query()`}
+    85     */
+    86    query: createScopedGraphQLHandler(OperationTypeNode.QUERY, '*'),
+    87
+    88    /**
+    89     * Captures a GraphQL mutation by a given name.
+    90     * @example
+    91     * graphql.mutation('SavePost', (req, res, ctx) => {
+    92     *   return res(ctx.data({ post: { id: 'abc-123' } }))
+    93     * })
+    94     * @see {@link https://mswjs.io/docs/api/graphql/mutation `graphql.mutation()`}
+    95     */
+    96    mutation: createScopedGraphQLHandler(OperationTypeNode.MUTATION, '*'),
+    97  }
+    98
+    99  function createGraphQLLink(url: Path): typeof standardGraphQLHandlers {
+   100    return {
+   101      operation: createGraphQLOperationHandler(url),
+   102      query: createScopedGraphQLHandler(OperationTypeNode.QUERY, url),
+   103      mutation: createScopedGraphQLHandler(OperationTypeNode.MUTATION, url),
+   104    }
+   105  }
+    30  import { tryCatch } from '../utils/internal/tryCatch'
+    31  import { devUtils } from '../utils/internal/devUtils'
+    32
+    33  export type ExpectedOperationTypeNode =
+    34    | OperationTypeNode
+    35    | 'query'
+    36    | 'mutation'
+    37    | 'subscription'
+    38    | 'all'
+    39  export type GraphQLHandlerNameSelector = DocumentNode | RegExp | string
+    40
+    41  // GraphQL related context should contain utility functions
+    42  // useful for GraphQL. Functions like `xml()` bear no value
+    72      "chalk": "4.1.1",
+    73      "chokidar": "^3.4.2",
+    74      "cookie": "^0.4.1",
+    75      "graphql": "^16.0.1",
+    76      "headers-utils": "^3.0.2",
+    77      "inquirer": "^8.2.0",
+    78      "is-node-process": "^1.0.1",
+  4878    integrity sha512-nTnJ528pbqxYanhpDYsi4Rd8MAeaBA67+RZ10CM1m3bTAVFEDcd5AuA4a6W5YkGZ1iNXHzZz8T6TBKLeBuNriQ==
+  4879
+  4880  graphql@^16.0.1:
+  4881    version "16.0.1"
+  4882    resolved "https://registry.yarnpkg.com/graphql/-/graphql-16.0.1.tgz#93a13cd4e0e38ca8d0832e79614c8578bfd34f10"
+  4883    integrity sha512-oPvCuu6dlLdiz8gZupJ47o1clgb72r1u8NDBcQYjcV6G/iEdmE11B1bBlkhXRvV0LisP/SXRFP7tT6AgaTjpzg==
+  4884
+
+ M package.json
+ M src/graphql.ts
+ M src/handlers/GraphQLHandler.ts
+ M src/utils/request/onUnhandledRequest.ts
+ M yarn.lock
+# finish: Implemented callback delegation and GraphQL v16 support with verification
+Implemented both requested features with minimal non-test changes. No test files were modified.
+
+### Changes
+- **Custom `onUnhandledRequest` delegation**
+  - Updated `UnhandledRequestCallback` to receive a second `print` argument with:
+    - `print.warning()` — runs MSW’s built-in warning behavior.
+    - `print.error()` — runs MSW’s built-in error behavior.
+  - Both delegates reuse the existing strategy implementation, including request formatting and handler suggestions.
+  - Existing callbacks that ignore the second argument remain type-compatible.
+  - See `src/utils/request/onUnhandledRequest.ts:18` and `src/utils/request/onUnhandledRequest.ts:140`.
+
+  Example:
+  ```ts
+  server.listen({
+    onUnhandledRequest(req, print) {
+      if (req.url.pathname === '/ignored') {
+        return
+      }
+
+      print.warning()
+    },
+  })
+  ```
+
+- **GraphQL v16 support**
+  - Upgraded `graphql` from `^15.5.1` to `^16.0.1` in `package.json:75` and refreshed `yarn.lock:4880`.
+  - Updated GraphQL query/mutation factories to use `OperationTypeNode.QUERY` and `OperationTypeNode.MUTATION` in `src/graphql.ts:86`.
+  - Retained string operation types in `ExpectedOperationTypeNode` for compatibility with historical callers in `src/handlers/GraphQLHandler.ts:33`.
+
+### Verification
+- Initial `ts-node reproduce.ts` confirmed both failures:
+  - callback had no delegation argument;
+  - GraphQL dependency excluded v16.
+- Expanded reproduction covered filtering/suppression, warning and error delegation, handler suggestions, one-argument callbacks, GraphQL variables/parsing, DocumentNodes, and query/mutation handler creation. It passed against GraphQL 16.0.1. The temporary script was then removed.
+- Focused GraphQL tests: **28/28 passed**.
+- Full repository lint: **passed**.
+- Frozen Yarn lockfile validation: **passed**.
+- `git diff --check`: **passed**.
+- Full unit suite: **204/206 passed**. The only two failures are existing exact-arity assertions that still expect custom callbacks to be invoked with only `request`; the new API necessarily invokes them with `request` and `print`. Per your instruction, I did not modify those tests.
+- Integration tests could not start because built package artifacts and the browser executable are unavailable. Building was also blocked by the repository’s legacy Rollup/tslib incompatibility (`tslib/package.json` is not exported). These are environment/toolchain issues unrelated to the source changes.

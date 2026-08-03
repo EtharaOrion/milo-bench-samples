@@ -1,0 +1,200 @@
++
++func newTLSConfig(caFile, certFile, keyFile string) (*tls.Config, error) {
++       if caFile == "" || certFile == "" || keyFile == "" {
++               return nil, fmt.Errorf("ca_cert_path, client_cert_path, and client_key_path must all be set")
++       }
++
++       caCert, err := os.ReadFile(caFile)
++       if err != nil {
++               return nil, fmt.Errorf("read CA certificate: %w", err)
++       }
++       caCertPool := x509.NewCertPool()
++       if !caCertPool.AppendCertsFromPEM(caCert) {
++               return nil, fmt.Errorf("parse CA certificate %q", caFile)
++       }
++
++       clientCert, err := tls.LoadX509KeyPair(certFile, keyFile)
++       if err != nil {
++               return nil, fmt.Errorf("load client certificate and key: %w", err)
++       }
++
++       return &tls.Config{
++               Certificates: []tls.Certificate{clientCert},
++               RootCAs:      caCertPool,
++       }, nil
+ }
+diff --git a/weed/s3api/chunked_reader_v4.go b/weed/s3api/chunked_reader_v4.go
+index a69319500..337668d01 100644
+--- a/weed/s3api/chunked_reader_v4.go
++++ b/weed/s3api/chunked_reader_v4.go
+@@ -168,7 +168,7 @@ func (iam *IdentityAccessManagement) newChunkedReader(req *http.Request) (io.Rea
+                }
+        case streamingUnsignedPayload:
+                glog.V(3).Infof("streaming unsigned payload")
+-               if authorizationHeader != "" {
++               if authorizationHeader != "" && iam.isEnabled() {
+                        // We do not need to pass the seed signature to the Reader as each chunk is not signed,
+                        // but we do compute it to verify the caller has the correct permissions.
+                        _, _, _, _, errCode = iam.calculateSeedSignature(req)
+@@ -648,6 +648,8 @@ const (
+        ChecksumAlgorithmSHA256
+ )
+
++const crc64NVMEPolynomial = 0x9a6c9329ac4bc9b5
++
+ func (ca ChecksumAlgorithm) String() string {
+        switch ca {
+        case ChecksumAlgorithmCRC32:
+@@ -674,7 +676,7 @@ func getCheckSumWriter(checksumAlgorithm ChecksumAlgorithm) hash.Hash {
+        case ChecksumAlgorithmCRC32C:
+                return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+        case ChecksumAlgorithmCRC64NVMe:
+-               return crc64.New(crc64.MakeTable(crc64.ISO))
++               return crc64.New(crc64.MakeTable(crc64NVMEPolynomial))
+        case ChecksumAlgorithmSHA1:
+                return sha1.New()
+        case ChecksumAlgorithmSHA256:
+diff --git a/weed/s3api/s3api_object_handlers_multipart.go b/weed/s3api/s3api_object_handlers_multipart.go
+index 95674e181..800bab087 100644
+--- a/weed/s3api/s3api_object_handlers_multipart.go
++++ b/weed/s3api/s3api_object_handlers_multipart.go
+@@ -234,7 +234,7 @@ func (s3a *S3ApiServer) PutObjectPartHandler(w http.ResponseWriter, r *http.Requ
+        if s3a.iam.isEnabled() {
+                var s3ErrCode s3err.ErrorCode
+                switch rAuthType {
+-               case authTypeStreamingSigned:
++               case authTypeStreamingSigned, authTypeStreamingUnsigned:
+                        dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
+                case authTypeSignedV2, authTypePresignedV2:
+                        _, s3ErrCode = s3a.iam.isReqAuthenticatedV2(r)
+@@ -246,9 +246,17 @@ func (s3a *S3ApiServer) PutObjectPartHandler(w http.ResponseWriter, r *http.Requ
+                        return
+                }
+        } else {
+-               if authTypeStreamingSigned == rAuthType {
++               switch rAuthType {
++               case authTypeStreamingSigned:
+                        s3err.WriteErrorResponse(w, r, s3err.ErrAuthNotSetup)
+                        return
++               case authTypeStreamingUnsigned:
++                       var s3ErrCode s3err.ErrorCode
++                       dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
++                       if s3ErrCode != s3err.ErrNone {
++                               s3err.WriteErrorResponse(w, r, s3ErrCode)
++                               return
++                       }
+                }
+        }
+        defer dataReader.Close()
+diff --git a/weed/s3api/s3api_object_handlers_put.go b/weed/s3api/s3api_object_handlers_put.go
+index 4c714f8c3..64b69345a 100644
+--- a/weed/s3api/s3api_object_handlers_put.go
++++ b/weed/s3api/s3api_object_handlers_put.go
+@@ -64,9 +64,17 @@ func (s3a *S3ApiServer) PutObjectHandler(w http.ResponseWriter, r *http.Request)
+                        return
+                }
+        } else {
+-               if authTypeStreamingSigned == rAuthType {
++               switch rAuthType {
++               case authTypeStreamingSigned:
+                        s3err.WriteErrorResponse(w, r, s3err.ErrAuthNotSetup)
+                        return
++               case authTypeStreamingUnsigned:
++                       var s3ErrCode s3err.ErrorCode
++                       dataReader, s3ErrCode = s3a.iam.newChunkedReader(r)
++                       if s3ErrCode != s3err.ErrNone {
++                               s3err.WriteErrorResponse(w, r, s3ErrCode)
++                               return
++                       }
+                }
+        }
+        defer dataReader.Close()
+diff --git a/weed/shell/command_volume_list.go b/weed/shell/command_volume_list.go
+index 99fd1420b..7aa3e7a86 100644
+--- a/weed/shell/command_volume_list.go
++++ b/weed/shell/command_volume_list.go
+@@ -190,7 +190,14 @@ func (c *commandVolumeList) writeDiskInfo(writer io.Writer, t *master_pb.DiskInf
+                diskType = types.HddType
+        }
+        slices.SortFunc(t.VolumeInfos, func(a, b *master_pb.VolumeInformationMessage) int {
+-               return int(a.Id - b.Id)
++               switch {
++               case a.Id < b.Id:
++                       return -1
++               case a.Id > b.Id:
++                       return 1
++               default:
++                       return 0
++               }
+        })
+        volumeInfosFound := false
+        for _, vi := range t.VolumeInfos {
+diff --git a/weed/topology/topology.go b/weed/topology/topology.go
+index 8e55d33a9..557c8317f 100644
+--- a/weed/topology/topology.go
++++ b/weed/topology/topology.go
+@@ -270,8 +270,10 @@ func (t *Topology) GetVolumeLayout(collectionName string, rp *super_block.Replic
+ func (t *Topology) ListCollections(includeNormalVolumes, includeEcVolumes bool) (ret []string) {
+
+        mapOfCollections := make(map[string]bool)
+-       for _, c := range t.collectionMap.Items() {
+-               mapOfCollections[c.(*Collection).Name] = true
++       if includeNormalVolumes {
++               for _, c := range t.collectionMap.Items() {
++                       mapOfCollections[c.(*Collection).Name] = true
++               }
+        }
+
+        if includeEcVolumes {
+$ cd /workspace/seaweedfs && grep -n "func (t \*Topology) ListCollections\|crc64NVMEPolynomial\|authTypeStreamingSigned, authTypeStreamingUnsigned\|enable_mtls\|newTLSConfig\|s3\.ip\.bind\|s3\.idleTimeout\|idleTimeout :=\|SortFunc(t.VolumeInfos\|dependency-review-action\|FROM golang:1.24" weed/topology/topology.go weed/s3api/chunked_reader_v4.go weed/s3api/s3api_object_handlers_put.go weed/s3api/s3api_object_handlers_multipart.go weed/filer/redis2/redis_store.go weed/command/filer.go weed/command/server.go weed/command/s3.go weed/shell/command_volume_list.go .github/workflows/depsreview.yml docker/Dockerfile.go_build docker/Dockerfile.rocksdb_dev_env docker/Dockerfile.rocksdb_large
+weed/topology/topology.go:270:func (t *Topology) ListCollections(includeNormalVolumes, includeEcVolumes bool) (ret []string) {
+weed/s3api/chunked_reader_v4.go:651:const crc64NVMEPolynomial = 0x9a6c9329ac4bc9b5
+weed/s3api/chunked_reader_v4.go:679:            return crc64.New(crc64.MakeTable(crc64NVMEPolynomial))
+weed/s3api/s3api_object_handlers_put.go:55:             case authTypeStreamingSigned, authTypeStreamingUnsigned:
+weed/s3api/s3api_object_handlers_multipart.go:237:              case authTypeStreamingSigned, authTypeStreamingUnsigned:
+weed/filer/redis2/redis_store.go:28:    if configuration.GetBool(prefix + "enable_mtls") {
+weed/filer/redis2/redis_store.go:30:            tlsConfig, err = newTLSConfig(
+weed/filer/redis2/redis_store.go:64:func newTLSConfig(caFile, certFile, keyFile string) (*tls.Config, error) {
+weed/command/filer.go:109:      filerS3Options.bindIp = cmdFiler.Flag.String("s3.ip.bind", "", "ip address to bind to. If empty, default to same as -ip.bind option.")
+weed/command/filer.go:110:      filerS3Options.idleTimeout = cmdFiler.Flag.Int("s3.idleTimeout", 10, "connection idle seconds")
+weed/command/server.go:145:     s3Options.bindIp = cmdServer.Flag.String("s3.ip.bind", "", "ip address to bind to. If empty, default to same as -ip.bind option.")
+weed/command/server.go:146:     s3Options.idleTimeout = cmdServer.Flag.Int("s3.idleTimeout", 10, "connection idle seconds")
+weed/command/s3.go:280: idleTimeout := time.Duration(*s3opt.idleTimeout) * time.Second
+weed/shell/command_volume_list.go:192:  slices.SortFunc(t.VolumeInfos, func(a, b *master_pb.VolumeInformationMessage) int {
+.github/workflows/depsreview.yml:14:        uses: actions/dependency-review-action@v4.3.2
+docker/Dockerfile.go_build:1:FROM golang:1.24-alpine as builder
+docker/Dockerfile.rocksdb_dev_env:1:FROM golang:1.24 as builder
+docker/Dockerfile.rocksdb_large:1:FROM golang:1.24 as builder
+# task_tracker: Complete all implementation, validation, and final review tasks
+Task list has been updated with 6 item(s).
+# finish: Complete SeaweedFS fixes and report comprehensive validation results
+Implemented the requested non-test changes in `/workspace/seaweedfs`.
+
+### Functional fixes
+- `CollectionList` now honors `include_normal_volumes` in `weed/topology/topology.go:270`.
+- S3 aws-chunked uploads now:
+  - use the correct CRC64NVME polynomial in `weed/s3api/chunked_reader_v4.go:651`;
+  - decode unsigned streaming payloads with or without IAM enabled;
+  - decode both regular PUT and multipart PUT bodies, preventing chunk markers from reaching stored files.
+- `volume.list` now sorts `uint32` volume IDs without unsigned underflow in `weed/shell/command_volume_list.go:192`.
+- Redis2 supports explicitly enabled mTLS using CA, client certificate, and client key paths in `weed/filer/redis2/redis_store.go:28`; scaffold options were added to `weed/command/scaffold/filer.toml`.
+- Added dedicated `s3.ip.bind` and configurable `s3.idleTimeout` options for embedded filer and all-in-one server modes. The timeout applies to HTTP and HTTPS S3 listeners.
+
+### Build/workflow updates
+- Updated remaining Go builder images from Go 1.23 to 1.24.
+- Updated `actions/dependency-review-action` to `v4.3.2`.
+
+### Validation
+- Created and ran a temporary `go run` reproducer covering:
+  - all collection-list flag combinations;
+  - normal/EC collection deduplication;
+  - the standard CRC64NVME known vector;
+  - unsigned aws-chunked decoding and invalid-checksum rejection;
+  - valid, incomplete, and malformed Redis mTLS certificate configurations.
+- All reproduction cases passed; the temporary file was removed.
+- Focused tests passed:
+  - `go test ./weed/topology ./weed/s3api ./weed/shell ./weed/command ./weed/filer/redis2`
+- All self-contained repository packages passed when excluding `test/s3/basic`.
+- `go test ./...` only failed in `test/s3/basic` because AWS credentials are unavailable (`NoCredentialProviders`), not because of a source/test failure.
+- `go vet` only reported pre-existing warnings in existing tests and unrelated command files.
+- `git diff --check` passed, and no test files were modified.

@@ -1,0 +1,200 @@
+sigs.k8s.io/structured-merge-diff/v4 v4.2.1: open /go/pkg/mod/cache/download/sigs.k8s.io/structured-merge-diff/v4/@v/v4.2.1.zip: permission denied
+sigs.k8s.io/yaml v1.3.0: open /go/pkg/mod/cache/download/sigs.k8s.io/yaml/@v/v1.3.0.zip: permission denied
+# task_tracker: Review tasks after comprehensive test and vet verification
+# Task List
+
+1. ✅ Explore repository and dependency resolution logging
+   Inspected repository state, resolver code/tests, runtime logger adapter, zap panic source, and lint configuration. Identified malformed Debug call in no-valid-version branch.
+
+2. ✅ Create and run panic reproducer
+   Created and ran reproduce_logger_panic.go. It reproduced zapr's development-mode panic for the resolver's odd key/value call.
+
+3. ✅ Implement minimal non-test source fix
+   Fixed resolver Debug call by adding the error key. Added guarded zapr construction with DPanicOnBugs(false) for Crossplane and crank loggers; targeted packages compile and pass.
+
+4. ✅ Validate reproducer and edge cases
+   Expanded and ran temporary go-run validation covering the corrected resolver call plus odd/non-string Debug, Info, and WithValues inputs. All completed without panic and the valid error remained logged.
+
+5. 🔄 Review base diff and run related tests
+   Compare against base f60d10f..., inspect completeness, run focused and repository tests, and fix non-test code if needed.
+
+6. ⏳ Clean temporary artifacts and summarize
+   Remove reproduction files, inspect final status/diff, and report verification results.
+# task_tracker: Mark verification complete and begin temporary artifact cleanup
+Task list has been updated with 6 item(s).
+$ rm /workspace/crossplane/reproduce_logger_panic.go && git -C /workspace/crossplane status --short --untracked-files=all
+M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+$ cd /workspace/crossplane && go test -count=1 ./cmd/crossplane ./internal/controller/pkg/resolver && go test ./... >/tmp/crossplane-go-test-final.log && tail -n 25 /tmp/crossplane-go-test-final.log && rm /tmp/crossplane-go-test-final.log && git diff --check && printf '%s\n' '--- modified files ---' && git status --short --untracked-files=all && printf '%s\n' '--- tests modified ---' && git diff --name-only f60d10f28905082fe8e5537f17ed74d0117de532 -- | grep -E '(^|/).*_test\.go$' || true && printf '%s\n' '--- final base diff stat ---' && git diff --stat f60d10f28905082fe8e5537f17ed74d0117de532 -- && printf '%s\n' '--- final base diff ---' && git --no-pager diff f60d10f28905082fe8e5537f17ed74d0117de532 -- cmd/crossplane/main.go go.mod internal/controller/pkg/resolver/reconciler.go
+?       github.com/crossplane/crossplane/cmd/crossplane [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       0.014s
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/claim        (cached)
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/composite    (cached)
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/composition  (cached)
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/definition   (cached)
+ok      github.com/crossplane/crossplane/internal/controller/apiextensions/offered      (cached)
+?       github.com/crossplane/crossplane/internal/controller/pkg        [no test files]
+?       github.com/crossplane/crossplane/internal/controller/pkg/controller     [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/pkg/manager        (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/resolver       (cached)
+ok      github.com/crossplane/crossplane/internal/controller/pkg/revision       (cached)
+?       github.com/crossplane/crossplane/internal/controller/rbac       [no test files]
+?       github.com/crossplane/crossplane/internal/controller/rbac/controller    [no test files]
+ok      github.com/crossplane/crossplane/internal/controller/rbac/definition    (cached)
+ok      github.com/crossplane/crossplane/internal/controller/rbac/namespace     (cached)
+ok      github.com/crossplane/crossplane/internal/controller/rbac/provider/binding      (cached)
+ok      github.com/crossplane/crossplane/internal/controller/rbac/provider/roles        (cached)
+ok      github.com/crossplane/crossplane/internal/dag   (cached)
+?       github.com/crossplane/crossplane/internal/dag/fake      [no test files]
+?       github.com/crossplane/crossplane/internal/features      [no test files]
+ok      github.com/crossplane/crossplane/internal/initializer   (cached)
+ok      github.com/crossplane/crossplane/internal/version       (cached)
+?       github.com/crossplane/crossplane/internal/version/fake  [no test files]
+ok      github.com/crossplane/crossplane/internal/xcrd  (cached)
+ok      github.com/crossplane/crossplane/internal/xpkg  (cached)
+?       github.com/crossplane/crossplane/internal/xpkg/fake     [no test files]
+--- modified files ---
+ M cmd/crossplane/main.go
+ M go.mod
+ M internal/controller/pkg/resolver/reconciler.go
+--- tests modified ---
+--- final base diff stat ---
+ cmd/crossplane/main.go                         | 10 ++++++++--
+ go.mod                                         |  4 ++--
+ internal/controller/pkg/resolver/reconciler.go |  2 +-
+ 3 files changed, 11 insertions(+), 5 deletions(-)
+--- final base diff ---
+diff --git a/cmd/crossplane/main.go b/cmd/crossplane/main.go
+index c6965a25..e5869fd7 100644
+--- a/cmd/crossplane/main.go
++++ b/cmd/crossplane/main.go
+@@ -18,6 +18,8 @@ package main
+
+ import (
+        "github.com/alecthomas/kong"
++       "github.com/go-logr/logr"
++       "github.com/go-logr/zapr"
+        admv1 "k8s.io/api/admissionregistration/v1"
+        appsv1 "k8s.io/api/apps/v1"
+        coordinationv1 "k8s.io/api/coordination/v1"
+@@ -37,6 +39,10 @@ import (
+
+ type debugFlag bool
+
++func newLogger(opts ...zap.Opts) logr.Logger {
++       return zapr.NewLoggerWithOptions(zap.NewRaw(opts...), zapr.DPanicOnBugs(false))
++}
++
+ var cli struct {
+        Debug debugFlag `short:"d" help:"Print verbose logging statements."`
+
+@@ -50,7 +56,7 @@ var cli struct {
+ // an error value in return from Hook methods but in our case
+ // there are no error introducing steps.
+ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+-       zl := zap.New(zap.UseDevMode(true)).WithName("crossplane")
++       zl := newLogger(zap.UseDevMode(true)).WithName("crossplane")
+        // BindTo uses reflect.TypeOf to get reflection type of used interface
+        // A *logging.Logger value here is used to find the reflection type here.
+        // Please refer: https://golang.org/pkg/reflect/#TypeOf
+@@ -63,7 +69,7 @@ func (d debugFlag) BeforeApply(ctx *kong.Context) error { // nolint:unparam
+ }
+
+ func main() {
+-       zl := zap.New().WithName("crossplane")
++       zl := newLogger().WithName("crossplane")
+
+        // Note that the controller managers scheme must be a superset of the
+        // package manager's object scheme; it must contain all object types that
+diff --git a/go.mod b/go.mod
+index b356dd9c..f803dd2a 100644
+--- a/go.mod
++++ b/go.mod
+@@ -6,6 +6,8 @@ require (
+        github.com/Masterminds/semver v1.5.0
+        github.com/alecthomas/kong v0.2.17
+        github.com/crossplane/crossplane-runtime v0.15.1-0.20220315141414-988c9ba9c255
++       github.com/go-logr/logr v1.2.2
++       github.com/go-logr/zapr v1.2.0
+        github.com/google/go-cmp v0.5.7
+        // TODO(hasheddan): we prefer to consume release versions of
+        // go-containerregistry. An incremental version is currently being used to
+@@ -72,8 +74,6 @@ require (
+        github.com/evanphx/json-patch v4.12.0+incompatible // indirect
+        github.com/fatih/color v1.13.0 // indirect
+        github.com/fsnotify/fsnotify v1.5.1 // indirect
+-       github.com/go-logr/logr v1.2.2 // indirect
+-       github.com/go-logr/zapr v1.2.0 // indirect
+        github.com/go-openapi/jsonpointer v0.19.5 // indirect
+        github.com/go-openapi/jsonreference v0.19.5 // indirect
+        github.com/go-openapi/swag v0.19.14 // indirect
+diff --git a/internal/controller/pkg/resolver/reconciler.go b/internal/controller/pkg/resolver/reconciler.go
+index 064c2ca8..1e846c15 100644
+--- a/internal/controller/pkg/resolver/reconciler.go
++++ b/internal/controller/pkg/resolver/reconciler.go
+@@ -259,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
+        // NOTE(hasheddan): consider creating event on package revision
+        // dictating constraints.
+        if addVer == "" {
+-               log.Debug(errNoValidVersion, errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
++               log.Debug(errNoValidVersion, "error", errors.Errorf(errNoValidVersionFmt, dep.Identifier(), dep.Constraints))
+                return reconcile.Result{Requeue: false}, nil
+        }
+# task_tracker: Review final task list before marking work complete
+# Task List
+
+1. ✅ Explore repository and dependency resolution logging
+   Inspected repository state, resolver code/tests, runtime logger adapter, zap panic source, and lint configuration. Identified malformed Debug call in no-valid-version branch.
+
+2. ✅ Create and run panic reproducer
+   Created and ran reproduce_logger_panic.go. It reproduced zapr's development-mode panic for the resolver's odd key/value call.
+
+3. ✅ Implement minimal non-test source fix
+   Fixed resolver Debug call by adding the error key. Added a guarded zapr logger helper used by both Crossplane production and debug loggers. Kept crank unchanged to minimize scope.
+
+4. ✅ Validate reproducer and edge cases
+   Expanded and ran temporary go-run validation covering the corrected resolver call plus odd/non-string Debug, Info, and WithValues inputs. All completed without panic; valid error output remained intact; AST audit found no other static malformed calls.
+
+5. ✅ Review base diff and run related tests
+   Reviewed exact diff from f60d10f..., promoted required direct dependencies, ran focused tests and vet, and ran go test ./... successfully. go mod verify alone was blocked by read-only module-cache zip permissions.
+
+6. 🔄 Clean temporary artifacts and summarize
+   Remove reproduction files, inspect final status/diff, and report verification results.
+# task_tracker: Complete all logger panic fix and verification tasks
+Task list has been updated with 6 item(s).
+# finish: Complete logger panic fix with comprehensive passing verification
+Implemented the logger panic fix with minimal non-test changes.
+
+### Changes
+- Fixed the malformed structured log call in `internal/controller/pkg/resolver/reconciler.go:262` by adding the missing `"error"` key.
+- Added a guarded logger constructor in `cmd/crossplane/main.go:42` using `zapr.DPanicOnBugs(false)`.
+  - Both production and debug-mode Crossplane loggers now use it.
+  - Future malformed structured logging calls will no longer crash Crossplane in development/debug mode.
+- Promoted the already-present `go-logr/logr` and `go-logr/zapr` dependencies to direct dependencies in `go.mod`.
+- No test files were modified.
+
+### Reproduction and edge validation
+- Created and ran `reproduce_logger_panic.go` with `go run reproduce_logger_panic.go` before the fix.
+  - Confirmed the original `odd number of arguments passed as key-value pairs for logging` panic.
+- Expanded the reproducer after the fix to cover:
+  - The corrected dependency-resolution error log.
+  - Odd and non-string values passed to `Debug`.
+  - Odd and non-string values passed to `Info`.
+  - Odd and non-string values passed to `WithValues`.
+  - A repository-wide AST audit for other statically malformed structured logger calls.
+- All cases completed without panic, and the valid dependency error remained present in log output.
+- Removed the temporary reproducer afterward.
+
+### Verification
+- `go test -count=1 ./cmd/crossplane ./internal/controller/pkg/resolver` — passed.
+- `go vet ./cmd/crossplane ./internal/controller/pkg/resolver` — passed.
+- `go test ./...` — passed.
+- `git diff --check` — passed.
+- Compared the final changes against base commit `f60d10f28905082fe8e5537f17ed74d0117de532`.
+- Confirmed no test files changed and only these production files remain modified:
+  - `cmd/crossplane/main.go`
+  - `go.mod`
+  - `internal/controller/pkg/resolver/reconciler.go`
+
+`go mod verify` was also attempted, but the environment’s shared module-cache ZIP files are read-only and produced permission errors. This did not affect compilation, vetting, or the complete test suite.

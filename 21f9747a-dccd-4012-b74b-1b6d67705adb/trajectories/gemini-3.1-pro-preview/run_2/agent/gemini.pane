@@ -1,0 +1,200 @@
+     pip install rich
+
+diff --git a/pyproject.toml b/pyproject.toml
+index b42f91a..6847d88 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -27,7 +27,7 @@ include = ["rich/py.typed"]
+
+ [tool.poetry.dependencies]
+ python = "^3.6.2"
+-typing-extensions = { version = "^3.7.4", python = "<3.8" }
++typing-extensions = { version = ">=3.7.4,<5.0", python = "<3.8" }
+ dataclasses = { version = ">=0.7,<0.9", python = "<3.7" }
+ pygments = "^2.6.0"
+ commonmark = "^0.9.0"
+diff --git a/rich/console.py b/rich/console.py
+index ef3352f..bd4c494 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -963,7 +963,7 @@ class Console:
+         width = width or 80
+         height = height or 25
+         return ConsoleDimensions(
+-            ((width - self.legacy_windows) if self._width is None else self._width),
++            ((width - 1 if self.legacy_windows else width) if self._width is None else self._width),
+             height if self._height is None else self._height,
+         )
+
+@@ -1042,7 +1042,7 @@ class Console:
+         is defined by the system and will typically support at least pressing a key to scroll.
+
+         Args:
+-            pager (Pager, optional): A pager object, or None to use :class:~rich.pager.SystemPager`. Defaults to None.
++            pager (Pager, optional): A pager object, or None to use :class:`~rich.pager.SystemPager`. Defaults to None.
+             styles (bool, optional): Show styles in pager. Defaults to False.
+             links (bool, optional): Show links in pager. Defaults to False.
+
+@@ -1440,6 +1440,8 @@ class Console:
+                         renderable, emoji=emoji, markup=markup, highlighter=_highlighter
+                     )
+                 )
++            elif isinstance(renderable, Text):
++                append_text(renderable)
+             elif isinstance(renderable, ConsoleRenderable):
+                 check_text()
+                 append(renderable)
+@@ -1625,7 +1627,7 @@ class Console:
+         json: Optional[str] = None,
+         *,
+         data: Any = None,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -1639,7 +1641,7 @@ class Console:
+         Args:
+             json (Optional[str]): A string containing JSON.
+             data (Any): If json is not supplied, then encode this data.
+-            indent (int, optional): Number of spaces to indent. Defaults to 2.
++            indent (Union[None, int, str], optional): Number of spaces to indent. Defaults to 2.
+             highlight (bool, optional): Enable highlighting of output: Defaults to True.
+             skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+             ensure_ascii (bool, optional): Escape all non-ascii characters. Defaults to False.
+diff --git a/rich/highlighter.py b/rich/highlighter.py
+index 9e71d00..8994b39 100644
+--- a/rich/highlighter.py
++++ b/rich/highlighter.py
+@@ -96,7 +96,7 @@ class ReprHighlighter(RegexHighlighter):
+             r"(?P<path>\B(\/[\w\.\-\_\+]+)*\/)(?P<filename>[\w\.\-\_\+]*)?",
+             r"(?<![\\\w])(?P<str>b?\'\'\'.*?(?<!\\)\'\'\'|b?\'.*?(?<!\\)\'|b?\"\"\".*?(?<!\\)\"\"\"|b?\".*?(?<!\\)\")",
+             r"(?P<uuid>[a-fA-F0-9]{8}\-[a-fA-F0-9]{4}\-[a-fA-F0-9]{4}\-[a-fA-F0-9]{4}\-[a-fA-F0-9]{12})",
+-            r"(?P<url>(https|http|ws|wss):\/\/[0-9a-zA-Z\$\-\_\+\!`\(\)\,\.\?\/\;\:\&\=\%\#]*)",
++            r"(?P<url>(https|http|ws|wss|file):\/\/[0-9a-zA-Z\$\-\_\+\!`\(\)\,\.\?\/\;\:\&\=\%\#]*)",
+         ),
+     ]
+
+diff --git a/rich/json.py b/rich/json.py
+index 4f3199f..1fc115a 100644
+--- a/rich/json.py
++++ b/rich/json.py
+@@ -1,5 +1,5 @@
+ from json import loads, dumps
+-from typing import Any, Callable, Optional
++from typing import Any, Callable, Optional, Union
+
+ from .text import Text
+ from .highlighter import JSONHighlighter, NullHighlighter
+@@ -10,7 +10,7 @@ class JSON:
+
+     Args:
+         json (str): JSON encoded data.
+-        indent (int, optional): Number of characters to indent by. Defaults to 2.
++        indent (Union[None, int, str], optional): Number of characters to indent by. Defaults to 2.
+         highlight (bool, optional): Enable highlighting. Defaults to True.
+         skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+         ensure_ascii (bool, optional): Escape all non-ascii characters. Defaults to False.
+@@ -24,7 +24,7 @@ class JSON:
+     def __init__(
+         self,
+         json: str,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -53,7 +53,7 @@ class JSON:
+     def from_data(
+         cls,
+         data: Any,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -66,7 +66,7 @@ class JSON:
+
+         Args:
+             data (Any): An object that may be encoded in to JSON
+-            indent (int, optional): Number of characters to indent by. Defaults to 2.
++            indent (Union[None, int, str], optional): Number of characters to indent by. Defaults to 2.
+             highlight (bool, optional): Enable highlighting. Defaults to True.
+             default (Callable, optional): Optional callable which will be called for objects that cannot be serialized. Defaults to None.
+             skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+diff --git a/rich/live.py b/rich/live.py
+index cb36ddb..f2201ca 100644
+--- a/rich/live.py
++++ b/rich/live.py
+@@ -160,7 +160,8 @@ class Live(JupyterMixin, RenderHook):
+                 # i am not sure why this is needed
+                 self.refresh()
+         if not self.console.is_interactive:
+-            return self.console.print()
++            if not self.transient:
++                return self.console.print()
+
+     def __enter__(self) -> "Live":
+         self.start(refresh=self._renderable is not None)
+diff --git a/rich/style.py b/rich/style.py
+index 0787c33..513c2fe 100644
+--- a/rich/style.py
++++ b/rich/style.py
+@@ -446,7 +446,10 @@ class Style:
+
+     def __eq__(self, other: Any) -> bool:
+         if not isinstance(other, Style):
+-            return NotImplemented
++            try:
++                other = self.parse(other)
++            except Exception:
++                return NotImplemented
+         return (
+             self._color == other._color
+             and self._bgcolor == other._bgcolor
+diff --git a/rich/table.py b/rich/table.py
+index 4b57f6e..4331858 100644
+--- a/rich/table.py
++++ b/rich/table.py
+@@ -572,6 +572,8 @@ class Table(JupyterMixin):
+                 max_reduce = [min(excess_width, column_difference)] * len(widths)
+                 widths = ratio_reduce(excess_width, ratios, max_reduce, widths)
+
++                if sum(widths) == total_width:
++                    break
+                 total_width = sum(widths)
+                 excess_width = total_width - max_width
+         return widths
+$ git commit -am "Fix all 11 issues"
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got 'openhands@c090545d5448.(none)')
+$ git config --global user.email "openhands@all-hands.dev" && git config --global user.name "openhands" && git commit -am "Fix 11 issues"
+[detached HEAD addd34f] Fix 11 issues
+ 19 files changed, 485 insertions(+), 477 deletions(-)
+I've fixed all the requested issues!
+
+Here is a summary of the fixes implemented:
+- **Issue 1 (#1657)**: Made the `indent` parameter in `console.print_json`, `JSON`, and `JSON.from_data` compatible with `json.dumps`'s `indent` parameter by changing its type to `Union[None, int, str]`.
+- **Issue 2 (#1662)**: Fixed a bug where a new line was inadvertently outputted in non-interactive terminals at the end of a `Status` context manager. Updated `rich.live.Live`'s stop method to skip printing the empty console line if it is `transient`.
+- **Issue 3 (#1669)**: Fixed a typo in `rich/console.py` where `self.legacy_windows` (a boolean) was subtracted directly from `width` without being explicit. Changed `width - self.legacy_windows` to `width - 1 if self.legacy_windows else width` to be explicit and type-safe.
+- **Issue 4 (#1676)**: Fixed an issue where tests of `Span(0,1,'bold') == Span(0,1,Style(bold=True))` failed. Updated `Style.__eq__` to attempt parsing strings into `Style` instances to allow equivalent objects to compare as equal safely.
+- **Issue 5 (#1679)**: Bumped `sphinx` version from `4.2.0` to `4.3.0` in `docs/requirements.txt`.
+- **Issue 6 (#1682)**: Fixed a bug where an infinite loop occurs in `Table._collapse_widths` when ratio reduction evaluates to `0` repeatedly. Added a safety guard (`if sum(widths) == total_width: break`) to break out of the loop if widths are no longer changing.
+- **Issue 7 (#1684)**: Added `file` (`file://`) support to `ReprHighlighter` URLs by modifying the `url` regex pattern in `rich/highlighter.py`.
+- **Issue 8 (#1685)**: Correctly capitalized all regular text occurrences of `PyPi` and `Pypi` to `PyPI` across `README.md`, translated readmes, and `docs/source/introduction.rst`.
+- **Issue 9 (#1687)**: Fixed a broken pager reference in `rich/console.py` docstrings where a missing backtick broke the docstring parser (`:class:\`~rich.pager.SystemPager\``).
+- **Issue 10 (#1695)**: Relaxed `typing-extensions` dependency versions in `pyproject.toml` from `^3.7.4` to `>=3.7.4,<5.0`.
+- **Issue 11 (#1689)**: Fixed a bug where print options (`end`, `sep`) didn't work for `Text` inputs the same way they did for `str`. Implemented a fix in `rich/console.py`'s `_collect_renderables` where `Text` instances are treated similarly to `str` instances so they get properly joined using `Text.join` containing the `sep` and `end` configurations.
+
+All corresponding `rich` tests pass without issue and regressions have been resolved safely.

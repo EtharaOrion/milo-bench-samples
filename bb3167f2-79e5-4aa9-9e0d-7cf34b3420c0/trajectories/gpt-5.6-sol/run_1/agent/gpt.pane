@@ -1,0 +1,200 @@
+@@ -95,11 +95,10 @@
+     "@types/node": "^11.13.19",
+     "@typescript-eslint/eslint-plugin": "^2.3.0",
+     "@typescript-eslint/parser": "^2.3.0",
+-    "JSONStream": "^1.3.5",
+     "ajv-pack": "^0.3.1",
+     "autocannon": "^3.2.0",
+     "branch-comparer": "^0.4.0",
+-    "concurrently": "^4.1.2",
++    "concurrently": "^5.0.0",
+     "cors": "^2.8.5",
+     "coveralls": "^3.0.6",
+     "dns-prefetch-control": "^0.2.0",
+@@ -117,6 +116,7 @@
+     "http-errors": "^1.7.1",
+     "ienoopen": "^1.0.0",
+     "joi": "^12.0.0",
++    "JSONStream": "^1.3.5",
+     "license-checker": "^25.0.1",
+     "lolex": "^4.2.0",
+     "pre-commit": "^1.2.2",
+@@ -159,7 +159,8 @@
+       "@types/node",
+       "tap",
+       "tap-mocha-reporter",
+-      "@typescript-eslint/eslint-plugin"
++      "@typescript-eslint/eslint-plugin",
++      "lolex"
+     ]
+   },
+   "standard": {
+--- whitespace check ---
+# file_editor: Restore original package key ordering after lockfile regeneration
+The file /workspace/fastify/package.json has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fastify/package.json:
+    92	    "node": ">=6"
+    93	  },
+    94	  "devDependencies": {
+    95	    "@types/node": "^11.13.19",
+    96	    "@typescript-eslint/eslint-plugin": "^2.3.0",
+    97	    "@typescript-eslint/parser": "^2.3.0",
+    98	    "JSONStream": "^1.3.5",
+    99	    "ajv-pack": "^0.3.1",
+   100	    "autocannon": "^3.2.0",
+   101	    "branch-comparer": "^0.4.0",
+   102	    "concurrently": "^5.0.0",
+   103	    "cors": "^2.8.5",
+   104	    "coveralls": "^3.0.6",
+   105	    "dns-prefetch-control": "^0.2.0",
+   106	    "eslint": "^6.4.0",
+   107	    "eslint-import-resolver-node": "^0.3.2",
+   108	    "fast-json-body": "^1.1.0",
+   109	    "fastify-plugin": "^1.5.0",
+   110	    "fluent-schema": "^0.7.4",
+   111	    "form-data": "^2.5.0",
+   112	    "frameguard": "^3.0.0",
+   113	    "h2url": "^0.1.2",
+   114	    "helmet": "^3.20.0",
+   115	    "hide-powered-by": "^1.0.0",
+   116	    "hsts": "^2.1.0",
+   117	    "http-errors": "^1.7.1",
+   118	    "ienoopen": "^1.0.0",
+   119	    "joi": "^12.0.0",
+   120	    "license-checker": "^25.0.1",
+   121	    "lolex": "^4.2.0",
+   122	    "pre-commit": "^1.2.2",
+   123	    "proxyquire": "^2.1.3",
+   124	    "pump": "^3.0.0",
+   125	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# think: Reassess all five issues and hidden edge-case coverage
+Your thought has been logged.
+$ cd /workspace/fastify && node reproduce.js && node -e "const p=require('./package.json'); if (p.devDependencies.concurrently !== '^5.0.0') throw new Error('concurrently range'); if (!p.greenkeeper.ignore.includes('lolex')) throw new Error('lolex ignore'); console.log('manifest checks passed')" && GIT_PAGER=cat git diff --check && git --no-pager diff --stat && git status --short
+all reproduction and edge-case checks passed
+manifest checks passed
+ docs/Reply.md  | 12 ++++++++++++
+ fastify.d.ts   |  1 +
+ lib/reply.js   |  6 ++++++
+ lib/schemas.js |  4 ++--
+ package.json   |  5 +++--
+ 5 files changed, 24 insertions(+), 4 deletions(-)
+ M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+?? reproduce.js
+$ cd /workspace/fastify && rm reproduce.js && git status --short && GIT_PAGER=cat git diff --check
+M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+$ cd /workspace/fastify && grep -n -E 'fragmentIndex|statusCode|headers\(object\)|concurrently|lolex' lib/schemas.js lib/reply.js fastify.d.ts docs/Reply.md package.json && printf '\n--- final status ---\n' && git status --short
+lib/schemas.js:109:      const fragmentIndex = refValue.indexOf('#')
+lib/schemas.js:110:      const refId = fragmentIndex === -1 ? refValue : refValue.slice(0, fragmentIndex)
+lib/reply.js:4:const statusCodes = require('http').STATUS_CODES
+lib/reply.js:32:    statusCode: { type: 'number' },
+lib/reply.js:89:Object.defineProperty(Reply.prototype, 'statusCode', {
+lib/reply.js:91:    return this.res.statusCode
+lib/reply.js:196:  this.res.statusCode = code
+lib/reply.js:208:      return this.context[kReplySerializerDefault](payload, this.res.statusCode)
+lib/reply.js:210:      return serialize(this.context, payload, this.res.statusCode)
+lib/reply.js:228:    code = this[kReplyHasStatusCode] ? this.res.statusCode : 302
+lib/reply.js:293:    payload = reply.context[kReplySerializerDefault](payload, reply.res.statusCode)
+lib/reply.js:295:    payload = serialize(reply.context, payload, reply.res.statusCode)
+lib/reply.js:328:  var statusCode = res.statusCode
+lib/reply.js:336:    if (statusCode >= 200 && statusCode !== 204 && statusCode !== 304) {
+lib/reply.js:340:    res.writeHead(statusCode, reply[kReplyHeaders])
+lib/reply.js:361:  res.writeHead(statusCode, reply[kReplyHeaders])
+lib/reply.js:433:  var statusCode = res.statusCode
+lib/reply.js:434:  statusCode = (statusCode >= 400) ? statusCode : 500
+lib/reply.js:441:      statusCode = error.status
+lib/reply.js:442:    } else if (error.statusCode >= 400) {
+lib/reply.js:443:      statusCode = error.statusCode
+lib/reply.js:447:  res.statusCode = statusCode
+lib/reply.js:462:    error: statusCodes[statusCode + ''],
+lib/reply.js:465:    statusCode: statusCode
+lib/reply.js:477:  res.writeHead(res.statusCode, reply[kReplyHeaders])
+fastify.d.ts:52:    statusCode?: number;
+fastify.d.ts:165:    readonly statusCode: number
+fastify.d.ts:166:    code(statusCode: number): FastifyReply<HttpResponse>
+fastify.d.ts:167:    status(statusCode: number): FastifyReply<HttpResponse>
+fastify.d.ts:177:    redirect(statusCode: number, url: string): FastifyReply<HttpResponse>
+fastify.d.ts:330:    statusCode: number,
+fastify.d.ts:677:    setReplySerializer(handler: (payload: string | object | Buffer | NodeJS.ReadableStream, statusCode: number) => string): void
+docs/Reply.md:6:  - [.code(statusCode)](#codestatuscode)
+docs/Reply.md:7:  - [.statusCode](#statuscode)
+docs/Reply.md:9:  - [.headers(object)](#headersobject)
+docs/Reply.md:35:- `.code(statusCode)` - Sets the status code.
+docs/Reply.md:36:- `.status(statusCode)` - An alias for `.code(statusCode)`.
+docs/Reply.md:37:- `.statusCode` - The current response status code.
+docs/Reply.md:39:- `.headers(object)` - Sets multiple response headers.
+docs/Reply.md:73:### .code(statusCode)
+docs/Reply.md:74:If not set via `reply.code`, the resulting `statusCode` will be `200`.
+docs/Reply.md:77:### .statusCode
+docs/Reply.md:88:### .headers(object)
+docs/Reply.md:243:  statusCode: Number   // the http status code
+docs/Reply.md:247:*Note: If you are passing an error to `send` and the statusCode is less than 400, Fastify will automatically set it at 500.*
+docs/Reply.md:265:  var statusCode = error.statusCode >= 400 ? error.statusCode : 500
+docs/Reply.md:267:    .code(statusCode)
+docs/Reply.md:269:    .send(statusCode >= 500 ? 'Internal server error' : error.message)
+docs/Reply.md:313:Rejected promises default to a `500` HTTP status code. Reject the promise, or `throw` in an `async function`, with an object that has `statusCode` (or `status`) and `message` properties to modify the reply.
+docs/Reply.md:318:  err.statusCode = 418
+package.json:20:    "benchmark": "npx concurrently -k -s first \"node ./examples/simple.js\" \"npx autocannon -c 100 -d 5 -p 10 localhost:3000/\"",
+package.json:102:    "concurrently": "^5.0.0",
+package.json:121:    "lolex": "^4.2.0",
+package.json:163:      "lolex"
+
+--- final status ---
+ M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+# task_tracker: Review task states before final completion update
+# Task List
+
+1. ✅ Explore repository and issue-related files
+   Inspected source, docs, declarations, package metadata, lockfile, and existing tests; no AGENTS.md exists.
+
+2. ✅ Reproduce schema resolution failure
+   Temporary script reproduced resolver receiving urn:schema:fo and confirmed the original full-schema case passes after the fix.
+
+3. ✅ Implement minimal non-test changes
+   Fixed fragmentless ref parsing; exposed and typed reply.statusCode; documented reply.statusCode and reply.headers; updated concurrently to ^5.0.0 with ignored lockfile refreshed locally; added lolex to Greenkeeper ignore.
+
+4. ✅ Validate reproduction and edge cases
+   Expanded temporary script across fragmentless, pointer, empty, named, and local refs; nested request/response integration; invalid payloads; resolver deduplication; reply headers and status visibility. All checks pass.
+
+5. 🔄 Run related and full test suites
+   Run targeted tests and all repository tests, fixing only non-test implementation regressions.
+
+6. ⏳ Review completeness and clean up
+   Re-read requirements, inspect working changes (without historical solution lookup), remove temporary script, and report results.
+# task_tracker: Finalize task status with focused passes and environment-related failures
+Task list has been updated with 6 item(s).
+# finish: Complete five issue fixes with focused validation and transparent results
+Implemented the requested non-test changes. No test files were modified.
+
+### Changes
+- Fixed fragmentless JSON Schema `$ref` resolution in `lib/schemas.js:109` by preserving the entire reference when no `#` exists, while retaining existing local, named-fragment, empty-fragment, and JSON Pointer behavior.
+- Added readable `reply.statusCode` in `lib/reply.js:89`, reflecting the underlying response status selected by Fastify or plugins.
+- Added the readonly `statusCode` property to the TypeScript Reply interface in `fastify.d.ts:165`.
+- Documented both `.statusCode` and `.headers(object)` in `docs/Reply.md`.
+- Updated `concurrently` from `^4.1.2` to `^5.0.0` in `package.json:102`.
+- Added `lolex` to Greenkeeper’s ignore list in `package.json:163`.
+
+### Validation
+- Created and ran the requested temporary reproduction script. Before the fix, the resolver received `urn:schema:fo`; afterward, it correctly received `urn:schema:foo`.
+- Expanded that script to cover fragmentless, pointer, empty, named, and local references; nested external schemas; resolver deduplication; invalid payload validation; Reply status visibility across hooks; and bulk headers. All checks passed. The temporary script was then removed.
+- Focused suites passed: **294/294**
+  - `test/schemas.test.js`
+  - `test/shared-schemas.test.js`
+  - `test/internals/reply.test.js`
+- Lint passed.
+- TypeScript compilation passed.
+- `git diff --check` passed.
+
+### Full suite note
+The complete suite was run under Node.js 22 with IPv4-first localhost resolution: **4141/4160 assertions passed**. The remaining 19 failures are unrelated legacy-environment/dependency compatibility failures in connection-closing behavior, empty-body HTTP handling, an Avvio promise timing case, and serializer error-message formatting. All tests related to the modified runtime files and APIs pass, and no test logic was changed.

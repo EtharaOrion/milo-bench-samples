@@ -1,0 +1,200 @@
+    81	                self._text_field: text,
+    82	                self._vector_field: vector,
+    83	                "metadata": json.dumps(metadatas[index] if metadatas else {}),
+    84	            }
+    85	            records.append(record)
+    86	
+    87	        self._check_response(
+    88	            self._client.insert(table_name=self._table_name, records=records),
+    89	            "insert records",
+    90	        )
+    91	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Deserialize Epsilla metadata into returned Documents
+The file /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py:
+   114	            values = dict(record)
+   115	            text = values.pop(self._text_field)
+   116	            values.pop(self._vector_field, None)
+   117	            score = float(
+   118	                values.pop(
+   119	                    "@distance", values.pop("distance", values.pop("score", 0.0))
+   120	                )
+   121	            )
+   122	            values.pop("id", None)
+   123	            metadata = json.loads(values.pop("metadata", "{}"))
+   124	            documents.append((Document(page_content=text, metadata=metadata), score))
+   125	        return documents
+   126	
+   127	    def similarity_search(
+   128	        self, query: str, k: int = 4, **kwargs: Any
+   129	    ) -> List[Document]:
+   130	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Define fixed JSON metadata field in Epsilla schema
+No replacement was performed, old_str `{
+                    "name": vectorstore._vector_field,
+                    "dataType": "VECTOR_FLOAT",
+                    "dimensions": len(vectors[0]),
+                },
+            ]
+            if metadatas:
+                metadata_keys = set().union(*(metadata.keys() for metadata in metadatas))
+                for key in sorted(metadata_keys - {"id"}):
+                    if key not in {
+                        vectorstore._text_field,
+                        vectorstore._vector_field,
+                    }:
+                        table_fields.append({"name": key, "dataType": "STRING"})` did not appear verbatim in /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py.
+# file_editor: Inspect Epsilla table metadata schema block
+NOTE: We only show up to 172 since there're only 172 lines in this file.
+Here's the result of running `cat -n` on /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py:
+   140	    ) -> Epsilla:
+   141	        """Create an Epsilla table and populate it from texts."""
+   142	        vectorstore = cls(embedding=embedding, **kwargs)
+   143	        vectors = embedding.embed_documents(texts)
+   144	        if texts:
+   145	            table_fields = [
+   146	                {"name": "id", "dataType": "STRING", "primaryKey": True},
+   147	                {"name": vectorstore._text_field, "dataType": "STRING"},
+   148	                {
+   149	                    "name": vectorstore._vector_field,
+   150	                    "dataType": "VECTOR_FLOAT",
+   151	                    "dimensions": len(vectors[0]),
+   152	                },
+   153	            ]
+   154	            if metadatas:
+   155	                metadata_keys = set().union(
+   156	                    *(metadata.keys() for metadata in metadatas)
+   157	                )
+   158	                for key in sorted(metadata_keys - {"id"}):
+   159	                    if key not in {
+   160	                        vectorstore._text_field,
+   161	                        vectorstore._vector_field,
+   162	                    }:
+   163	                        table_fields.append({"name": key, "dataType": "STRING"})
+   164	            vectorstore._check_response(
+   165	                vectorstore._client.create_table(
+   166	                    table_name=vectorstore._table_name,
+   167	                    table_fields=table_fields,
+   168	                ),
+   169	                "create table",
+   170	            )
+   171	            vectorstore.add_texts(texts, metadatas=metadatas)
+   172	        return vectorstore
+# file_editor: Use fixed Epsilla JSON metadata schema field
+The file /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/vectorstores/epsilla.py:
+   145	            table_fields = [
+   146	                {"name": "id", "dataType": "STRING", "primaryKey": True},
+   147	                {"name": vectorstore._text_field, "dataType": "STRING"},
+   148	                {
+   149	                    "name": vectorstore._vector_field,
+   150	                    "dataType": "VECTOR_FLOAT",
+   151	                    "dimensions": len(vectors[0]),
+   152	                },
+   153	                {"name": "metadata", "dataType": "STRING"},
+   154	            ]
+   155	            vectorstore._check_response(
+   156	                vectorstore._client.create_table(
+   157	                    table_name=vectorstore._table_name,
+   158	                    table_fields=table_fields,
+   159	                ),
+   160	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && PYTHONPATH=/workspace/langchain/libs/langchain python - <<'PY'
+$ from typing import List
+$ from langchain.embeddings.base import Embeddings
+$ from langchain.vectorstores.epsilla import Epsilla
+$ 
+$ class Emb(Embeddings):
+$     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+$         return [[1.0, 2.0] for _ in texts]
+$     def embed_query(self, text: str) -> List[float]:
+$         return [1.0, 2.0]
+$ 
+$ class Client:
+$     def load_db(self, **kwargs): return 200, {}
+$     def use_db(self, **kwargs): return 200, {}
+$     def create_table(self, **kwargs): self.fields = kwargs['table_fields']; return 200, {}
+$     def insert(self, **kwargs): self.records = kwargs['records']; return 200, {}
+$     def query(self, **kwargs): return 200, {'result': [{**self.records[0], '@distance': 0.5}]}
+$ 
+$ client = Client()
+$ store = Epsilla.from_texts(['text'], Emb(), metadatas=[{'page': 1}], client=client)
+$ doc, score = store.similarity_search_with_score('text')[0]
+$ assert doc.metadata == {'page': 1} and score == 0.5
+$ assert {'name': 'metadata', 'dataType': 'STRING'} in client.fields
+$ print('Epsilla metadata round-trip passed')
+$ PY
+$ make lint
+cd /workspace/langchain/libs/langchain && source .venv/bin/activate && PYTHONPATH=/workspace/langchain/libs/langchain python - <<'PY'
+from typing import List
+from langchain.embeddings.base import Embeddings
+from langchain.vectorstores.epsilla import Epsilla
+class Emb(Embeddings):
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [[1.0, 2.0] for _ in texts]
+    def embed_query(self, text: str) -> List[float]:
+        return [1.0, 2.0]
+class Client:
+    def load_db(self, **kwargs): return 200, {}
+    def use_db(self, **kwargs): return 200, {}
+    def create_table(self, **kwargs): self.fields = kwargs['table_fields']; return 200, {}
+    def insert(self, **kwargs): self.records = kwargs['records']; return 200, {}
+    def query(self, **kwargs): return 200, {'result': [{**self.records[0], '@distance': 0.5}]}
+client = Client()
+store = Epsilla.from_texts(['text'], Emb(), metadatas=[{'page': 1}], client=client)
+doc, score = store.similarity_search_with_score('text')[0]
+assert doc.metadata == {'page': 1} and score == 0.5
+assert {'name': 'metadata', 'dataType': 'STRING'} in client.fields
+print('Epsilla metadata round-trip passed')
+PY
+
+Epsilla metadata round-trip passed
+
+
+make lint
+poetry run ruff .
+# task_tracker: Advance plan to final completeness review
+Task list has been updated with 6 item(s).
+# think: Cross-check all issue requirements against implemented changes
+Your thought has been logged.
+$ cd /workspace/langchain && git diff --check && test ! -e reproduce_issues.py && if git status --short | grep -E '(^|/)tests?/' ; then exit 1; fi && printf 'Modified tracked files: ' && git status --short | grep '^ M' | wc -l && printf 'New files/directories: ' && git status --short | grep '^??' | wc -l && printf 'Temporary reproduction script removed; tests untouched; diff clean.\n'
+Modified tracked files: 32
+New files/directories: 12
+Temporary reproduction script removed; tests untouched; diff clean.
+# task_tracker: Mark all implementation and validation tasks complete
+Task list has been updated with 6 item(s).
+# finish: Complete all integrations fixes documentation workflows and validation
+Implemented the requested issue bundle without modifying any test files.
+
+### Main changes
+- Added Epsilla vector store integration, export, dependency lock entry, and notebook.
+- Improved Clarifai with batched uploads, threaded retrieval, metadata filtering, clearer errors, ID validation, and updated docs.
+- Added `finish_reason` to `ChatOpenAI._astream` generation info.
+- Fixed all Confluence comments/Markdown import combinations; added `requests.Session` authentication, stronger OAuth/session validation, and documentation.
+- Added Memgraph, PromptGuard, AINetwork, Polars, and AzureML examples.
+- Added AINetwork utility wrapper, five namespaced tools, toolkit, exports, dependency, and notebook.
+- Updated Marqo for 1.0+ using `tensor_fields` and upgraded its dependency constraint.
+- Fixed empty ArangoDB collection schema generation.
+- Fixed mutable `ChatMessageHistory` defaults with `Field(default_factory=list)`.
+- Added Polars support to `DataFrameLoader`.
+- Fixed the LiteLLM `model`/`model_name` alias.
+- Added `SECURITY.md`, private vulnerability-report guidance, and `security@langchain.dev`.
+- Added `langchain-experimental/py.typed` and verified it is included in the built wheel.
+- Migrated releases to manual triggering and PyPI trusted publishing with explicit `contents: write` and `id-token: write` permissions.
+- Split core, extended, and Pydantic-2 CI workflows; removed test-type special-casing.
+- Applied safer shell interpolation, corrected the `libs/langchain` workflow conditional, pinned API-doc Pydantic, updated Retrieval labels, fixed the docs typo, and bumped LangChain to `0.0.271`.
+- Fixed an additional empty callback-list bug in LLM generation exposed by the experimental suite.
+
+### Verification
+- Temporary reproduction script confirmed the original failures, then passed comprehensive regression and edge-case checks after the fixes; it was removed afterward.
+- Targeted OpenAI, Confluence, and dataframe tests: **7 passed, 7 skipped**.
+- Full LangChain unit suite: **970 passed, 236 skipped**.
+- Full langchain-experimental unit suite: **27 passed**.
+- Full LangChain and experimental lint pipelines passed: Ruff, Black, and mypy.
+- Poetry metadata and lockfile checks passed.
+- Workflow YAML and changed notebook JSON validated successfully.
+- `git diff --check` passed.
+- Confirmed no test files were modified.
+
+External-service integration suites requiring live Clarifai, Marqo, ArangoDB, Memgraph, Confluence, Epsilla, or blockchain services were not run locally.

@@ -1,0 +1,200 @@
+$     assert out[0]['type'] == 'Logo' and out[0]['result']
+$ assert not any('tests/' in str(p) for p in [])
+$ print('All requirement source/runtime audit checks passed')
+$ PY
+$ printf '\nTest tree status:\n'; git status --short -- tests
+$ printf '\nWhitespace check:\n'; git --no-pager diff --check
+cd /workspace/fastfetch && python3 - <<'PY'
+import json, pathlib, subprocess
+root = pathlib.Path('.')
+files = [p for p in root.rglob('*') if p.is_file() and '.git' not in p.parts and p.name != 'CHANGELOG.md']
+texts = {}
+for p in files:
+    try: texts[p] = p.read_text()
+    except UnicodeDecodeError: pass
+joined = '\n'.join(texts.values())
+assert 'HydraPWK' not in joined
+assert 'NetHydra' in (root/'src/logo/builtin.c').read_text()
+json.loads((root/'doc/json_schema.json').read_text())
+for name in ('deepin', 'uos', 'nethydra', 'xinux', 'macos'):
+    out = json.loads(subprocess.check_output(['build/fastfetch', '--logo', name, '-s', 'os', '--format', 'json'], text=True, timeout=10))
+    assert out[0]['type'] == 'Logo' and out[0]['result']
+assert not any('tests/' in str(p) for p in [])
+print('All requirement source/runtime audit checks passed')
+PY
+
+All requirement source/runtime audit checks passed
+
+
+printf '\nTest tree status:\n'; git status --short -- tests
+
+Test tree status:
+
+
+printf '\nWhitespace check:\n'; git --no-pager diff --check
+
+Whitespace check:
+# file_editor: Include configured bright ANSI modifier in JSON logo result
+The file /workspace/fastfetch/src/logo/logo.c has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fastfetch/src/logo/logo.c:
+   334	
+   335	static void logoAppendJsonChars(const char* data, bool doColorReplacement, FFstrbuf* result)
+   336	{
+   337	    FFOptionsLogo* options = &instance.config.logo;
+   338	
+   339	    if (instance.config.display.brightColor)
+   340	        ffStrbufAppendS(result, FASTFETCH_TEXT_MODIFIER_BOLT);
+   341	    if (doColorReplacement)
+   342	        ffStrbufAppendF(result, "\e[%sm", options->colors[0].chars);
+   343	
+   344	    while (*data)
+   345	    {
+   346	        if (*data == '\t')
+   347	        {
+   348	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Append final ANSI reset to every JSON text logo
+The file /workspace/fastfetch/src/logo/logo.c has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fastfetch/src/logo/logo.c:
+   374	        ffStrbufAppendC(result, *data++);
+   375	    }
+   376	
+   377	    ffStrbufAppendS(result, FASTFETCH_TEXT_MODIFIER_RESET);
+   378	}
+   379	
+   380	static bool logoHasName(const FFlogo* logo, const FFstrbuf* name, bool small)
+   381	{
+   382	    for(
+   383	        const char* const* logoName = logo->names;
+   384	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ /tmp/fastfetch-reproduce.sh
+Configuring and compiling fastfetch...
+Static and JSON logo checks passed
+Checking deleted-shell executable fallback...
+All reproduction checks passed
+$ cd /workspace/fastfetch/build && ctest --output-on-failure
+Test project /workspace/fastfetch/build
+    Start 1: test-strbuf
+1/5 Test #1: test-strbuf ......................   Passed    0.00 sec
+    Start 2: test-list
+2/5 Test #2: test-list ........................   Passed    0.00 sec
+    Start 3: test-format
+3/5 Test #3: test-format ......................   Passed    0.00 sec
+    Start 4: test-color
+4/5 Test #4: test-color .......................   Passed    0.00 sec
+    Start 5: test-duration
+5/5 Test #5: test-duration ....................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   0.01 sec
+$ cd /workspace/fastfetch && git status --short && printf '\nBase diff summary:\n' && git --no-pager diff --stat a9f43ff466ad9ba47222c795d2725f721a86eac0 -- . && printf '\nUntracked logo sources:\n' && for f in src/logo/ascii/nethydra.txt src/logo/ascii/xinux.txt; do test -f "$f" && printf '%s (%s lines)\n' "$f" "$(wc -l < "$f")"; done && printf '\nDiff check:\n' && git --no-pager diff --check && printf '\nTests modified:\n' && git status --short -- tests
+M doc/json_schema.json
+ M src/common/netif/netif_linux.c
+ M src/detection/cpu/cpu_linux.c
+ M src/detection/terminalfont/terminalfont_linux.c
+ M src/detection/terminalshell/terminalshell_linux.c
+ M src/detection/wm/wm_linux.c
+ D src/logo/ascii/hydrapwk.txt
+ M src/logo/ascii/macos.txt
+ M src/logo/builtin.c
+ M src/logo/logo.c
+?? src/logo/ascii/nethydra.txt
+?? src/logo/ascii/xinux.txt
+
+Base diff summary:
+ doc/json_schema.json                              |  10 ++++++++--
+ src/common/netif/netif_linux.c                    |  28 ++++++++++++++++++++++++++--
+ src/detection/cpu/cpu_linux.c                     |   8 ++++++--
+ src/detection/terminalfont/terminalfont_linux.c   |  83 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/detection/terminalshell/terminalshell_linux.c |  11 ++++++++++-
+ src/detection/wm/wm_linux.c                       |  23 +++++++++++++++++++++++
+ src/logo/ascii/hydrapwk.txt                       |  11 -----------
+ src/logo/ascii/macos.txt                          |   6 +++---
+ src/logo/builtin.c                                |  47 +++++++++++++++++++++++++++++++----------------
+ src/logo/logo.c                                   | 135 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ 10 files changed, 322 insertions(+), 40 deletions(-)
+
+Untracked logo sources:
+src/logo/ascii/nethydra.txt (11 lines)
+src/logo/ascii/xinux.txt (5 lines)
+
+Diff check:
+
+Tests modified:
+# file_editor: Inspect Xinux ASCII logo before newline normalization
+Here's the result of running `cat -n` on /workspace/fastfetch/src/logo/ascii/xinux.txt:
+     1	$1██╗  ██╗$2██╗$3███╗   ██╗$1██╗   ██╗$2██╗  ██╗
+     2	$1╚██╗██╔╝$2██║$3████╗  ██║$1██║   ██║$2╚██╗██╔╝
+     3	 $1╚███╔╝ $2██║$3██╔██╗ ██║$1██║   ██║ $2╚███╔╝
+     4	 $1██╔██╗ $2██║$3██║╚██╗██║$1██║   ██║ $2██╔██╗
+     5	$1██╔╝ ██╗$2██║$3██║ ╚████║$1╚██████╔╝$2██╔╝ ██╗
+     6	$1╚═╝  ╚═╝$2╚═╝$3╚═╝  ╚═══╝ $1╚═════╝ $2╚═╝  ╚═╝
+$ printf '\n' >> /workspace/fastfetch/src/logo/ascii/xinux.txt
+$ /tmp/fastfetch-reproduce.sh && cd /workspace/fastfetch/build && ctest --output-on-failure
+Configuring and compiling fastfetch...
+Static and JSON logo checks passed
+Checking deleted-shell executable fallback...
+All reproduction checks passed
+Test project /workspace/fastfetch/build
+    Start 1: test-strbuf
+1/5 Test #1: test-strbuf ......................   Passed    0.00 sec
+    Start 2: test-list
+2/5 Test #2: test-list ........................   Passed    0.00 sec
+    Start 3: test-format
+3/5 Test #3: test-format ......................   Passed    0.00 sec
+    Start 4: test-color
+4/5 Test #4: test-color .......................   Passed    0.00 sec
+    Start 5: test-duration
+5/5 Test #5: test-duration ....................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   0.01 sec
+# task_tracker: Review implementation task statuses before final completion update
+# Task List
+
+1. ✅ Explore repository and map all issue locations
+   Mapped logo metadata/ASCII generation, schema references, terminal font and shell detection, WM version dispatch, netlink route parsing, CPU parsing, and JSON output flow.
+
+2. ✅ Create a non-test reproduction script
+   Created /tmp/fastfetch-reproduce.sh; it configures/builds the repository and reproduces source/runtime requirements without modifying tests.
+
+3. ✅ Implement branding, schema, and logo data fixes
+   Rebranded HydraPWK to NetHydra, corrected schema references/outputColor, fixed deepin/UOS colors and casing, added Xinux, and added macOS LIGHT_RED band.
+
+4. ✅ Implement runtime detection and JSON logo fixes
+   Implemented urxvt X resource parsing, niri version reporting, main-table route filtering, s390x MHz parsing, ANSI JSON logos, and procfs deleted-shell version fallback.
+
+5. 🔄 Run reproduction and relevant repository tests
+   Compile, run edge cases, and execute tests related to changed files and functions.
+
+6. ⏳ Audit against requested base and full issue description
+   Review diff from a9f43ff466ad9ba47222c795d2725f721a86eac0, add reproduction edge checks, and run full test suite.
+# task_tracker: Mark all implementation verification and audit tasks complete
+Task list has been updated with 6 item(s).
+# finish: Complete eleven Fastfetch fixes with full build and test verification
+Implemented all requested changes in `/workspace/fastfetch` without modifying any test files.
+
+### Changes made
+- Rebranded the HydraPWK builtin logo to **NetHydra**, including renaming its ASCII source.
+- Corrected Keyboard and Mouse JSON schema format references and added `outputColor` support.
+- Changed Deepin and UOS builtin colors to blue; normalized standalone `deepin` naming to lowercase.
+- Added rxvt-unicode/urxvt terminal-font detection from `.Xresources` and `.Xdefaults`, supporting Xft and XLFD font formats.
+- Added `niri --version` parsing for WM version reporting.
+- Filtered Linux IPv4 and IPv6 default-route candidates to `RT_TABLE_MAIN`, preventing policy-table loopback routes from winning.
+- Fixed s390x CPU parsing so `cpu MHz static` is read after the initial `/proc/cpuinfo` section.
+- Added ANSI text logos as a leading `{ "type": "Logo", "result": ... }` item in JSON output, including builtin, small, data, raw, file, `.fflogo`, custom colors, bright colors, and fallback behavior. Image logos remain omitted because they have no ANSI representation.
+- Fixed shell-version detection for deleted running binaries by using `/proc/PID/exe` while retaining the original shell name for parser dispatch.
+- Added a builtin **Xinux** ASCII logo and color configuration.
+- Added the missing ANSI `LIGHT_RED` band to the large default Apple/macOS/OSX rainbow logo only, leaving small and alternate variants unchanged.
+
+### Verification
+- Created and ran `/tmp/fastfetch-reproduce.sh`; all reproduction and edge checks pass.
+- Built the complete project successfully.
+- Ran all configured tests: **5/5 passed**.
+- Syntax-checked the s390x CPU code path using alternate architecture macros.
+- Verified real LocalIP detection still selects the active `eth0` default route.
+- Verified macOS JSON logo output contains distinct ANSI 91 (`LIGHT_RED`) and ANSI 31 (`RED`) bands.
+- Compared the final implementation against base commit `a9f43ff466ad9ba47222c795d2725f721a86eac0`.
+- `git diff --check` passes.
+- Confirmed the `tests/` tree has no modifications.

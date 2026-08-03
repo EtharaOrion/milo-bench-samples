@@ -1,0 +1,200 @@
+source = source.replace('private interface Handler { Object invoke(String method, Object[] arguments); }', 'private interface Handler { Object invoke(java.lang.reflect.Method method, Object[] arguments); }')
+source = source.replace('handler.invoke(method.getName(), arguments)', 'handler.invoke(method, arguments)')
+path.write_text(source)
+PY
+
+
+
+cd /workspace/halo && javac -cp '/tmp/halo-compile:build/classes/java/main:/tmp/halo-libs/*' /tmp/BehaviorVerifier.java && java -cp '/tmp:/tmp/halo-compile:build/classes/java/main:/tmp/halo-libs/*' BehaviorVerifier
+$ echo VERIFIER_OUTPUT_FLUSH && test -f /tmp/BehaviorVerifier.class && echo VERIFIER_CLASS_COMPILED
+python3 - <<'PY'
+from pathlib import Path
+path = Path('/tmp/BehaviorVerifier.java')
+source = path.read_text()
+source = source.replace('method.equals("', 'method.getName().equals("')
+source = source.replace('private interface Handler { Object invoke(String method, Object[] arguments); }', 'private interface Handler { Object invoke(java.lang.reflect.Method method, Object[] arguments); }')
+source = source.replace('handler.invoke(method.getName(), arguments)', 'handler.invoke(method, arguments)')
+path.write_text(source)
+PY
+
+
+
+cd /workspace/halo && javac -cp '/tmp/halo-compile:build/classes/java/main:/tmp/halo-libs/*' /tmp/BehaviorVerifier.java && java -cp '/tmp:/tmp/halo-compile:build/classes/java/main:/tmp/halo-libs/*' BehaviorVerifier
+clear
+05:42:51.892 [main] INFO run.halo.app.handler.file.FileHandlers - Registered 1 file handler(s)
+05:42:51.905 [main] WARN run.halo.app.service.impl.AttachmentServiceImpl - Failed to delete attachment file: [Attachment(id=1, name=null, path=null, fileKey=missing, thumbPath=null, mediaType=null, suffix=null, width=null, height=null, size=null, type=LOCAL)]
+run.halo.app.exception.FileOperationException: already gone
+        at BehaviorVerifier$1.delete(BehaviorVerifier.java:61)
+        at run.halo.app.handler.file.FileHandlers.delete(FileHandlers.java:66)
+        at run.halo.app.service.impl.AttachmentServiceImpl.lambda$removePermanently$0(AttachmentServiceImpl.java:169)
+        at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:195)
+        at java.base/java.util.AbstractList$RandomAccessSpliterator.forEachRemaining(AbstractList.java:720)
+        at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:484)
+        at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:474)
+        at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:913)
+        at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+        at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:578)
+        at run.halo.app.service.impl.AttachmentServiceImpl.removePermanently(AttachmentServiceImpl.java:174)
+        at BehaviorVerifier.verifyBatchDeletionContinues(BehaviorVerifier.java:83)
+        at BehaviorVerifier.main(BehaviorVerifier.java:25)
+Controller and batch deletion behaviors pass.
+
+
+clear
+
+
+echo VERIFIER_OUTPUT_FLUSH && test -f /tmp/BehaviorVerifier.class && echo VERIFIER_CLASS_COMPILED
+VERIFIER_OUTPUT_FLUSH
+VERIFIER_CLASS_COMPILED
+$ cd /workspace/halo && rm -f IssueReproducer.java IssueReproducer.class && git status --short && git --no-pager diff --check
+M gradle.properties
+ M src/main/java/run/halo/app/controller/content/MainController.java
+ M src/main/java/run/halo/app/controller/content/model/PostModel.java
+ M src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java
+ M src/main/java/run/halo/app/repository/PostRepository.java
+ M src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java
+ M src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
+$ cd /workspace/halo && awk 'length($0) > 100 {print FNR ":" length($0) ":" $0}' src/main/java/run/halo/app/controller/content/MainController.java src/main/java/run/halo/app/controller/content/model/PostModel.java src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java src/main/java/run/halo/app/repository/PostRepository.java src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java && grep -n -A5 'LineLength' config/checkstyle/checkstyle.xml
+76:109:            userService.getCurrentUser().orElseThrow(() -> new ServiceException("未查询到博主信息"));
+149:118:            throw new FileOperationException("上传附件 " + file.getOriginalFilename() + " 到七牛云失败", e);
+254:106:            throw new AlreadyExistsException("附件路径为 " + attachment.getPath() + " 已经存在");
+43:    <module name="LineLength">
+44-        <property name="fileExtensions" value="java"/>
+45-        <property name="max" value="100"/>
+46-        <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
+47-    </module>
+48-
+# task_tracker: Review task statuses before final completeness verification
+# Task List
+
+1. ✅ Explore repository and identify affected production code
+   Inspected project structure, controllers, render assemblers, attachment deletion flow, Qiniu policy, category recursion/query services, repositories, release version, and existing related tests.
+
+2. 🔄 Create and run standalone Java reproducer
+   Add a temporary non-test Java class, compile with javac, and run with java to demonstrate current failures where feasible.
+
+3. ⏳ Implement minimal production fixes
+   Address install routing, post meta description, upstream-missing batch deletion, Qiniu non-image uploads, subcategory post lookup, and release metadata if applicable.
+
+4. ⏳ Expand and rerun standalone edge-case checks
+   Extend the temporary reproducer with edge cases, compile and run it, then remove temporary artifacts.
+
+5. ⏳ Run targeted and full repository tests
+   Run tests covering modified classes and related behavior, then the full suite; fix production code failures only.
+
+6. ⏳ Review completeness against issue and base context
+   Re-read all requirements, inspect allowed current/base state without mining history for a solution, verify no requirement remains, and summarize results.
+# task_tracker: Update completed implementation phases and active test limitation
+Task list has been updated with 6 item(s).
+$ cd /workspace/halo && ./gradlew test
+Downloading https://services.gradle.org/distributions/gradle-7.4-bin.zip
+
+Exception in thread "main" java.net.ConnectException: Connection refused (Connection refused)
+        at java.base/java.net.PlainSocketImpl.socketConnect(Native Method)
+        at java.base/java.net.AbstractPlainSocketImpl.doConnect(AbstractPlainSocketImpl.java:412)
+        at java.base/java.net.AbstractPlainSocketImpl.connectToAddress(AbstractPlainSocketImpl.java:255)
+        at java.base/java.net.AbstractPlainSocketImpl.connect(AbstractPlainSocketImpl.java:237)
+        at java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:392)
+        at java.base/java.net.Socket.connect(Socket.java:615)
+        at java.base/sun.security.ssl.SSLSocketImpl.connect(SSLSocketImpl.java:305)
+        at java.base/sun.net.NetworkClient.doConnect(NetworkClient.java:177)
+        at java.base/sun.net.www.http.HttpClient.openServer(HttpClient.java:509)
+        at java.base/sun.net.www.http.HttpClient.openServer(HttpClient.java:604)
+        at java.base/sun.net.www.protocol.https.HttpsClient.<init>(HttpsClient.java:266)
+        at java.base/sun.net.www.protocol.https.HttpsClient.New(HttpsClient.java:373)
+        at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.getNewHttpClient(AbstractDelegateHttpsURLConnection.java:207)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.plainConnect0(HttpURLConnection.java:1209)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.plainConnect(HttpURLConnection.java:1103)
+        at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:193)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1636)
+        at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1564)
+        at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getInputStream(HttpsURLConnectionImpl.java:250)
+        at org.gradle.wrapper.Download.downloadInternal(Download.java:87)
+        at org.gradle.wrapper.Download.download(Download.java:67)
+        at org.gradle.wrapper.Install$1.call(Install.java:68)
+        at org.gradle.wrapper.Install$1.call(Install.java:48)
+        at org.gradle.wrapper.ExclusiveFileAccessManager.access(ExclusiveFileAccessManager.java:69)
+        at org.gradle.wrapper.Install.createDist(Install.java:48)
+        at org.gradle.wrapper.WrapperExecutor.execute(WrapperExecutor.java:107)
+        at org.gradle.wrapper.GradleWrapperMain.main(GradleWrapperMain.java:63)
+$ rm -rf /tmp/halo-libs /tmp/halo-compile /tmp/halo-lombok-src /tmp/halo-smoke /tmp/halo-smoke.log /tmp/BehaviorVerifier.java /tmp/BehaviorVerifier.class /tmp/BehaviorVerifier\$1.class /tmp/BehaviorVerifier\$Handler.class /tmp/RepositoryQueryVerifier.java /tmp/RepositoryQueryVerifier.class && cd /workspace/halo && git status --short
+M gradle.properties
+ M src/main/java/run/halo/app/controller/content/MainController.java
+ M src/main/java/run/halo/app/controller/content/model/PostModel.java
+ M src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java
+ M src/main/java/run/halo/app/repository/PostRepository.java
+ M src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java
+ M src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java
+$ cd /workspace/halo && printf '%s\n' '--- requirement markers ---' && grep -n -E 'version=|NotFoundException|getAdminIndexRedirectUri|getContentById\(post.getId\(\)\)|returnBody|boolean image|handleImageMetadata|findAllByIdInAndStatus|listPostIdsByCategoryIdRecursively|Failed to delete attachment file' gradle.properties src/main/java/run/halo/app/controller/content/MainController.java src/main/java/run/halo/app/controller/content/model/PostModel.java src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java src/main/java/run/halo/app/repository/PostRepository.java src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java && printf '%s\n' '--- final diff summary ---' && git --no-pager diff --stat && printf '%s\n' '--- test files changed ---' && git status --short src/test && printf '%s\n' '--- whitespace check ---' && git --no-pager diff --check
+--- requirement markers ---
+gradle.properties:1:version=1.5.5
+src/main/java/run/halo/app/controller/content/MainController.java:10:import run.halo.app.exception.NotFoundException;
+src/main/java/run/halo/app/controller/content/MainController.java:49:        response.sendRedirect(getAdminIndexRedirectUri());
+src/main/java/run/halo/app/controller/content/MainController.java:63:            throw new NotFoundException("该博客已初始化");
+src/main/java/run/halo/app/controller/content/MainController.java:65:        response.sendRedirect(getAdminIndexRedirectUri() + "#install");
+src/main/java/run/halo/app/controller/content/MainController.java:68:    private String getAdminIndexRedirectUri() {
+src/main/java/run/halo/app/controller/content/model/PostModel.java:18:import run.halo.app.exception.NotFoundException;
+src/main/java/run/halo/app/controller/content/model/PostModel.java:96:            throw new NotFoundException("查询不到该文章的信息");
+src/main/java/run/halo/app/controller/content/model/PostModel.java:109:            throw new NotFoundException("查询不到该文章的信息");
+src/main/java/run/halo/app/controller/content/model/PostModel.java:151:                postService.getContentById(post.getId()).getContent()));
+src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:86:        putPolicy.put("returnBody",
+src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:130:            boolean image = isImageType(file);
+src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java:138:            handleImageMetadata(file, result, () ->
+src/main/java/run/halo/app/repository/PostRepository.java:121:    List<Post> findAllByIdInAndStatus(@NonNull Collection<Integer> ids,
+src/main/java/run/halo/app/repository/PostRepository.java:132:    List<Post> findAllByIdInAndStatusIn(@NonNull Collection<Integer> ids,
+src/main/java/run/halo/app/repository/PostRepository.java:144:    Page<Post> findAllByIdInAndStatus(@NonNull Collection<Integer> ids,
+src/main/java/run/halo/app/repository/PostRepository.java:156:    Page<Post> findAllByIdInAndStatusIn(@NonNull Collection<Integer> ids,
+src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java:170:                log.warn("Failed to delete attachment file: [{}]", deletedAttachment, e);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:27:import run.halo.app.exception.NotFoundException;
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:125:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:134:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:135:        return postRepository.findAllByIdInAndStatus(postIds, status);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:143:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:144:        return postRepository.findAllByIdInAndStatusIn(postIds, status);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:154:            throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:166:            throw new NotFoundException("查询不到该分类的信息").setErrorData(slug);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:176:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:186:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:187:        return postRepository.findAllByIdInAndStatus(postIds, status, pageable);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:196:        Set<Integer> postIds = categoryService.listPostIdsByCategoryIdRecursively(categoryId);
+src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java:197:        return postRepository.findAllByIdInAndStatusIn(postIds, status, pageable);
+--- final diff summary ---
+ gradle.properties                                                    |  2 +-
+ src/main/java/run/halo/app/controller/content/MainController.java    | 24 ++++++++++--------------
+ src/main/java/run/halo/app/controller/content/model/PostModel.java   |  4 ++--
+ src/main/java/run/halo/app/handler/file/QiniuOssFileHandler.java     | 42 ++++++++----------------------------------
+ src/main/java/run/halo/app/repository/PostRepository.java            | 53 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/main/java/run/halo/app/service/impl/AttachmentServiceImpl.java   | 11 ++++++++++-
+ src/main/java/run/halo/app/service/impl/PostCategoryServiceImpl.java | 50 ++++++++++++--------------------------------------
+ 7 files changed, 96 insertions(+), 90 deletions(-)
+--- test files changed ---
+--- whitespace check ---
+# task_tracker: Record available verification complete and start final issue audit
+Task list has been updated with 6 item(s).
+# think: Adversarially confirm all six fixes and remaining test environment limitation
+Your thought has been logged.
+# task_tracker: Mark all implementation and review tasks complete
+Task list has been updated with 6 item(s).
+# finish: Implement six Halo release fixes with offline verification
+Implemented all six release-1.5 requirements with production-only changes. No test files were modified.
+
+### Changes
+- `/install` now returns an explicit HTTP 404 after initialization, while uninitialized installations redirect through a normalized custom admin path: `MainController.java:58-70`.
+- Post detail fallback `meta_description` is generated from persisted post content instead of the empty transient content field: `PostModel.java:146-152`.
+- Batch attachment deletion now continues processing when an upstream file deletion throws `FileOperationException`, while single deletion retains its existing failure behavior: `AttachmentServiceImpl.java:159-174`.
+- Qiniu upload responses no longer reference image-only metadata for non-images. Image dimensions are derived locally, non-image URLs avoid image style suffixes, and thumbnail fallback behavior is preserved: `QiniuOssFileHandler.java:84-87,130-141`.
+- All category post list/page overloads now include posts from the selected category and its descendants, while retaining status filtering and pagination: `PostCategoryServiceImpl.java:121-197`, `PostRepository.java:113-157`.
+- Updated the release version to `1.5.5`: `gradle.properties:1`.
+
+### Verification
+- Created the requested standalone Java reproducer, compiled it with `javac`, and ran it with `java`; it initially reproduced all six issues.
+- Expanded it with custom admin paths, explicit meta-description precedence, empty attachment batches, Qiniu style handling, and category slug/status/page variants; all scenarios passed after the fixes.
+- Removed the temporary reproducer and compiled artifacts afterward.
+- Offline-compiled every modified production class against the dependencies bundled in the existing application artifact.
+- Verified the new Spring Data query names and successfully started the full Spring application context, including all repository wiring.
+- Ran real controller and batch-deletion behavior checks; both passed.
+- Confirmed the checkout HEAD is exactly the requested base commit `f6afac52b3090f078adc9bf4099ae0b2a24b487b`.
+- `git diff --check` passes, and `src/test` remains unchanged.
+
+### Full-suite limitation
+`./gradlew test` could not start because Gradle 7.4 is not installed locally and the wrapper’s download from `services.gradle.org` was refused by the environment. No test failure occurred—the Gradle runtime itself could not be obtained. All available offline compilation, runtime, Spring-context, and behavioral verification passed.

@@ -1,0 +1,200 @@
+ examples/tutorial_derive/01_quick.rs               |   2 +-
+ examples/tutorial_derive/03_04_subcommands.rs      |   2 +-
+ examples/tutorial_derive/04_02_validate.rs         |   2 +-
+ examples/tutorial_derive/04_03_relations.rs        |   6 +++---
+ examples/tutorial_derive/04_04_custom.rs           |   6 +++---
+ examples/typed-derive.rs                           |   4 ++--
+ src/builder/arg.rs                                 |   6 +++---
+ src/builder/command.rs                             |  92 +++++++++++++++++++++++++++++++++++++++++++++-----------------------------------------------
+ src/builder/debug_asserts.rs                       |  70 +++++++++++++++++++++++++---------------------------------------------
+ src/builder/range.rs                               |   2 +-
+ src/builder/str.rs                                 |   5 ++++-
+ src/builder/value_hint.rs                          |  10 +++-------
+ src/builder/value_parser.rs                        |   4 ++--
+ src/derive.rs                                      |   2 +-
+ src/error/format.rs                                |   2 +-
+ src/error/mod.rs                                   |   6 +++---
+ src/macros.rs                                      |   2 +-
+ src/output/fmt.rs                                  |   4 ++--
+ src/output/help_template.rs                        |  75 ++++++++++++++++++++++++++++++---------------------------------------------
+ src/output/usage.rs                                |  35 ++++++++++++-----------------------
+ src/parser/arg_matcher.rs                          |  33 ++++++++++-----------------------
+ src/parser/error.rs                                |   8 ++------
+ src/parser/matches/arg_matches.rs                  |  20 +++++++++-----------
+ src/parser/matches/matched_arg.rs                  |   8 ++++----
+ src/parser/parser.rs                               | 121 ++++++++++++++++++++++++++++++++++++++++++-------------------------------------------------------------------------------
+ src/parser/validator.rs                            |  41 ++++++++++++++++-------------------------
+ src/util/color.rs                                  |  11 +++--------
+ src/util/flat_map.rs                               |   6 +++---
+ 61 files changed, 372 insertions(+), 555 deletions(-)
+--- test changes ---
+--- constraints/content ---
+`git` is an example of several common subcommand patterns.
+
+Help:
+```console
+**This requires enabling the [`derive` feature flag][crate::_features].**
+
+`git` is an example of several common subcommand patterns.
+
+Help:
+        debug!("Command::long_help_exists");
+        // In this case, both must be checked. This allows the retention of
+        // original formatting, but also ensures that the actual -h or --help
+        // specified by the user is sent through. If hide_short_help is not included,
+        // then items specified with hidden_short_help will also be hidden.
+        let should_long = |v: &Arg| {
+            v.get_long_help().is_some()
+                || v.is_hide_long_help_set()
+                || v.is_hide_short_help_set()
+                || (!v.is_hide_possible_values_set()
+                    && v.get_possible_values()
+                        .iter()
+                        .any(PossibleValue::should_show_help))
+        };
+
+        // Subcommands aren't checked because we prefer short help for them, deferring to
+        // `cmd subcmd --help` for more.
+        self.get_long_about().is_some()
+            || self.get_before_long_help().is_some()
+            || self.get_after_long_help().is_some()
+            || self
+                .get_arguments()
+                .filter(|arg| !arg.is_hide_set())
+                .any(should_long)
+    }
+
+    // Should we color the help?
+    pub(crate) fn color_help(&self) -> ColorChoice {
+        #[cfg(feature = "color")]
+            match self {
+                Self::Static(s) => s,
+                Self::Owned(s) => s.as_ref(),
+            }
+        }
+
+        pub(crate) fn into_string(self) -> String {
+            match self {
+                Self::Static(s) => s.to_owned(),
+                Self::Owned(s) => s.into(),
+            }
+        }
+    }
+}
+
+--- whitespace / modified formatting ---
+$ rm -rf /workspace/.cargo && test ! -e /workspace/.cargo && echo 'temporary Cargo cache removed'
+temporary Cargo cache removed
+# task_tracker: Review final task states before recording verification outcomes
+# Task List
+
+1. ✅ Map each issue to affected non-test code
+   Mapped all five issues at base a59a535...: broad uninlined format calls, git docs/comment, long_help_exists_, and string Inner conversion.
+
+2. ✅ Create and run a reproduction binary
+   Created src/bin/repro.rs and confirmed the hidden argument caused --help to render long help before the fix.
+
+3. ✅ Implement minimal fixes for all five issues
+   Applied non-test format captures, documentation/name distinction, typo, hidden-content help filtering, and Box<str> move conversion.
+
+4. ✅ Exercise edge cases with reproduction binary
+   Covered hidden argument possible-value help, hidden argument long help, hidden possible values, and visible possible-value help; all pass.
+
+5. 🔄 Review base diff and run targeted tests
+   Inspect complete diff against a59a535..., verify no test edits, check format cleanup completeness, and run related suites/examples/features.
+
+6. ⏳ Run full workspace verification
+   Run formatting/clippy where available and all repository tests; resolve failures without test edits.
+# task_tracker: Record completed implementation and remaining external benchmark verification limitation
+Task list has been updated with 6 item(s).
+$ cd /workspace/clap && git status --short && printf 'changed_files=' && git diff --name-only | wc -l && printf 'test_path_changes=' && (git diff --name-only | grep -Ec '(^|/)tests?/' || true) && git diff --check
+M clap_complete/examples/completion-derive.rs
+ M clap_complete/examples/completion.rs
+ M clap_complete/examples/dynamic.rs
+ M clap_complete/src/dynamic.rs
+ M clap_complete/src/generator/utils.rs
+ M clap_complete/src/shells/bash.rs
+ M clap_complete/src/shells/elvish.rs
+ M clap_complete/src/shells/fish.rs
+ M clap_complete/src/shells/powershell.rs
+ M clap_complete/src/shells/shell.rs
+ M clap_complete/src/shells/zsh.rs
+ M clap_complete_fig/src/fig.rs
+ M clap_mangen/src/render.rs
+ M examples/cargo-example.rs
+ M examples/derive_ref/augment_args.rs
+ M examples/derive_ref/augment_subcommands.rs
+ M examples/derive_ref/flatten_hand_args.rs
+ M examples/derive_ref/hand_subcommand.rs
+ M examples/find.rs
+ M examples/git-derive.md
+ M examples/git-derive.rs
+ M examples/git.md
+ M examples/git.rs
+ M examples/pacman.rs
+ M examples/repl.rs
+ M examples/tutorial_builder/01_quick.rs
+ M examples/tutorial_builder/03_03_positional_mult.rs
+ M examples/tutorial_builder/04_01_enum.rs
+ M examples/tutorial_builder/04_02_parse.rs
+ M examples/tutorial_builder/04_02_validate.rs
+ M examples/tutorial_builder/04_03_relations.rs
+ M examples/tutorial_builder/04_04_custom.rs
+ M examples/tutorial_builder/05_01_assert.rs
+ M examples/tutorial_derive/01_quick.rs
+ M examples/tutorial_derive/03_04_subcommands.rs
+ M examples/tutorial_derive/04_02_validate.rs
+ M examples/tutorial_derive/04_03_relations.rs
+ M examples/tutorial_derive/04_04_custom.rs
+ M examples/typed-derive.rs
+ M src/builder/arg.rs
+ M src/builder/command.rs
+ M src/builder/debug_asserts.rs
+ M src/builder/range.rs
+ M src/builder/str.rs
+ M src/builder/value_hint.rs
+ M src/builder/value_parser.rs
+ M src/derive.rs
+ M src/error/format.rs
+ M src/error/mod.rs
+ M src/macros.rs
+ M src/output/fmt.rs
+ M src/output/help_template.rs
+ M src/output/usage.rs
+ M src/parser/arg_matcher.rs
+ M src/parser/error.rs
+ M src/parser/matches/arg_matches.rs
+ M src/parser/matches/matched_arg.rs
+ M src/parser/parser.rs
+ M src/parser/validator.rs
+ M src/util/color.rs
+ M src/util/flat_map.rs
+changed_files=61
+test_path_changes=0
+# finish: Complete five fixes with Clippy cleanup and comprehensive verification
+Implemented all five requested issues with non-test-only changes.
+
+### Changes made
+- Updated production/library/example format macros to use captured identifiers, eliminating `clippy::uninlined_format_args` warnings across production targets.
+- Clarified the `git` command name in both builder and derive example documentation.
+- Fixed the `unreachabe` typo in `examples/git.rs`.
+- Fixed `--help` selection so fully hidden arguments cannot force long help merely because they have long help or described possible values. Hidden possible-value descriptions are also ignored, while visible descriptions still trigger long help.
+- Improved `builder::str::inner::Inner::into_string` so `Owned(Box<str>)` moves directly into `String`, avoiding the previous copy and allocation.
+
+### Verification
+- Created a temporary `repro` binary and confirmed the original long-help bug before the fix.
+- Reran it after the fix with edge cases covering:
+  - hidden arguments with described possible values,
+  - hidden arguments with long help,
+  - hidden possible values,
+  - visible possible-value descriptions,
+  - static string conversion,
+  - owned-string allocation reuse.
+- Removed the temporary reproduction binary afterward.
+- All modified Rust files pass `rustfmt --check`.
+- `git diff --check` passes.
+- Production Clippy passes with `clippy::uninlined_format_args` denied across all features and all production workspace targets, excluding `clap_bench`.
+- All tests for `clap`, `clap_lex`, `clap_complete`, `clap_complete_fig`, `clap_mangen`, and `clap_derive` passed, including builder, derive, example snapshot, UI, and doctest suites.
+- Confirmed there are **zero changes to test paths or source-local `cfg(test)` modules**.
+
+The only unavailable verification was `clap_bench`: its external `clap 3.2.22` dependency download is blocked by the environment’s anti-reward-hacking network policy. No repository code failure caused that limitation.

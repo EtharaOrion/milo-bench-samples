@@ -1,0 +1,1361 @@
+diff --git a/.travis.yml b/.travis.yml
+index 64b7be051996..65e55eb6df83 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -76,7 +76,17 @@ matrix:
+        - USE_ASV=1
+ 
+     - python: 3.7
+-      env: NPY_RELAXED_STRIDES_CHECKING=0
++      env:
++        - NPY_RELAXED_STRIDES_CHECKING=0
++        # use custom symbol-suffixed openblas build, not system ATLAS
++        - DOWNLOAD_OPENBLAS=1
++        - CHECK_BLAS=1
++        - NPY_USE_BLAS_ILP64=1
++      addons:
++        apt:
++          packages:
++            - gfortran
++            - eatmydata
+ 
+     - python: 3.7
+       env: USE_WHEEL=1 NPY_RELAXED_STRIDES_DEBUG=1
+@@ -95,6 +105,7 @@ matrix:
+       arch: ppc64le
+       env:
+        # use ppc64le OpenBLAS build, not system ATLAS
++       - DOWNLOAD_OPENBLAS=1
+        - ATLAS=None
+ 
+     - python: 3.7
+diff --git a/INSTALL.rst.txt b/INSTALL.rst.txt
+index d6c42bad7ea7..50cd7ab1fe96 100644
+--- a/INSTALL.rst.txt
++++ b/INSTALL.rst.txt
+@@ -14,24 +14,17 @@ Prerequisites
+ 
+ Building NumPy requires the following installed software:
+ 
+-1) For Python 3, Python__ 3.5.x or newer.
++1) Python__ 3.5.x or newer.
+ 
+-   On Debian and derivative (Ubuntu): python python-dev
++   Please note that the Python development headers also need to be installed,
++   e.g., on Debian/Ubuntu one needs to install both `python3` and
++   `python3-dev`. On Windows and macOS this is normally not an issue.
+ 
+-   On Windows: the official python installer on Python__ is enough
+-
+-   Make sure that the Python package distutils is installed before
+-   continuing. For example, in Debian GNU/Linux, distutils is included
+-   in the python-dev package.
+-
+-   Python must also be compiled with the zlib module enabled.
+-
+-2) Cython >= 0.29.2 (for development versions of numpy, not for released
+-                     versions)
++2) Cython >= 0.29.14
+ 
+ 3) pytest__ (optional) 1.15 or later
+ 
+-   This is required for testing numpy, but not for using it.
++   This is required for testing NumPy, but not for using it.
+ 
+ Python__ http://www.python.org
+ pytest__ http://pytest.readthedocs.io
+@@ -45,14 +38,14 @@ pytest__ http://pytest.readthedocs.io
+ 
+ .. note::
+ 
+-   More extensive information on building NumPy (and Scipy) is maintained at
++   More extensive information on building NumPy (and SciPy) is maintained at
+    https://scipy.github.io/devdocs/building/
+ 
+ 
+ Basic Installation
+ ==================
+ 
+-To install numpy run::
++To install NumPy, run::
+ 
+     python setup.py build -j 4 install --prefix $HOME/.local
+ 
+@@ -88,18 +81,18 @@ installed then ``g77`` will be detected and used first.  To explicitly select
+ Windows
+ -------
+ 
+-On Windows, building from source can be difficult.  Currently, the most robust
+-option is to use the Intel compilers, or alternatively MSVC (the same version
+-as used to build Python itself) with Intel ifort.  Intel itself maintains a
+-good `application note <https://software.intel.com/en-us/articles/numpyscipy-with-intel-mkl>`_
++On Windows, building from source can be difficult (in particular if you need to
++build SciPy as well, because that requires a Fortran compiler).  Currently, the
++most robust option is to use MSVC (for NumPy only). If you also need SciPy,
++you can either use MSVC + Intel Fortran or the Intel compiler suite.
++Intel itself maintains a good `application note
++<https://software.intel.com/en-us/articles/numpyscipy-with-intel-mkl>`_
+ on this.
+ 
+-If you want to use a free compiler toolchain, the recommended compiler is MingwPy__.
+-The older MinGW32 compiler set used to produce older .exe installers for NumPy
+-itself is still available at https://github.com/numpy/numpy-vendor, but not
+-recommended for use anymore.
+-
+-MingwPy__ https://mingwpy.github.io
++If you want to use a free compiler toolchain, our current recommendation is to
++use Docker or Windows subsystem for Linux (WSL).  See
++https://scipy.github.io/devdocs/dev/contributor/contributor_toc.html#development-environment
++for more details.
+ 
+ 
+ Building with optimized BLAS support
+@@ -114,16 +107,16 @@ Windows
+ -------
+ 
+ The Intel compilers work with Intel MKL, see the application note linked above.
+-MingwPy__ works with OpenBLAS.
++
+ For an overview of the state of BLAS/LAPACK libraries on Windows, see
+ `here <https://mingwpy.github.io/blas_lapack.html>`_.
+ 
+-OS X
+-----
++macOS
++-----
+ 
+-OS X ships the Accelerate framework, which NumPy can build against without any
+-manual configuration.  Other BLAS/LAPACK implementations (OpenBLAS, Intel MKL,
+-ATLAS) will also work.
++You will need to install a BLAS/LAPACK library. We recommend using OpenBLAS or
++Intel MKL. Apple's Accelerate also still works, however it has bugs and we are
++likely to drop support for it in the near future.
+ 
+ Ubuntu/Debian
+ -------------
+diff --git a/azure-pipelines.yml b/azure-pipelines.yml
+index 9e1e52952d63..0ac3b64717e5 100644
+--- a/azure-pipelines.yml
++++ b/azure-pipelines.yml
+@@ -40,8 +40,9 @@ stages:
+             locale-gen fr_FR && update-locale && \
+             apt-get -y install gfortran-5 wget && \
+             target=\$(python3 tools/openblas_support.py) && \
+-            cp -r \$target/usr/local/lib/* /usr/lib && \
+-            cp \$target/usr/local/include/* /usr/include && \
++            ls -lR \$target && \
++            cp -r \$target/lib/* /usr/lib && \
++            cp \$target/include/* /usr/include && \
+             python3 -m pip install --user --upgrade pip setuptools && \
+             python3 -m pip install --user -r test_requirements.txt && \
+             python3 -m pip install . && \
+@@ -65,13 +66,21 @@ stages:
+       # azure config for mac os -- Microsoft has indicated
+       # they will patch this issue
+       vmImage: macOS-10.14
++    strategy:
++      maxParallel: 2
++      matrix:
++          Python36:
++            PYTHON_VERSION: '3.6'
++          Python36-ILP64:
++            PYTHON_VERSION: '3.6'
++            NPY_USE_BLAS_ILP64: '1'
+     steps:
+     # the @0 refers to the (major) version of the *task* on Microsoft's
+     # end, not the order in the build matrix nor anything to do
+     # with version of Python selected
+     - task: UsePythonVersion@0
+       inputs:
+-        versionSpec: '3.6'
++        versionSpec: $(PYTHON_VERSION)
+         addToPath: true
+         architecture: 'x64'
+     # NOTE: do we have a compelling reason to use older / newer
+@@ -97,9 +106,10 @@ stages:
+     # primarily on file size / name details
+     - script: |
+         target=$(python tools/openblas_support.py)
++        ls -lR $target
+         # manually link to appropriate system paths
+-        cp $target/usr/local/lib/* /usr/local/lib/
+-        cp $target/usr/local/include/* /usr/local/include/
++        cp $target/lib/* /usr/local/lib/
++        cp $target/include/* /usr/local/include/
+       displayName: 'install pre-built openblas'
+     - script: python -m pip install --upgrade pip setuptools wheel
+       displayName: 'Install tools'
+@@ -176,6 +186,8 @@ stages:
+             PYTHON_ARCH: 'x64'
+             TEST_MODE: full
+             BITS: 64
++            NPY_USE_BLAS_ILP64: '1'
++            OPENBLAS_SUFFIX: '64_'
+     steps:
+     - template: azure-steps-windows.yml
+   - job: Linux_PyPy3
+diff --git a/azure-steps-windows.yml b/azure-steps-windows.yml
+index 26d7a667d8cc..f17039455743 100644
+--- a/azure-steps-windows.yml
++++ b/azure-steps-windows.yml
+@@ -11,7 +11,7 @@ steps:
+ - powershell: |
+     $pyversion = python -c "from __future__ import print_function; import sys; print(sys.version.split()[0])"
+     Write-Host "Python Version: $pyversion"
+-    $target = "C:\\hostedtoolcache\\windows\\Python\\$pyversion\\$(PYTHON_ARCH)\\lib\\openblas.a"
++    $target = "C:\\hostedtoolcache\\windows\\Python\\$pyversion\\$(PYTHON_ARCH)\\lib\\openblas$env:OPENBLAS_SUFFIX.a"
+     Write-Host "target path: $target"
+     $openblas = python tools/openblas_support.py
+     cp $openblas $target
+diff --git a/doc/HOWTO_RELEASE.rst.txt b/doc/HOWTO_RELEASE.rst.txt
+index 53359f0a2ebc..ff56c6d787eb 100644
+--- a/doc/HOWTO_RELEASE.rst.txt
++++ b/doc/HOWTO_RELEASE.rst.txt
+@@ -101,11 +101,13 @@ Building source archives and wheels
+ You will need write permission for numpy-wheels in order to trigger wheel
+ builds.
+ 
+-* Python(s) from `python.org <https://python.org>`_ or linux distro.
+-* cython
+-* virtualenv (pip)
+-* Paver (pip)
+-* numpy-wheels `<https://github.com/MacPython/numpy-wheels>`_ (clone)
++- Python(s) from `python.org <https://python.org>`_ or linux distro.
++- cython (pip)
++- virtualenv (pip)
++- Paver (pip)
++- pandoc `pandoc.org <https://www.pandoc.org>`_ or linux distro.
++- numpy-wheels `<https://github.com/MacPython/numpy-wheels>`_ (clone)
++
+ 
+ Building docs
+ -------------
+@@ -376,7 +378,7 @@ Make the release
+ 
+ Build the changelog and notes for upload with::
+ 
+-    paver write_release_and_log
++    paver write_release
+ 
+ Build and archive documentation
+ -------------------------------
+diff --git a/doc/changelog/1.16.6-changelog.rst b/doc/changelog/1.16.6-changelog.rst
+new file mode 100644
+index 000000000000..62ff46c34827
+--- /dev/null
++++ b/doc/changelog/1.16.6-changelog.rst
+@@ -0,0 +1,36 @@
++
++Contributors
++============
++
++A total of 10 people contributed to this release.
++
++* CakeWithSteak
++* Charles Harris
++* Chris Burr
++* Eric Wieser
++* Fernando Saravia
++* Lars Grueter
++* Matti Picus
++* Maxwell Aladago
++* Qiming Sun
++* Warren Weckesser
++
++Pull requests merged
++====================
++
++A total of 14 pull requests were merged for this release.
++
++* `#14211 <https://github.com/numpy/numpy/pull/14211>`__: BUG: Fix uint-overflow if padding with linear_ramp and negative...
++* `#14275 <https://github.com/numpy/numpy/pull/14275>`__: BUG: fixing to allow unpickling of PY3 pickles from PY2
++* `#14340 <https://github.com/numpy/numpy/pull/14340>`__: BUG: Fix misuse of .names and .fields in various places (backport...
++* `#14423 <https://github.com/numpy/numpy/pull/14423>`__: BUG: test, fix regression in converting to ctypes.
++* `#14434 <https://github.com/numpy/numpy/pull/14434>`__: BUG: Fixed maximum relative error reporting in assert_allclose
++* `#14509 <https://github.com/numpy/numpy/pull/14509>`__: BUG: Fix regression in boolean matmul.
++* `#14686 <https://github.com/numpy/numpy/pull/14686>`__: BUG: properly define PyArray_DescrCheck
++* `#14853 <https://github.com/numpy/numpy/pull/14853>`__: BLD: add 'apt update' to shippable
++* `#14854 <https://github.com/numpy/numpy/pull/14854>`__: BUG: Fix _ctypes class circular reference. (#13808)
++* `#14856 <https://github.com/numpy/numpy/pull/14856>`__: BUG: Fix `np.einsum` errors on Power9 Linux and z/Linux
++* `#14863 <https://github.com/numpy/numpy/pull/14863>`__: BLD: Prevent -flto from optimising long double representation...
++* `#14864 <https://github.com/numpy/numpy/pull/14864>`__: BUG: lib: Fix histogram problem with signed integer arrays.
++* `#15172 <https://github.com/numpy/numpy/pull/15172>`__: ENH: Backport improvements to testing functions.
++* `#15191 <https://github.com/numpy/numpy/pull/15191>`__: REL: Prepare for 1.16.6 release.
+diff --git a/doc/changelog/1.17.5-changelog.rst b/doc/changelog/1.17.5-changelog.rst
+new file mode 100644
+index 000000000000..7ac758075110
+--- /dev/null
++++ b/doc/changelog/1.17.5-changelog.rst
+@@ -0,0 +1,26 @@
++
++Contributors
++============
++
++A total of 6 people contributed to this release.  People with a "+" by their
++names contributed a patch for the first time.
++
++* Charles Harris
++* Eric Wieser
++* Ilhan Polat
++* Matti Picus
++* Michael Hudson-Doyle
++* Ralf Gommers
++
++Pull requests merged
++====================
++
++A total of 7 pull requests were merged for this release.
++
++* `#14593 <https://github.com/numpy/numpy/pull/14593>`__: MAINT: backport Cython API cleanup to 1.17.x, remove docs
++* `#14937 <https://github.com/numpy/numpy/pull/14937>`__: BUG: fix integer size confusion in handling array's ndmin argument
++* `#14939 <https://github.com/numpy/numpy/pull/14939>`__: BUILD: remove SSE2 flag from numpy.random builds
++* `#14993 <https://github.com/numpy/numpy/pull/14993>`__: MAINT: Added Python3.8 branch to dll lib discovery
++* `#15038 <https://github.com/numpy/numpy/pull/15038>`__: BUG: Fix refcounting in ufunc object loops
++* `#15067 <https://github.com/numpy/numpy/pull/15067>`__: BUG: Exceptions tracebacks are dropped
++* `#15175 <https://github.com/numpy/numpy/pull/15175>`__: ENH: Backport improvements to testing functions.
+diff --git a/doc/changelog/1.18.1-changelog.rst b/doc/changelog/1.18.1-changelog.rst
+new file mode 100644
+index 000000000000..d3df291981ef
+--- /dev/null
++++ b/doc/changelog/1.18.1-changelog.rst
+@@ -0,0 +1,33 @@
++
++Contributors
++============
++
++A total of 7 people contributed to this release.  People with a "+" by their
++names contributed a patch for the first time.
++
++* Charles Harris
++* Matti Picus
++* Maxwell Aladago
++* Pauli Virtanen
++* Ralf Gommers
++* Tyler Reddy
++* Warren Weckesser
++
++Pull requests merged
++====================
++
++A total of 13 pull requests were merged for this release.
++
++* `#15158 <https://github.com/numpy/numpy/pull/15158>`__: MAINT: Update pavement.py for towncrier.
++* `#15159 <https://github.com/numpy/numpy/pull/15159>`__: DOC: add moved modules to 1.18 release note
++* `#15161 <https://github.com/numpy/numpy/pull/15161>`__: MAINT, DOC: Minor backports and updates for 1.18.x
++* `#15176 <https://github.com/numpy/numpy/pull/15176>`__: TST: Add assert_array_equal test for big integer arrays
++* `#15184 <https://github.com/numpy/numpy/pull/15184>`__: BUG: use tmp dir and check version for cython test (#15170)
++* `#15220 <https://github.com/numpy/numpy/pull/15220>`__: BUG: distutils: fix msvc+gfortran openblas handling corner case
++* `#15221 <https://github.com/numpy/numpy/pull/15221>`__: BUG: remove -std=c99 for c++ compilation (#15194)
++* `#15222 <https://github.com/numpy/numpy/pull/15222>`__: MAINT: unskip test on win32
++* `#15223 <https://github.com/numpy/numpy/pull/15223>`__: TST: add BLAS ILP64 run in Travis & Azure
++* `#15245 <https://github.com/numpy/numpy/pull/15245>`__: MAINT: only add --std=c99 where needed
++* `#15246 <https://github.com/numpy/numpy/pull/15246>`__: BUG: lib: Fix handling of integer arrays by gradient.
++* `#15247 <https://github.com/numpy/numpy/pull/15247>`__: MAINT: Do not use private Python function in testing
++* `#15250 <https://github.com/numpy/numpy/pull/15250>`__: REL: Prepare for the NumPy 1.18.1 release.
+diff --git a/doc/source/release.rst b/doc/source/release.rst
+index 0343275a5bbc..cbeca3660e92 100644
+--- a/doc/source/release.rst
++++ b/doc/source/release.rst
+@@ -5,12 +5,15 @@ Release Notes
+ .. toctree::
+     :maxdepth: 3
+ 
++    1.18.1 <release/1.18.1-notes>
+     1.18.0 <release/1.18.0-notes>
++    1.17.5 <release/1.17.5-notes>
+     1.17.4 <release/1.17.4-notes>
+     1.17.3 <release/1.17.3-notes>
+     1.17.2 <release/1.17.2-notes>
+     1.17.1 <release/1.17.1-notes>
+     1.17.0 <release/1.17.0-notes>
++    1.16.6 <release/1.16.6-notes>
+     1.16.5 <release/1.16.5-notes>
+     1.16.4 <release/1.16.4-notes>
+     1.16.3 <release/1.16.3-notes>
+diff --git a/doc/source/release/1.16.6-notes.rst b/doc/source/release/1.16.6-notes.rst
+new file mode 100644
+index 000000000000..0aeba3cd3dd9
+--- /dev/null
++++ b/doc/source/release/1.16.6-notes.rst
+@@ -0,0 +1,87 @@
++.. currentmodule:: numpy
++
++==========================
++NumPy 1.16.6 Release Notes
++==========================
++
++The NumPy 1.16.6 release fixes bugs reported against the 1.16.5 release, and
++also backports several enhancements from master that seem appropriate for a
++release series that is the last to support Python 2.7. The wheels on PyPI are
++linked with OpenBLAS v0.3.7, which should fix errors on Skylake series
++cpus.
++
++Downstream developers building this release should use Cython >= 0.29.2 and, if
++using OpenBLAS, OpenBLAS >= v0.3.7. The supported Python versions are 2.7 and
++3.5-3.7.
++
++Highlights
++==========
++
++- The ``np.testing.utils`` functions have been updated from 1.19.0-dev0.
++  This improves the function documentation and error messages as well
++  extending the ``assert_array_compare`` function to additional types.
++
++
++New functions
++=============
++
++Allow matmul (`@` operator) to work with object arrays.
++-------------------------------------------------------
++This is an enhancement that was added in NumPy 1.17 and seems reasonable to
++include in the LTS 1.16 release series.
++
++
++Compatibility notes
++===================
++
++Fix regression in matmul (`@` operator) for boolean types
++---------------------------------------------------------
++Booleans were being treated as integers rather than booleans,
++which was a regression from previous behavior.
++
++
++Improvements
++============
++
++Array comparison assertions include maximum differences
++-------------------------------------------------------
++Error messages from array comparison tests such as ``testing.assert_allclose``
++now include "max absolute difference" and "max relative difference," in
++addition to the previous "mismatch" percentage.  This information makes it
++easier to update absolute and relative error tolerances.
++
++Contributors
++============
++
++A total of 10 people contributed to this release.
++
++* CakeWithSteak
++* Charles Harris
++* Chris Burr
++* Eric Wieser
++* Fernando Saravia
++* Lars Grueter
++* Matti Picus
++* Maxwell Aladago
++* Qiming Sun
++* Warren Weckesser
++
++Pull requests merged
++====================
++
++A total of 14 pull requests were merged for this release.
++
++* `#14211 <https://github.com/numpy/numpy/pull/14211>`__: BUG: Fix uint-overflow if padding with linear_ramp and negative...
++* `#14275 <https://github.com/numpy/numpy/pull/14275>`__: BUG: fixing to allow unpickling of PY3 pickles from PY2
++* `#14340 <https://github.com/numpy/numpy/pull/14340>`__: BUG: Fix misuse of .names and .fields in various places (backport...
++* `#14423 <https://github.com/numpy/numpy/pull/14423>`__: BUG: test, fix regression in converting to ctypes.
++* `#14434 <https://github.com/numpy/numpy/pull/14434>`__: BUG: Fixed maximum relative error reporting in assert_allclose
++* `#14509 <https://github.com/numpy/numpy/pull/14509>`__: BUG: Fix regression in boolean matmul.
++* `#14686 <https://github.com/numpy/numpy/pull/14686>`__: BUG: properly define PyArray_DescrCheck
++* `#14853 <https://github.com/numpy/numpy/pull/14853>`__: BLD: add 'apt update' to shippable
++* `#14854 <https://github.com/numpy/numpy/pull/14854>`__: BUG: Fix _ctypes class circular reference. (#13808)
++* `#14856 <https://github.com/numpy/numpy/pull/14856>`__: BUG: Fix `np.einsum` errors on Power9 Linux and z/Linux
++* `#14863 <https://github.com/numpy/numpy/pull/14863>`__: BLD: Prevent -flto from optimising long double representation...
++* `#14864 <https://github.com/numpy/numpy/pull/14864>`__: BUG: lib: Fix histogram problem with signed integer arrays.
++* `#15172 <https://github.com/numpy/numpy/pull/15172>`__: ENH: Backport improvements to testing functions.
++* `#15191 <https://github.com/numpy/numpy/pull/15191>`__: REL: Prepare for 1.16.6 release.
+diff --git a/doc/source/release/1.17.5-notes.rst b/doc/source/release/1.17.5-notes.rst
+new file mode 100644
+index 000000000000..0f1d3e1a59d5
+--- /dev/null
++++ b/doc/source/release/1.17.5-notes.rst
+@@ -0,0 +1,45 @@
++.. currentmodule:: numpy
++
++==========================
++NumPy 1.17.5 Release Notes
++==========================
++
++This release contains fixes for bugs reported against NumPy 1.17.4 along with
++some build improvements. The Python versions supported in this release
++are 3.5-3.8.
++
++Downstream developers should use Cython >= 0.29.14 for Python 3.8 support and
++OpenBLAS >= 3.7 to avoid errors on the Skylake architecture.
++
++It is recommended that developers interested in the new random bit generators
++upgrade to the NumPy 1.18.x series, as it has updated documentation and
++many small improvements.
++
++
++Contributors
++============
++
++A total of 6 people contributed to this release.  People with a "+" by their
++names contributed a patch for the first time.
++
++* Charles Harris
++* Eric Wieser
++* Ilhan Polat
++* Matti Picus
++* Michael Hudson-Doyle
++* Ralf Gommers
++
++
++Pull requests merged
++====================
++
++A total of 8 pull requests were merged for this release.
++
++* `#14593 <https://github.com/numpy/numpy/pull/14593>`__: MAINT: backport Cython API cleanup to 1.17.x, remove docs
++* `#14937 <https://github.com/numpy/numpy/pull/14937>`__: BUG: fix integer size confusion in handling array's ndmin argument
++* `#14939 <https://github.com/numpy/numpy/pull/14939>`__: BUILD: remove SSE2 flag from numpy.random builds
++* `#14993 <https://github.com/numpy/numpy/pull/14993>`__: MAINT: Added Python3.8 branch to dll lib discovery
++* `#15038 <https://github.com/numpy/numpy/pull/15038>`__: BUG: Fix refcounting in ufunc object loops
++* `#15067 <https://github.com/numpy/numpy/pull/15067>`__: BUG: Exceptions tracebacks are dropped
++* `#15175 <https://github.com/numpy/numpy/pull/15175>`__: ENH: Backport improvements to testing functions.
++* `#15213 <https://github.com/numpy/numpy/pull/15213>`__: REL: Prepare for the NumPy 1.17.5 release.
+diff --git a/doc/source/release/1.18.0-notes.rst b/doc/source/release/1.18.0-notes.rst
+index ad02d74d3d14..24aa94445ec3 100644
+--- a/doc/source/release/1.18.0-notes.rst
++++ b/doc/source/release/1.18.0-notes.rst
+@@ -9,7 +9,7 @@ the new random C-API, expires a large number of old deprecations, and improves
+ the appearance of the documentation. The Python versions supported are 3.5-3.8.
+ This is the last NumPy release series that will support Python 3.5.
+ 
+-Downstream developers should use Cython >= 0.29.13 for Python 3.8 support and
++Downstream developers should use Cython >= 0.29.14 for Python 3.8 support and
+ OpenBLAS >= 3.7 to avoid problems on the Skylake
+ architecture.
+ 
+@@ -199,6 +199,15 @@ exception will require adaptation, and code that mistakenly called
+ ``numpy.nanmax`` and ``numpy.nanmin``.
+ (`gh-14841 <https://github.com/numpy/numpy/pull/14841>`__)
+ 
++Moved modules in ``numpy.random``
++---------------------------------
++As part of the API cleanup, the submodules in ``numpy.random``
++``bit_generator``, ``philox``, ``pcg64``, ``sfc64, ``common``, ``generator``,
++and ``bounded_integers`` were moved to ``_bit_generator``, ``_philox``,
++``_pcg64``, ``_sfc64, ``_common``, ``_generator``, and ``_bounded_integers``
++respectively to indicate that they are not part of the public interface.
++(`gh-14608 <https://github.com/numpy/numpy/pull/14608>`__)
++
+ 
+ C API changes
+ =============
+@@ -366,9 +375,9 @@ Added two new configuration options. During the ``build_src`` subcommand, as
+ part of configuring NumPy, the files ``_numpyconfig.h`` and ``config.h`` are
+ created by probing support for various runtime functions and routines.
+ Previously, the very verbose compiler output during this stage clouded more
+-important information. By default the output is silenced. Running ``runtests.py
+---debug-info`` will add ``--verbose-cfg`` to the ``build_src`` subcommand,
+-which will restore the previous behaviour.
++important information. By default the output is silenced. Running
++``runtests.py --debug-info`` will add ``--verbose-cfg`` to the ``build_src``
++subcommand,which will restore the previous behaviour.
+ 
+ Adding ``CFLAGS=-Werror`` to turn warnings into errors would trigger errors
+ during the configuration. Now ``runtests.py --warn-error`` will add
+diff --git a/doc/source/release/1.18.1-notes.rst b/doc/source/release/1.18.1-notes.rst
+new file mode 100644
+index 000000000000..8bc502ecbc74
+--- /dev/null
++++ b/doc/source/release/1.18.1-notes.rst
+@@ -0,0 +1,52 @@
++.. currentmodule:: numpy
++
++==========================
++NumPy 1.18.1 Release Notes
++==========================
++
++This release contains fixes for bugs reported against NumPy 1.18.0.  Two bugs
++in particular that caused widespread problems downstream were:
++
++- The cython random extension test was not using a temporary directory for
++  building, resulting in a permission violation. Fixed.
++
++- Numpy distutils was appending `-std=c99` to all C compiler runs, leading to
++  changed behavior and compile problems downstream. That flag is now only
++  applied when building numpy C code.
++
++The Python versions supported in this release are 3.5-3.8. Downstream
++developers should use Cython >= 0.29.14 for Python 3.8 support and OpenBLAS >=
++3.7 to avoid errors on the Skylake architecture.
++
++Contributors
++============
++
++A total of 7 people contributed to this release.  People with a "+" by their
++names contributed a patch for the first time.
++
++* Charles Harris
++* Matti Picus
++* Maxwell Aladago
++* Pauli Virtanen
++* Ralf Gommers
++* Tyler Reddy
++* Warren Weckesser
++
++Pull requests merged
++====================
++
++A total of 13 pull requests were merged for this release.
++
++* `#15158 <https://github.com/numpy/numpy/pull/15158>`__: MAINT: Update pavement.py for towncrier.
++* `#15159 <https://github.com/numpy/numpy/pull/15159>`__: DOC: add moved modules to 1.18 release note
++* `#15161 <https://github.com/numpy/numpy/pull/15161>`__: MAINT, DOC: Minor backports and updates for 1.18.x
++* `#15176 <https://github.com/numpy/numpy/pull/15176>`__: TST: Add assert_array_equal test for big integer arrays
++* `#15184 <https://github.com/numpy/numpy/pull/15184>`__: BUG: use tmp dir and check version for cython test (#15170)
++* `#15220 <https://github.com/numpy/numpy/pull/15220>`__: BUG: distutils: fix msvc+gfortran openblas handling corner case
++* `#15221 <https://github.com/numpy/numpy/pull/15221>`__: BUG: remove -std=c99 for c++ compilation (#15194)
++* `#15222 <https://github.com/numpy/numpy/pull/15222>`__: MAINT: unskip test on win32
++* `#15223 <https://github.com/numpy/numpy/pull/15223>`__: TST: add BLAS ILP64 run in Travis & Azure
++* `#15245 <https://github.com/numpy/numpy/pull/15245>`__: MAINT: only add --std=c99 where needed
++* `#15246 <https://github.com/numpy/numpy/pull/15246>`__: BUG: lib: Fix handling of integer arrays by gradient.
++* `#15247 <https://github.com/numpy/numpy/pull/15247>`__: MAINT: Do not use private Python function in testing
++* `#15250 <https://github.com/numpy/numpy/pull/15250>`__: REL: Prepare for the NumPy 1.18.1 release.
+diff --git a/doc/source/user/building.rst b/doc/source/user/building.rst
+index 1588de964c90..e70391ed0fe9 100644
+--- a/doc/source/user/building.rst
++++ b/doc/source/user/building.rst
+@@ -11,19 +11,11 @@ Prerequisites
+ 
+ Building NumPy requires the following software installed:
+ 
+-1) Python 2.7.x, 3.4.x or newer
++1) Python 3.5.x or newer
+ 
+-   On Debian and derivatives (Ubuntu): python, python-dev (or python3-dev)
+-
+-   On Windows: the official python installer at
+-   `www.python.org <https://www.python.org>`_ is enough
+-
+-   Make sure that the Python package distutils is installed before
+-   continuing. For example, in Debian GNU/Linux, installing python-dev
+-   also installs distutils.
+-
+-   Python must also be compiled with the zlib module enabled. This is
+-   practically always the case with pre-packaged Pythons.
++   Please note that the Python development headers also need to be installed,
++   e.g., on Debian/Ubuntu one needs to install both `python3` and
++   `python3-dev`. On Windows and macOS this is normally not an issue.
+ 
+ 2) Compilers
+ 
+@@ -42,19 +34,16 @@ Building NumPy requires the following software installed:
+    NumPy does not require any external linear algebra libraries to be
+    installed. However, if these are available, NumPy's setup script can detect
+    them and use them for building. A number of different LAPACK library setups
+-   can be used, including optimized LAPACK libraries such as ATLAS, MKL or the
+-   Accelerate/vecLib framework on OS X.
++   can be used, including optimized LAPACK libraries such as OpenBLAS or MKL.
+ 
+ 4) Cython
+ 
+-   To build development versions of NumPy, you'll need a recent version of
+-   Cython.  Released NumPy sources on PyPi include the C files generated from
+-   Cython code, so for released versions having Cython installed isn't needed.
++   For building NumPy, you'll need a recent version of Cython.
+ 
+ Basic Installation
+ ------------------
+ 
+-To install NumPy run::
++To install NumPy, run::
+ 
+     pip install .
+ 
+@@ -62,10 +51,6 @@ To perform an in-place build that can be run from the source folder run::
+ 
+     python setup.py build_ext --inplace
+ 
+-The NumPy build system uses ``setuptools`` (from numpy 1.11.0, before that it
+-was plain ``distutils``) and ``numpy.distutils``.
+-Using ``virtualenv`` should work as expected.
+-
+ *Note: for build instructions to do development work on NumPy itself, see*
+ :ref:`development-environment`.
+ 
+@@ -83,7 +68,7 @@ For detailed info on testing, see :ref:`testing-builds`.
+ Parallel builds
+ ~~~~~~~~~~~~~~~
+ 
+-From NumPy 1.10.0 on it's also possible to do a parallel build with::
++It's possible to do a parallel build with::
+ 
+     python setup.py build -j 4 install --prefix $HOME/.local
+ 
+@@ -95,22 +80,11 @@ to perform a parallel in-place build, run::
+ The number of build jobs can also be specified via the environment variable
+ ``NPY_NUM_BUILD_JOBS``.
+ 
+-
+-FORTRAN ABI mismatch
+---------------------
+-
+-The two most popular open source fortran compilers are g77 and gfortran.
+-Unfortunately, they are not ABI compatible, which means that concretely you
+-should avoid mixing libraries built with one with another. In particular, if
+-your blas/lapack/atlas is built with g77, you *must* use g77 when building
+-numpy and scipy; on the contrary, if your atlas is built with gfortran, you
+-*must* build numpy/scipy with gfortran. This applies for most other cases
+-where different FORTRAN compilers might have been used.
+-
+ Choosing the fortran compiler
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+-To build with gfortran::
++Compilers are auto-detected; building with a particular compiler can be done
++with ``--fcompiler``.  E.g. to select gfortran::
+ 
+     python setup.py build --fcompiler=gnu95
+ 
+@@ -118,14 +92,14 @@ For more information see::
+ 
+     python setup.py build --help-fcompiler
+ 
+-How to check the ABI of blas/lapack/atlas
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++How to check the ABI of BLAS/LAPACK libraries
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+ One relatively simple and reliable way to check for the compiler used to build
+ a library is to use ldd on the library. If libg2c.so is a dependency, this
+-means that g77 has been used. If libgfortran.so is a dependency, gfortran
+-has been used. If both are dependencies, this means both have been used, which
+-is almost always a very bad idea.
++means that g77 has been used (note: g77 is no longer supported for building NumPy).
++If libgfortran.so is a dependency, gfortran has been used. If both are dependencies,
++this means both have been used, which is almost always a very bad idea.
+ 
+ Accelerated BLAS/LAPACK libraries
+ ---------------------------------
+@@ -145,7 +119,6 @@ The default order for the libraries are:
+ 5. Accelerate (MacOS)
+ 6. BLAS (NetLIB)
+ 
+-
+ If you wish to build against OpenBLAS but you also have BLIS available one
+ may predefine the order of searching via the environment variable
+ ``NPY_BLAS_ORDER`` which is a comma-separated list of the above names which
+@@ -235,14 +208,3 @@ Additional compiler flags can be supplied by setting the ``OPT``,
+ ``FOPT`` (for Fortran), and ``CC`` environment variables.
+ When providing options that should improve the performance of the code ensure
+ that you also set ``-DNDEBUG`` so that debugging code is not executed.
+-
+-
+-Building with ATLAS support
+----------------------------
+-
+-Ubuntu
+-~~~~~~
+-
+-You can install the necessary package for optimized ATLAS with this command::
+-
+-    sudo apt-get install libatlas-base-dev
+diff --git a/numpy/distutils/ccompiler.py b/numpy/distutils/ccompiler.py
+index 684c7535b76b..6438790234b7 100644
+--- a/numpy/distutils/ccompiler.py
++++ b/numpy/distutils/ccompiler.py
+@@ -532,11 +532,6 @@ def CCompiler_customize(self, dist, need_cxx=0):
+                                       'g++' in self.compiler[0] or
+                                       'clang' in self.compiler[0]):
+         self._auto_depends = True
+-        if 'gcc' in self.compiler[0]:
+-            # add std=c99 flag for gcc
+-            # TODO: does this need to be more specific?
+-            self.compiler.append('-std=c99')
+-            self.compiler_so.append('-std=c99')
+     elif os.name == 'posix':
+         import tempfile
+         import shutil
+diff --git a/numpy/distutils/system_info.py b/numpy/distutils/system_info.py
+index 4786b3a0cc93..fc7018af3490 100644
+--- a/numpy/distutils/system_info.py
++++ b/numpy/distutils/system_info.py
+@@ -2102,16 +2102,17 @@ def check_msvc_gfortran_libs(self, library_dirs, libraries):
+                 return None
+ 
+         # Generate numpy.distutils virtual static library file
+-        tmpdir = os.path.join(os.getcwd(), 'build', 'openblas')
++        basename = self.__class__.__name__
++        tmpdir = os.path.join(os.getcwd(), 'build', basename)
+         if not os.path.isdir(tmpdir):
+             os.makedirs(tmpdir)
+ 
+         info = {'library_dirs': [tmpdir],
+-                'libraries': ['openblas'],
++                'libraries': [basename],
+                 'language': 'f77'}
+ 
+-        fake_lib_file = os.path.join(tmpdir, 'openblas.fobjects')
+-        fake_clib_file = os.path.join(tmpdir, 'openblas.cobjects')
++        fake_lib_file = os.path.join(tmpdir, basename + '.fobjects')
++        fake_clib_file = os.path.join(tmpdir, basename + '.cobjects')
+         with open(fake_lib_file, 'w') as f:
+             f.write("\n".join(library_paths))
+         with open(fake_clib_file, 'w') as f:
+diff --git a/numpy/lib/function_base.py b/numpy/lib/function_base.py
+index 499120630b96..df06d10cc8d9 100644
+--- a/numpy/lib/function_base.py
++++ b/numpy/lib/function_base.py
+@@ -979,13 +979,18 @@ def gradient(f, *varargs, **kwargs):
+         # scalar or 1d array for each axis
+         dx = list(varargs)
+         for i, distances in enumerate(dx):
+-            if np.ndim(distances) == 0:
++            distances = np.asanyarray(distances)
++            if distances.ndim == 0:
+                 continue
+-            elif np.ndim(distances) != 1:
++            elif distances.ndim != 1:
+                 raise ValueError("distances must be either scalars or 1d")
+             if len(distances) != f.shape[axes[i]]:
+                 raise ValueError("when 1d, distances must match "
+                                  "the length of the corresponding dimension")
++            if np.issubdtype(distances.dtype, np.integer):
++                # Convert numpy integer types to float64 to avoid modular
++                # arithmetic in np.diff(distances).
++                distances = distances.astype(np.float64)
+             diffx = np.diff(distances)
+             # if distances are constant reduce to the scalar case
+             # since it brings a consistent speedup
+@@ -1024,8 +1029,12 @@ def gradient(f, *varargs, **kwargs):
+     elif np.issubdtype(otype, np.inexact):
+         pass
+     else:
+-        # all other types convert to floating point
+-        otype = np.double
++        # All other types convert to floating point.
++        # First check if f is a numpy integer type; if so, convert f to float64
++        # to avoid modular arithmetic when computing the changes in f.
++        if np.issubdtype(otype, np.integer):
++            f = f.astype(np.float64)
++        otype = np.float64
+ 
+     for axis, ax_dx in zip(axes, dx):
+         if f.shape[axis] < edge_order + 1:
+diff --git a/numpy/random/_examples/cython/setup.py b/numpy/random/_examples/cython/setup.py
+index 19f045fc00b5..20cedc4e38f0 100644
+--- a/numpy/random/_examples/cython/setup.py
++++ b/numpy/random/_examples/cython/setup.py
+@@ -9,9 +9,10 @@
+ from distutils.core import setup
+ from Cython.Build import cythonize
+ from setuptools.extension import Extension
+-from os.path import join, abspath, dirname
++from os.path import join, dirname
+ 
+-path = abspath(dirname(__file__))
++path = dirname(__file__)
++defs = [('NPY_NO_DEPRECATED_API', 0)]
+ 
+ extending = Extension("extending",
+                       sources=[join(path, 'extending.pyx')],
+@@ -19,10 +20,13 @@
+                             np.get_include(),
+                             join(path, '..', '..')
+                         ],
++                      define_macros=defs,
+                       )
+ distributions = Extension("extending_distributions",
+                           sources=[join(path, 'extending_distributions.pyx')],
+-                          include_dirs=[np.get_include()])
++                          include_dirs=[np.get_include()],
++                          define_macros=defs,
++                         )
+ 
+ extensions = [extending, distributions]
+ 
+diff --git a/pavement.py b/pavement.py
+index 889a552f6ea3..8a958fff38bf 100644
+--- a/pavement.py
++++ b/pavement.py
+@@ -41,7 +41,7 @@
+ #-----------------------------------
+ 
+ # Path to the release notes
+-RELEASE_NOTES = 'doc/source/release/1.18.0-notes.rst'
++RELEASE_NOTES = 'doc/source/release/1.18.1-notes.rst'
+ 
+ 
+ #-------------------------------------------------------
+@@ -182,6 +182,18 @@ def compute_sha256(idirs):
+ def write_release_task(options, filename='README'):
+     """Append hashes of release files to release notes.
+ 
++    This appends file hashes to the release notes ane creates
++    four README files of the result in various formats:
++
++    - README.rst
++    - README.rst.gpg
++    - README.md
++    - README.md.gpg
++
++    The md file are created using `pandoc` so that the links are
++    properly updated. The gpg files are kept separate, so that
++    the unsigned files may be edited before signing if needed.
++
+     Parameters
+     ----------
+     options :
+@@ -192,46 +204,44 @@ def write_release_task(options, filename='README'):
+ 
+     """
+     idirs = options.installers.installersdir
+-    source = paver.path.path(RELEASE_NOTES)
+-    target = paver.path.path(filename + '.rst')
+-    if target.exists():
+-        target.remove()
++    notes = paver.path.path(RELEASE_NOTES)
++    rst_readme = paver.path.path(filename + '.rst')
++    md_readme = paver.path.path(filename + '.md')
+ 
+-    tmp_target = paver.path.path(filename + '.md')
+-    source.copy(tmp_target)
++    # append hashes
++    with open(rst_readme, 'w') as freadme:
++        with open(notes) as fnotes:
++            freadme.write(fnotes.read())
+ 
+-    with open(str(tmp_target), 'a') as ftarget:
+-        ftarget.writelines("""
++        freadme.writelines("""
+ Checksums
+ =========
+ 
+ MD5
+ ---
++::
+ 
+ """)
+-        ftarget.writelines(['    %s\n' % c for c in compute_md5(idirs)])
+-        ftarget.writelines("""
++        freadme.writelines([f'    {c}\n' for c in compute_md5(idirs)])
++        freadme.writelines("""
+ SHA256
+ ------
++::
+ 
+ """)
+-        ftarget.writelines(['    %s\n' % c for c in compute_sha256(idirs)])
++        freadme.writelines([f'    {c}\n' for c in compute_sha256(idirs)])
+ 
+-    # Sign release
+-    cmd = ['gpg', '--clearsign', '--armor']
++    # generate md file using pandoc before signing
++    sh(f"pandoc -s -o {md_readme} {rst_readme}")
++
++    # Sign files
+     if hasattr(options, 'gpg_key'):
+-        cmd += ['--default-key', options.gpg_key]
+-    cmd += ['--output', str(target), str(tmp_target)]
+-    subprocess.check_call(cmd)
+-    print("signed %s" % (target,))
+-
+-    # Change PR links for github posting, don't sign this
+-    # as the signing isn't markdown compatible.
+-    with open(str(tmp_target), 'r') as ftarget:
+-        mdtext = ftarget.read()
+-        mdtext = re.sub(r'^\* `(\#[0-9]*).*?`__', r'* \1', mdtext, flags=re.M)
+-    with open(str(tmp_target), 'w') as ftarget:
+-        ftarget.write(mdtext)
++        cmd = f'gpg --clearsign --armor --default_key {options.gpg_key}'
++    else:
++        cmd = 'gpg --clearsign --armor'
++
++    sh(cmd + f' --output {rst_readme}.gpg {rst_readme}')
++    sh(cmd + f' --output {md_readme}.gpg {md_readme}')
+ 
+ 
+ @task
+diff --git a/pyproject.toml b/pyproject.toml
+index 918cbb2780b6..d81b731d3648 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -3,7 +3,7 @@
+ requires = [
+     "setuptools",
+     "wheel",
+-    "Cython>=0.29.13",  # Note: keep in sync with tools/cythonize.py
++    "Cython>=0.29.14",  # Note: keep in sync with tools/cythonize.py
+ ]
+ 
+ 
+diff --git a/setup.py b/setup.py
+index cbd183afed0c..e6e696c11be3 100755
+--- a/setup.py
++++ b/setup.py
+@@ -25,6 +25,7 @@
+ import sys
+ import subprocess
+ import textwrap
++import sysconfig
+ 
+ 
+ if sys.version_info[:2] < (3, 5):
+@@ -57,7 +58,7 @@
+ 
+ MAJOR               = 1
+ MINOR               = 18
+-MICRO               = 0
++MICRO               = 1
+ ISRELEASED          = True
+ VERSION             = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
+ 
+@@ -228,6 +229,40 @@ def run(self):
+             sdist.run(self)
+ 
+ 
++def get_build_overrides():
++    """
++    Custom build commands to add `-std=c99` to compilation
++    """
++    from numpy.distutils.command.build_clib import build_clib
++    from numpy.distutils.command.build_ext import build_ext
++
++    def _is_using_gcc(obj):
++        is_gcc = False
++        if obj.compiler.compiler_type == 'unix':
++            cc = sysconfig.get_config_var("CC")
++            if not cc:
++                cc = ""
++            compiler_name = os.path.basename(cc)
++            is_gcc = "gcc" in compiler_name
++        return is_gcc
++
++    class new_build_clib(build_clib):
++        def build_a_library(self, build_info, lib_name, libraries):
++            if _is_using_gcc(self):
++                args = build_info.get('extra_compiler_args') or []
++                args.append('-std=c99')
++                build_info['extra_compiler_args'] = args
++            build_clib.build_a_library(self, build_info, lib_name, libraries)
++
++    class new_build_ext(build_ext):
++        def build_extension(self, ext):
++            if _is_using_gcc(self):
++                if '-std=c99' not in ext.extra_compile_args:
++                    ext.extra_compile_args.append('-std=c99')
++            build_ext.build_extension(self, ext)
++    return new_build_clib, new_build_ext
++
++
+ def generate_cython():
+     cwd = os.path.abspath(os.path.dirname(__file__))
+     print("Cythonizing sources")
+@@ -390,6 +425,8 @@ def setup_package():
+             'f2py%s.%s = numpy.f2py.f2py2e:main' % sys.version_info[:2],
+             ]
+ 
++    cmdclass={"sdist": sdist_checked,
++             }
+     metadata = dict(
+         name = 'numpy',
+         maintainer = "NumPy Developers",
+@@ -408,8 +445,7 @@ def setup_package():
+         classifiers=[_f for _f in CLASSIFIERS.split('\n') if _f],
+         platforms = ["Windows", "Linux", "Solaris", "Mac OS-X", "Unix"],
+         test_suite='nose.collector',
+-        cmdclass={"sdist": sdist_checked,
+-                 },
++        cmdclass=cmdclass,
+         python_requires='>=3.5',
+         zip_safe=False,
+         entry_points={
+@@ -433,6 +469,8 @@ def setup_package():
+             generate_cython()
+ 
+         metadata['configuration'] = configuration
++        # Customize extension building
++        cmdclass['build_clib'], cmdclass['build_ext'] = get_build_overrides()
+     else:
+         # Version number is added to metadata inside configuration() if build
+         # is run.
+diff --git a/shippable.yml b/shippable.yml
+index b5ce1775129e..4313a6de2cf2 100644
+--- a/shippable.yml
++++ b/shippable.yml
+@@ -25,31 +25,32 @@ build:
+     - sudo apt-get update
+     - sudo apt-get install gcc gfortran
+     - target=$(python tools/openblas_support.py)
+-    - sudo cp -r "${target}"/64/lib/* /usr/lib
+-    - sudo cp "${target}"/64/include/* /usr/include
+-    - pip install --upgrade pip
++    - ls -lR "${target}"
++    - sudo cp -r "${target}"/lib/* /usr/lib
++    - sudo cp "${target}"/include/* /usr/include
++    - python -m pip install --upgrade pip
+ 
+     # we will pay the ~13 minute cost of compiling Cython only when a new
+     # version is scraped in by pip; otherwise, use the cached
+     # wheel shippable places on Amazon S3 after we build it once
+-    - pip install -r test_requirements.txt --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_PYTHON_VERSION
++    - python -m pip install -r test_requirements.txt --cache-dir=/root/.cache/pip/wheels/$SHIPPABLE_PYTHON_VERSION
+     # install pytest-xdist to leverage a second core
+     # for unit tests
+-    - pip install pytest-xdist
++    - python -m pip install pytest-xdist
+ 
+     # build and test numpy
+     - export PATH=$PATH:$SHIPPABLE_REPO_DIR
+     # build first and adjust PATH so f2py is found in scripts dir
+     # use > 1 core for build sometimes slows down a fair bit,
+     # other times modestly speeds up, so avoid for now
+-    - pip install .
++    - python -m pip install .
+     - extra_directories=($SHIPPABLE_REPO_DIR/build/*scripts*)
+     - extra_path=$(printf "%s:" "${extra_directories[@]}")
+     - export PATH="${extra_path}${PATH}"
+     # check OpenBLAS version
+     - python tools/openblas_support.py --check_version 0.3.7
+     # run the test suite
+-    - python runtests.py --debug-info --show-build-log -- -rsx --junit-xml=$SHIPPABLE_REPO_DIR/shippable/testresults/tests.xml -n 2 --durations=10
++    - python runtests.py -n --debug-info --show-build-log -- -rsx --junit-xml=$SHIPPABLE_REPO_DIR/shippable/testresults/tests.xml -n 2 --durations=10
+ 
+     cache: true
+     cache_dir_list:
+diff --git a/tools/cythonize.py b/tools/cythonize.py
+index 5bea2d4ecf2b..e5352a9542b1 100755
+--- a/tools/cythonize.py
++++ b/tools/cythonize.py
+@@ -68,11 +68,11 @@ def process_pyx(fromfile, tofile):
+         # check the version, and invoke through python
+         from distutils.version import LooseVersion
+ 
+-        # Cython 0.29.13 is required for Python 3.8 and there are
++        # Cython 0.29.14 is required for Python 3.8 and there are
+         # other fixes in the 0.29 series that are needed even for earlier
+         # Python versions.
+         # Note: keep in sync with that in pyproject.toml
+-        required_version = LooseVersion('0.29.13')
++        required_version = LooseVersion('0.29.14')
+ 
+         if LooseVersion(cython_version) < required_version:
+             raise RuntimeError('Building {} requires Cython >= {}'.format(
+diff --git a/tools/openblas_support.py b/tools/openblas_support.py
+index 964adce6e43c..4a210cfe1c71 100644
+--- a/tools/openblas_support.py
++++ b/tools/openblas_support.py
+@@ -1,6 +1,8 @@
+ from __future__ import division, absolute_import, print_function
+ import os
+ import sys
++import glob
++import shutil
+ import textwrap
+ import platform
+ try:
+@@ -40,7 +42,15 @@ def get_arch():
+     assert ret in ARCHITECTURES
+     return ret
+ 
+-def download_openblas(target, arch):
++def get_ilp64():
++    if os.environ.get("NPY_USE_BLAS_ILP64", "0") == "0":
++        return None
++    if IS_32BIT:
++        raise RuntimeError("NPY_USE_BLAS_ILP64 set on 32-bit arch")
++    return "64_"
++
++def download_openblas(target, arch, ilp64):
++    fnsuffix = {None: "", "64_": "64_"}[ilp64]
+     filename = ''
+     if arch == 'arm':
+         # ARMv8 OpenBLAS built using script available here:
+@@ -48,7 +58,7 @@ def download_openblas(target, arch):
+         # build done on GCC compile farm machine named gcc115
+         # tarball uploaded manually to an unshared Dropbox location
+         filename = ('https://www.dropbox.com/s/vdeckao4omss187/'
+-                    'openblas-{}-armv8.tar.gz?dl=1'.format(OPENBLAS_V))
++                    'openblas{}-{}-armv8.tar.gz?dl=1'.format(fnsuffix, OPENBLAS_V))
+         typ = 'tar.gz'
+     elif arch == 'ppc64':
+         # build script for POWER8 OpenBLAS available here:
+@@ -56,28 +66,29 @@ def download_openblas(target, arch):
+         # built on GCC compile farm machine named gcc112
+         # manually uploaded tarball to an unshared Dropbox location
+         filename = ('https://www.dropbox.com/s/yt0d2j86x1j8nh1/'
+-                    'openblas-{}-ppc64le-power8.tar.gz?dl=1'.format(OPENBLAS_V))
++                    'openblas{}-{}-ppc64le-power8.tar.gz?dl=1'.format(fnsuffix, OPENBLAS_V))
+         typ = 'tar.gz'
+     elif arch == 'darwin':
+-        filename = '{0}/openblas-{1}-macosx_10_9_x86_64-gf_1becaaa.tar.gz'.format(
+-                        RACKSPACE, OPENBLAS_LONG)
++        filename = '{0}/openblas{1}-{2}-macosx_10_9_x86_64-gf_1becaaa.tar.gz'.format(
++                        RACKSPACE, fnsuffix, OPENBLAS_LONG)
+         typ = 'tar.gz'
+     elif arch == 'windows':
+         if IS_32BIT:
+             suffix = 'win32-gcc_7_1_0.zip'
+         else:
+             suffix = 'win_amd64-gcc_7_1_0.zip'
+-        filename = '{0}/openblas-{1}-{2}'.format(RACKSPACE, OPENBLAS_LONG, suffix)
++        filename = '{0}/openblas{1}-{2}-{3}'.format(RACKSPACE, fnsuffix, OPENBLAS_LONG, suffix)
+         typ = 'zip'
+     elif arch == 'x86':
+         if IS_32BIT:
+             suffix = 'manylinux1_i686.tar.gz'
+         else:
+             suffix = 'manylinux1_x86_64.tar.gz'
+-        filename = '{0}/openblas-{1}-{2}'.format(RACKSPACE, OPENBLAS_LONG, suffix)
++        filename = '{0}/openblas{1}-{2}-{3}'.format(RACKSPACE, fnsuffix, OPENBLAS_LONG, suffix)
+         typ = 'tar.gz'
+     if not filename:
+         return None
++    print("Downloading:", filename, file=sys.stderr)
+     try:
+         with open(target, 'wb') as fid:
+             fid.write(urlopen(filename).read())
+@@ -86,7 +97,7 @@ def download_openblas(target, arch):
+         return None
+     return typ
+ 
+-def setup_openblas(arch=get_arch()):
++def setup_openblas(arch=get_arch(), ilp64=get_ilp64()):
+     '''
+     Download and setup an openblas library for building. If successful,
+     the configuration script will find it automatically.
+@@ -100,7 +111,7 @@ def setup_openblas(arch=get_arch()):
+     _, tmp = mkstemp()
+     if not arch:
+         raise ValueError('unknown architecture')
+-    typ = download_openblas(tmp, arch)
++    typ = download_openblas(tmp, arch, ilp64)
+     if not typ:
+         return ''
+     if arch == 'windows':
+@@ -132,10 +143,33 @@ def unpack_targz(fname):
+     if not os.path.exists(target):
+         os.mkdir(target)
+     with tarfile.open(fname, 'r') as zf:
+-        # TODO: check that all the zf.getnames() files do not escape the
+-        # extract directory (no leading '../', '/')
+-        zf.extractall(target)
+-    return target
++        # Strip common prefix from paths when unpacking
++        prefix = os.path.commonpath(zf.getnames())
++        extract_tarfile_to(zf, target, prefix)
++        return target
++
++def extract_tarfile_to(tarfileobj, target_path, archive_path):
++    """Extract TarFile contents under archive_path/ to target_path/"""
++
++    target_path = os.path.abspath(target_path)
++
++    def get_members():
++        for member in tarfileobj.getmembers():
++            if archive_path:
++                norm_path = os.path.normpath(member.name)
++                if norm_path.startswith(archive_path + os.path.sep):
++                    member.name = norm_path[len(archive_path)+1:]
++                else:
++                    continue
++
++            dst_path = os.path.abspath(os.path.join(target_path, member.name))
++            if os.path.commonpath([target_path, dst_path]) != target_path:
++                # Path not under target_path, probably contains ../
++                continue
++
++            yield member
++
++    tarfileobj.extractall(target_path, members=get_members())
+ 
+ def make_init(dirname):
+     '''
+@@ -180,19 +214,41 @@ def test_setup(arches):
+     '''
+     Make sure all the downloadable files exist and can be opened
+     '''
+-    for arch in arches:
++    def items():
++        for arch in arches:
++            yield arch, None
++            if arch in ('x86', 'darwin', 'windows'):
++                yield arch, '64_'
++
++    for arch, ilp64 in items():
+         if arch == '':
+             continue
++
++        target = None
+         try:
+-            target = setup_openblas(arch)
+-        except:
+-            print('Could not setup %s' % arch)
+-            raise
+-        if not target:
+-            raise RuntimeError('Could not setup %s' % arch)
+-        print(target)
+-
+-def test_version(expected_version):
++            try:
++                target = setup_openblas(arch, ilp64)
++            except:
++                print('Could not setup %s' % arch)
++                raise
++            if not target:
++                raise RuntimeError('Could not setup %s' % arch)
++            print(target)
++            if arch == 'windows':
++                if not target.endswith('.a'):
++                    raise RuntimeError("Not .a extracted!")
++            else:
++                files = glob.glob(os.path.join(target, "lib", "*.a"))
++                if not files:
++                    raise RuntimeError("No lib/*.a unpacked!")
++        finally:
++            if target is not None:
++                if os.path.isfile(target):
++                    os.unlink(target)
++                else:
++                    shutil.rmtree(target)
++
++def test_version(expected_version, ilp64=get_ilp64()):
+     """
+     Assert that expected OpenBLAS version is
+     actually available via NumPy
+@@ -201,12 +257,19 @@ def test_version(expected_version):
+     import ctypes
+ 
+     dll = ctypes.CDLL(numpy.core._multiarray_umath.__file__)
+-    get_config = dll.openblas_get_config
++    if ilp64 == "64_":
++        get_config = dll.openblas_get_config64_
++    else:
++        get_config = dll.openblas_get_config
+     get_config.restype=ctypes.c_char_p
+     res = get_config()
+     print('OpenBLAS get_config returned', str(res))
+     check_str = b'OpenBLAS %s' % expected_version[0].encode()
+     assert check_str in res
++    if ilp64:
++        assert b"USE64BITINT" in res
++    else:
++        assert b"USE64BITINT" not in res
+ 
+ if __name__ == '__main__':
+     import argparse
+diff --git a/tools/travis-before-install.sh b/tools/travis-before-install.sh
+index 072ad3bf6cd9..9f8b66a4740c 100755
+--- a/tools/travis-before-install.sh
++++ b/tools/travis-before-install.sh
+@@ -5,12 +5,12 @@ free -m
+ df -h
+ ulimit -a
+ 
+-if [ -n "$PPC64_LE" ]; then
++if [ -n "$DOWNLOAD_OPENBLAS" ]; then
+   pwd
+   ls -ltrh
+   target=$(python tools/openblas_support.py)
+-  sudo cp -r $target/64/lib/* /usr/lib
+-  sudo cp $target/64/include/* /usr/include
++  sudo cp -r $target/lib/* /usr/lib
++  sudo cp $target/include/* /usr/include
+ fi
+ 
+ mkdir builds

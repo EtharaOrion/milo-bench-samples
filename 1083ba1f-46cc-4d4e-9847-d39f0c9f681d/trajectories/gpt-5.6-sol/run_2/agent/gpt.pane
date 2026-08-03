@@ -1,0 +1,200 @@
+updates = {
+    Path('/workspace/langchain/docs/docs/integrations/vectorstores/vectara.ipynb'): {
+        'https://console.vectara.com/signup': 'https://console.vectara.com/signup?utm_source=langchain&utm_medium=github&utm_campaign=langchain'
+    },
+    Path('/workspace/langchain/docs/docs/integrations/vectorstores/xata.ipynb'): {
+        'environemnt': 'environment'
+    },
+}
+for path, replacements in updates.items():
+    data=json.loads(path.read_text())
+    changed=False
+    for cell in data['cells']:
+        source=''.join(cell.get('source',[]))
+        updated=source
+        for old,new in replacements.items():
+            updated=updated.replace(old,new)
+        if updated != source:
+            cell['source']=updated.splitlines(keepends=True)
+            changed=True
+    assert changed,path
+    path.write_text(json.dumps(data,indent=1,ensure_ascii=False)+'\n')
+PY
+
+
+
+cd /workspace/langchain && source libs/langchain/.venv/bin/activate && python /tmp/update_minor_notebooks.py && rm /tmp/update_minor_notebooks.py
+# task_tracker: Advance plan to final verification and cleanup phase
+Task list has been updated with 6 item(s).
+$ cd /workspace/langchain/libs/langchain && source .venv/bin/activate && make lint && make spell_check && cd /workspace/langchain && python reproduce_issues.py && python - <<'PY'
+$ import json,subprocess
+$ paths=subprocess.check_output(['git','diff','--name-only','--diff-filter=ACMR','0006075b088fd487999125295147fbfa42a0bd94','--','*.ipynb'],text=True).splitlines()
+$ for path in paths: json.load(open(path))
+$ print(f'Validated {len(paths)} changed notebooks')
+$ PY
+$ 
+$ git diff --check 0006075b088fd487999125295147fbfa42a0bd94
+cd /workspace/langchain/libs/langchain && source .venv/bin/activate && make lint && make spell_check && cd /workspace/langchain && python reproduce_issues.py && python - <<'PY'
+import json,subprocess
+paths=subprocess.check_output(['git','diff','--name-only','--diff-filter=ACMR','0006075b088fd487999125295147fbfa42a0bd94','--','*.ipynb'],text=True).splitlines()
+for path in paths: json.load(open(path))
+print(f'Validated {len(paths)} changed notebooks')
+PY
+
+./scripts/check_pydantic.sh .
+./scripts/check_imports.sh
+poetry run ruff .
+[ "." = "" ] || poetry run black . --check
+All done! ✨ 🍰 ✨
+1862 files would be left unchanged.
+[ "." = "" ] || poetry run mypy .
+Success: no issues found in 1859 source files
+poetry run codespell --toml pyproject.toml
+PASS Google Scholar wrapper
+PASS Tongyi API key
+PASS Tencent Hunyuan model
+PASS Runnable factories
+PASS Vertex serving config
+PASS Tavily tool
+PASS Neo4j environment
+PASS Evaluator source run ID
+Validated 9 changed notebooks
+
+
+
+
+git diff --check 0006075b088fd487999125295147fbfa42a0bd94
+$ rm /workspace/langchain/reproduce_issues.py
+$ cd /workspace/langchain && git status --short && printf '\nTracked diff stat from base:\n' && git diff --stat 0006075b088fd487999125295147fbfa42a0bd94 && printf '\nModified test files (must be empty):\n' && git diff --name-only 0006075b088fd487999125295147fbfa42a0bd94 -- | grep -E '(^|/)(tests?/|test_[^/]*\.py$|[^/]*_test\.py$)' || true && printf '\nWhitespace check:\n' && git diff --check 0006075b088fd487999125295147fbfa42a0bd94
+M .github/workflows/_test.yml
+ M SECURITY.md
+ M cookbook/Semi_structured_and_multi_modal_RAG.ipynb
+ M cookbook/Semi_structured_multi_modal_RAG_LLaMA2.ipynb
+ M cookbook/learned_prompt_optimization.ipynb
+ M docs/docs/expression_language/interface.ipynb
+ M docs/docs/integrations/chat_loaders/telegram.ipynb
+ M docs/docs/integrations/chat_loaders/whatsapp.ipynb
+ M docs/docs/integrations/providers/neo4j.mdx
+ M docs/docs/integrations/providers/singlestoredb.mdx
+ M docs/docs/integrations/retrievers/tavily.ipynb
+ M docs/docs/integrations/vectorstores/vectara.ipynb
+ M docs/docs/integrations/vectorstores/xata.ipynb
+ M docs/docs/modules/model_io/output_parsers/output_fixing_parser.mdx
+ M docs/docs/use_cases/question_answering/vector_db_qa.mdx
+ M docs/src/pages/cookbook.mdx
+ M libs/langchain/langchain/agents/load_tools.py
+ M libs/langchain/langchain/callbacks/tracers/evaluation.py
+ M libs/langchain/langchain/chat_models/__init__.py
+ M libs/langchain/langchain/chat_models/tongyi.py
+ M libs/langchain/langchain/graphs/neo4j_graph.py
+ M libs/langchain/langchain/retrievers/docarray.py
+ M libs/langchain/langchain/retrievers/google_vertex_ai_search.py
+ M libs/langchain/langchain/retrievers/tavily_search_api.py
+ M libs/langchain/langchain/schema/runnable/base.py
+ M libs/langchain/langchain/schema/runnable/configurable.py
+ M libs/langchain/langchain/utilities/__init__.py
+ M libs/langchain/langchain/utilities/zapier.py
+ M libs/langchain/langchain/vectorstores/clickhouse.py
+ M libs/langchain/pyproject.toml
+?? libs/langchain/langchain/chat_models/hunyuan.py
+?? libs/langchain/langchain/tools/google_scholar/
+?? libs/langchain/langchain/tools/tavily_search/
+?? libs/langchain/langchain/utilities/google_scholar.py
+
+Tracked diff stat from base:
+ .github/workflows/_test.yml                                        |  4 ++++
+ SECURITY.md                                                        | 18 ++++++++++++++++++
+ cookbook/Semi_structured_and_multi_modal_RAG.ipynb                 | 10 +++++-----
+ cookbook/Semi_structured_multi_modal_RAG_LLaMA2.ipynb              |  8 ++++----
+ cookbook/learned_prompt_optimization.ipynb                         |  1 -
+ docs/docs/expression_language/interface.ipynb                      |  6 ++++--
+ docs/docs/integrations/chat_loaders/telegram.ipynb                 |  2 +-
+ docs/docs/integrations/chat_loaders/whatsapp.ipynb                 |  2 +-
+ docs/docs/integrations/providers/neo4j.mdx                         | 12 +++++++++++-
+ docs/docs/integrations/providers/singlestoredb.mdx                 | 13 ++++++++++++-
+ docs/docs/integrations/retrievers/tavily.ipynb                     | 25 +++++++++++++++++++++++++
+ docs/docs/integrations/vectorstores/vectara.ipynb                  |  2 +-
+ docs/docs/integrations/vectorstores/xata.ipynb                     |  2 +-
+ docs/docs/modules/model_io/output_parsers/output_fixing_parser.mdx |  7 +++----
+ docs/docs/use_cases/question_answering/vector_db_qa.mdx            |  2 +-
+ docs/src/pages/cookbook.mdx                                        | 13 ++++++++++++-
+ libs/langchain/langchain/agents/load_tools.py                      | 10 ++++++++++
+ libs/langchain/langchain/callbacks/tracers/evaluation.py           | 26 ++++++++++++++++++++++----
+ libs/langchain/langchain/chat_models/__init__.py                   |  2 ++
+ libs/langchain/langchain/chat_models/tongyi.py                     |  4 ++--
+ libs/langchain/langchain/graphs/neo4j_graph.py                     | 14 ++++++++++++--
+ libs/langchain/langchain/retrievers/docarray.py                    |  2 +-
+ libs/langchain/langchain/retrievers/google_vertex_ai_search.py     | 26 ++++++++++----------------
+ libs/langchain/langchain/retrievers/tavily_search_api.py           |  7 ++++---
+ libs/langchain/langchain/schema/runnable/base.py                   |  5 ++++-
+ libs/langchain/langchain/schema/runnable/configurable.py           | 22 +++++++++++++++++++---
+ libs/langchain/langchain/utilities/__init__.py                     |  9 +++++++++
+ libs/langchain/langchain/utilities/zapier.py                       | 19 +++++++++++++------
+ libs/langchain/langchain/vectorstores/clickhouse.py                |  4 ++--
+ libs/langchain/pyproject.toml                                      |  2 +-
+ 30 files changed, 214 insertions(+), 65 deletions(-)
+
+Modified test files (must be empty):
+
+Whitespace check:
+# task_tracker: Review task state before marking final audit complete
+# Task List
+
+1. ✅ Scope repository changes against requested base
+   Confirmed HEAD exactly matched base 0006075; identified seven concrete functional gaps plus documentation, CI, deprecation, security, and release changes.
+
+2. ✅ Reproduce outstanding functional failures
+   Created reproduce_issues.py with isolated SDK fakes; confirmed Scholar, Tongyi, Hunyuan, runnable factories, Vertex, Tavily, and Neo4j failures before edits.
+
+3. ✅ Implement minimal non-test fixes
+   Implemented all 24 issue areas across source, CI, security docs, provider docs, and named notebooks without changing tests.
+
+4. ✅ Validate reproductions and edge cases
+   Expanded harness for Scholar pagination/formatting, Hunyuan payload parsing, Tavily output, lazy factories, Neo4j env, and evaluator source run IDs; all pass.
+
+5. 🔄 Run targeted and repository tests
+   Full unit suite passes (1254 passed, 270 skipped); full lint/mypy passes. Finishing notebook/docs checks and final reruns after audit edits.
+
+6. ⏳ Audit completeness and clean workspace
+   Re-read all 24 issues, compare diff to base, remove reproduce_issues.py, and ensure no test files changed.
+# task_tracker: Mark all implementation, verification, and cleanup tasks complete
+Task list has been updated with 6 item(s).
+# finish: Summarize completed multi-issue implementation and successful verification
+Implemented the requested changes in `/workspace/langchain` without modifying any test files.
+
+### Main functional changes
+- Added SerpAPI-backed Google Scholar support:
+  - `GoogleScholarAPIWrapper`
+  - `GoogleScholarQueryRun`
+  - `load_tools(["google-scholar"])` registration
+  - Pagination, result formatting, error handling, and API-key compatibility
+- Fixed `ChatTongyi` to send DashScope credentials as `api_key`.
+- Added Tencent Hunyuan chat model integration and public chat-model export.
+- Added Tavily Search as a tool over the existing Tavily retriever.
+- Added lazy runnable factory support to `configurable_alternatives()` while preserving existing runnable alternatives and custom default keys.
+- Fixed `GoogleVertexAISearchRetriever._serving_config` using a computed property.
+- Added Neo4j graph environment-variable support.
+- Ensured evaluator feedback receives the evaluator trace’s `source_run_id` before persistence.
+
+### Other requested changes
+- Added Zapier NLA deprecation warnings.
+- Corrected ClickHouse return documentation.
+- Added security best practices.
+- Added CI integration-test compilation.
+- Bumped LangChain to `0.0.320`.
+- Updated cookbook, SingleStore, Neo4j, Tavily, output-parser, interface, WhatsApp, Telegram, Vectara, Xata, and multimodal notebook documentation.
+- Cleared the stale embedded notebook plot output.
+- Fixed the specified capitalization, redundant-word, and documentation typos.
+
+### Verification
+- Temporary reproduction script created and run before and after the fixes, then removed.
+- Expanded reproduction checks covered Scholar pagination, Hunyuan request/response handling, Tavily results, lazy factories, Vertex configuration, Neo4j environment loading, Tongyi credentials, and evaluator run IDs.
+- Full unit suite: **1254 passed, 270 skipped**.
+- Full `make lint`: passed, including Ruff, Black, import checks, Pydantic checks, and mypy across 1,859 source files.
+- `make spell_check`: passed.
+- `poetry check` and `poetry lock --check`: passed.
+- All source and integration tests compile successfully.
+- Related non-vector integration tests collected successfully; vector integration collection could not run because optional `vcr` is not installed, and no dependencies were installed per your instruction.
+- All changed notebooks parse correctly and attachment references are valid.
+- `git diff --check`: passed.
+- Confirmed **no test files were modified**.

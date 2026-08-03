@@ -1,0 +1,296 @@
+diff --git a/numpy/core/tests/test_multiarray.py b/numpy/core/tests/test_multiarray.py
+index 22d550eccbe0..2464dee8b56a 100644
+--- a/numpy/core/tests/test_multiarray.py
++++ b/numpy/core/tests/test_multiarray.py
+@@ -20,7 +20,6 @@
+ import weakref
+ import pytest
+ from contextlib import contextmanager
+-from test.support import no_tracing
+ 
+ from numpy.compat import pickle
+ 
+@@ -97,6 +96,26 @@ def _aligned_zeros(shape, dtype=float, order="C", align=None):
+     data.fill(0)
+     return data
+ 
++def _no_tracing(func):
++    """
++    Decorator to temporarily turn off tracing for the duration of a test.
++    Needed in tests that check refcounting, otherwise the tracing itself
++    influences the refcounts
++    """
++    if not hasattr(sys, 'gettrace'):
++        return func
++    else:
++        @functools.wraps(func)
++        def wrapper(*args, **kwargs):
++            original_trace = sys.gettrace()
++            try:
++                sys.settrace(None)
++                return func(*args, **kwargs)
++            finally:
++                sys.settrace(original_trace)
++        return wrapper
++
++
+ 
+ class TestFlags(object):
+     def setup(self):
+@@ -5098,7 +5117,7 @@ def test_refcount(self):
+ 
+ class TestResize(object):
+ 
+-    @no_tracing
++    @_no_tracing
+     def test_basic(self):
+         x = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+         if IS_PYPY:
+@@ -5115,7 +5134,7 @@ def test_check_reference(self):
+         assert_raises(ValueError, x.resize, (5, 1))
+         del y  # avoid pyflakes unused variable warning.
+ 
+-    @no_tracing
++    @_no_tracing
+     def test_int_shape(self):
+         x = np.eye(3)
+         if IS_PYPY:
+@@ -5149,7 +5168,7 @@ def test_invalid_arguments(self):
+         assert_raises(TypeError, np.eye(3).resize, order=1)
+         assert_raises(TypeError, np.eye(3).resize, refcheck='hi')
+ 
+-    @no_tracing
++    @_no_tracing
+     def test_freeform_shape(self):
+         x = np.eye(3)
+         if IS_PYPY:
+@@ -5158,7 +5177,7 @@ def test_freeform_shape(self):
+             x.resize(3, 2, 1)
+         assert_(x.shape == (3, 2, 1))
+ 
+-    @no_tracing
++    @_no_tracing
+     def test_zeros_appended(self):
+         x = np.eye(3)
+         if IS_PYPY:
+@@ -5168,7 +5187,7 @@ def test_zeros_appended(self):
+         assert_array_equal(x[0], np.eye(3))
+         assert_array_equal(x[1], np.zeros((3, 3)))
+ 
+-    @no_tracing
++    @_no_tracing
+     def test_obj_obj(self):
+         # check memory is initialized on resize, gh-4857
+         a = np.ones(10, dtype=[('k', object, 2)])
+@@ -7780,7 +7799,7 @@ def test_reshape(self):
+             d = np.ones(100)
+             assert_(sys.getsizeof(d) < sys.getsizeof(d.reshape(100, 1, 1).copy()))
+ 
+-        @no_tracing
++        @_no_tracing
+         def test_resize(self):
+             d = np.ones(100)
+             old = sys.getsizeof(d)
+diff --git a/numpy/lib/tests/test_function_base.py b/numpy/lib/tests/test_function_base.py
+index 9075ff538c86..d5d62a8d12d3 100644
+--- a/numpy/lib/tests/test_function_base.py
++++ b/numpy/lib/tests/test_function_base.py
+@@ -1084,6 +1084,40 @@ def test_values(self):
+         assert_raises(ValueError, gradient, np.arange(1), edge_order=2)
+         assert_raises(ValueError, gradient, np.arange(2), edge_order=2)
+ 
++    @pytest.mark.parametrize('f_dtype', [np.uint8, np.uint16,
++                                         np.uint32, np.uint64])
++    def test_f_decreasing_unsigned_int(self, f_dtype):
++        f = np.array([5, 4, 3, 2, 1], dtype=f_dtype)
++        g = gradient(f)
++        assert_array_equal(g, [-1]*len(f))
++
++    @pytest.mark.parametrize('f_dtype', [np.int8, np.int16,
++                                         np.int32, np.int64])
++    def test_f_signed_int_big_jump(self, f_dtype):
++        maxint = np.iinfo(f_dtype).max
++        x = np.array([1, 3])
++        f = np.array([-1, maxint], dtype=f_dtype)
++        dfdx = gradient(f, x)
++        assert_array_equal(dfdx, [(maxint + 1) // 2]*2)
++
++    @pytest.mark.parametrize('x_dtype', [np.uint8, np.uint16,
++                                         np.uint32, np.uint64])
++    def test_x_decreasing_unsigned(self, x_dtype):
++        x = np.array([3, 2, 1], dtype=x_dtype)
++        f = np.array([0, 2, 4])
++        dfdx = gradient(f, x)
++        assert_array_equal(dfdx, [-2]*len(x))
++
++    @pytest.mark.parametrize('x_dtype', [np.int8, np.int16,
++                                         np.int32, np.int64])
++    def test_x_signed_int_big_jump(self, x_dtype):
++        minint = np.iinfo(x_dtype).min
++        maxint = np.iinfo(x_dtype).max
++        x = np.array([-1, maxint], dtype=x_dtype)
++        f = np.array([minint // 2, 0])
++        dfdx = gradient(f, x)
++        assert_array_equal(dfdx, [0.5, 0.5])
++
+ 
+ class TestAngle(object):
+ 
+diff --git a/numpy/linalg/tests/test_linalg.py b/numpy/linalg/tests/test_linalg.py
+index bd3df1ca472d..ef05b595ea9d 100644
+--- a/numpy/linalg/tests/test_linalg.py
++++ b/numpy/linalg/tests/test_linalg.py
+@@ -2016,3 +2016,31 @@ def test_blas64_dot():
+     a[0,-1] = 1
+     c = np.dot(b, a)
+     assert_equal(c[0,-1], 1)
++
++
++@pytest.mark.xfail(not HAS_LAPACK64,
++                   reason="Numpy not compiled with 64-bit BLAS/LAPACK")
++def test_blas64_geqrf_lwork_smoketest():
++    # Smoke test LAPACK geqrf lwork call with 64-bit integers
++    dtype = np.float64
++    lapack_routine = np.linalg.lapack_lite.dgeqrf
++
++    m = 2**32 + 1
++    n = 2**32 + 1
++    lda = m
++
++    # Dummy arrays, not referenced by the lapack routine, so don't
++    # need to be of the right size
++    a = np.zeros([1, 1], dtype=dtype)
++    work = np.zeros([1], dtype=dtype)
++    tau = np.zeros([1], dtype=dtype)
++
++    # Size query
++    results = lapack_routine(m, n, a, lda, tau, work, -1, 0)
++    assert_equal(results['info'], 0)
++    assert_equal(results['m'], m)
++    assert_equal(results['n'], m)
++
++    # Should result to an integer of a reasonable size
++    lwork = int(work.item())
++    assert_(2**32 < lwork < 2**42)
+diff --git a/numpy/random/tests/test_extending.py b/numpy/random/tests/test_extending.py
+index 807de1a25164..ce34c1b878d1 100644
+--- a/numpy/random/tests/test_extending.py
++++ b/numpy/random/tests/test_extending.py
+@@ -1,6 +1,8 @@
+ import os, sys
+ import pytest
+ import warnings
++import shutil
++import subprocess
+ 
+ try:
+     import cffi
+@@ -22,30 +24,34 @@
+ 
+ try:
+     import cython
++    from Cython.Compiler.Version import version as cython_version
+ except ImportError:
+     cython = None
++else:
++    from distutils.version import LooseVersion
++    # Cython 0.29.14 is required for Python 3.8 and there are
++    # other fixes in the 0.29 series that are needed even for earlier
++    # Python versions.
++    # Note: keep in sync with the one in pyproject.toml
++    required_version = LooseVersion('0.29.14')
++    if LooseVersion(cython_version) < required_version:
++        # too old or wrong cython, skip the test
++        cython = None
+ 
+ @pytest.mark.skipif(cython is None, reason="requires cython")
+-def test_cython():
+-    curdir = os.getcwd()
+-    argv = sys.argv
+-    examples = (os.path.dirname(__file__), '..', '_examples')
+-    try:
+-        os.chdir(os.path.join(*examples))
+-        sys.argv = argv[:1] + ['build']
+-        with warnings.catch_warnings(record=True) as w:
+-            # setuptools issue gh-1885
+-            warnings.filterwarnings('always', '', DeprecationWarning)
+-            from numpy.random._examples.cython import setup
+-    finally:
+-        sys.argv = argv
+-        os.chdir(curdir)
++@pytest.mark.slow
++def test_cython(tmp_path):
++    examples = os.path.join(os.path.dirname(__file__), '..', '_examples')
++    # CPython 3.5 and below does not handle __fspath__ well: see bpo-26027
++    shutil.copytree(examples, str(tmp_path / '_examples'))
++    subprocess.check_call([sys.executable, 'setup.py', 'build'],
++                          cwd=str(tmp_path / '_examples' / 'cython'))
+ 
+ @pytest.mark.skipif(numba is None or cffi is None,
+                     reason="requires numba and cffi")
+ def test_numba():
+-        from numpy.random._examples.numba import extending
++    from numpy.random._examples.numba import extending
+ 
+ @pytest.mark.skipif(cffi is None, reason="requires cffi")
+ def test_cffi():
+-        from numpy.random._examples.cffi import extending
++    from numpy.random._examples.cffi import extending
+diff --git a/numpy/testing/tests/test_utils.py b/numpy/testing/tests/test_utils.py
+index 44f93a693d88..1e3f527154ec 100644
+--- a/numpy/testing/tests/test_utils.py
++++ b/numpy/testing/tests/test_utils.py
+@@ -90,6 +90,21 @@ def foo(t):
+         for t in ['S1', 'U1']:
+             foo(t)
+ 
++    def test_0_ndim_array(self):
++        x = np.array(473963742225900817127911193656584771)
++        y = np.array(18535119325151578301457182298393896)
++        assert_raises(AssertionError, self._assert_func, x, y)
++
++        y = x
++        self._assert_func(x, y)
++
++        x = np.array(43)
++        y = np.array(10)
++        assert_raises(AssertionError, self._assert_func, x, y)
++
++        y = x
++        self._assert_func(x, y)
++
+     def test_generic_rank3(self):
+         """Test rank 3 array for all dtypes."""
+         def foo(t):
+diff --git a/tools/pypy-test.sh b/tools/pypy-test.sh
+index f4d56ba1a741..33a97ad17e03 100755
+--- a/tools/pypy-test.sh
++++ b/tools/pypy-test.sh
+@@ -11,19 +11,20 @@ sudo apt-get -yq install libatlas-base-dev liblapack-dev gfortran-5
+ F77=gfortran-5 F90=gfortran-5 \
+ 
+ # Download the proper OpenBLAS x64 precompiled library
+-target=$(python tools/openblas_support.py)
++target=$(python3 tools/openblas_support.py)
++ls -lR "$target"
+ echo getting OpenBLAS into $target
+-export LD_LIBRARY_PATH=$target/usr/local/lib
+-export LIB=$target/usr/local/lib
+-export INCLUDE=$target/usr/local/include
++export LD_LIBRARY_PATH=$target/lib
++export LIB=$target/lib
++export INCLUDE=$target/include
+ 
+ # Use a site.cfg to build with local openblas
+ cat << EOF > site.cfg
+ [openblas]
+ libraries = openblas
+-library_dirs = $target/usr/local/lib:$LIB
+-include_dirs = $target/usr/local/lib:$LIB
+-runtime_library_dirs = $target/usr/local/lib
++library_dirs = $target/lib:$LIB
++include_dirs = $target/lib:$LIB
++runtime_library_dirs = $target/lib
+ EOF
+ 
+ echo getting PyPy 3.6 nightly

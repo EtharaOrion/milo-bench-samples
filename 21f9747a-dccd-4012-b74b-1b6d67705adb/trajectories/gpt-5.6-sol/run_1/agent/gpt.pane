@@ -1,0 +1,200 @@
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -53,7 +53,7 @@ class JSON:
+     def from_data(
+         cls,
+         data: Any,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -66,7 +66,7 @@ class JSON:
+
+         Args:
+             data (Any): An object that may be encoded in to JSON
+-            indent (int, optional): Number of characters to indent by. Defaults to 2.
++            indent (Union[None, int, str], optional): Number of spaces or characters to indent by. Defaults to 2.
+             highlight (bool, optional): Enable highlighting. Defaults to True.
+             default (Callable, optional): Optional callable which will be called for objects that cannot be serialized. Defaults to None.
+             skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+diff --git a/rich/live.py b/rich/live.py
+index cb36ddb..2b9af0b 100644
+--- a/rich/live.py
++++ b/rich/live.py
+@@ -159,8 +159,8 @@ class Live(JupyterMixin, RenderHook):
+                 # jupyter last refresh must occur after console pop render hook
+                 # i am not sure why this is needed
+                 self.refresh()
+-        if not self.console.is_interactive:
+-            return self.console.print()
++        if not self.console.is_interactive and not self.transient:
++            self.console.print()
+
+     def __enter__(self) -> "Live":
+         self.start(refresh=self._renderable is not None)
+diff --git a/rich/text.py b/rich/text.py
+index 0ecdeae..a585ae9 100644
+--- a/rich/text.py
++++ b/rich/text.py
+@@ -24,6 +24,7 @@ from .cells import cell_len, set_cell_size
+ from .containers import Lines
+ from .control import strip_control_codes
+ from .emoji import EmojiVariant
++from .errors import StyleSyntaxError
+ from .jupyter import JupyterMixin
+ from .measure import Measurement
+ from .segment import Segment
+@@ -60,6 +61,40 @@ class Span(NamedTuple):
+             else f"Span({self.start}, {self.end}, {str(self.style)!r})"
+         )
+
++    def __eq__(self, other: object) -> bool:
++        if not isinstance(other, Span):
++            return False
++        if self.start != other.start or self.end != other.end:
++            return False
++        if self.style == other.style:
++            return True
++        try:
++            self_style = (
++                Style.parse(self.style) if isinstance(self.style, str) else self.style
++            )
++            other_style = (
++                Style.parse(other.style)
++                if isinstance(other.style, str)
++                else other.style
++            )
++        except StyleSyntaxError:
++            return False
++        return self_style == other_style
++
++    def __ne__(self, other: object) -> bool:
++        return not self == other
++
++    def __hash__(self) -> int:
++        try:
++            style = (
++                Style.parse(self.style)
++                if isinstance(self.style, str)
++                else self.style
++            )
++        except StyleSyntaxError:
++            style = self.style
++        return hash((self.start, self.end, style))
++
+     def __bool__(self) -> bool:
+         return self.end > self.start
+$ cd /workspace/rich && python reproduce_issues.py && python -m compileall -q rich
+PASS: JSON indent None
+PASS: JSON indent 0
+PASS: JSON indent 2
+PASS: JSON indent '--'
+PASS: JSON tab indent
+PASS: print_json indent annotation
+PASS: JSON.__init__ indent annotation
+PASS: JSON.from_data indent annotation
+PASS: Console.print_json indent annotation
+PASS: Status pipe output
+PASS: Non-transient Live final output
+PASS: Windows auto width
+PASS: Windows explicit width
+PASS: Span str/Style equality
+PASS: Span aliases and hash
+PASS: Span metadata equality
+PASS: Span unparsed named styles
+PASS: Span tuple boundary
+PASS: Thai combining-character truncation
+PASS: Unicode truncation target widths
+PASS: Thai table renders at varied widths
+PASS: file URL highlighting file:///tmp/example.py
+PASS: file URL highlighting file://localhost/tmp/example.py
+PASS: Text sep/end options
+PASS: Mixed str/Text options
+PASS: Sphinx 4.3.0
+PASS: PyPI capitalization
+PASS: pager class reference
+PASS: relaxed typing-extensions
+
+All checks passed
+$ cd /workspace/rich && rm reproduce_issues.py && git status --short && git --no-pager diff --check
+M README.md
+ M docs/requirements.txt
+ M docs/source/introduction.rst
+ M pyproject.toml
+ M rich/__init__.py
+ M rich/cells.py
+ M rich/console.py
+ M rich/highlighter.py
+ M rich/json.py
+ M rich/live.py
+ M rich/text.py
+# task_tracker: Review final task list before recording validation outcome
+# Task List
+
+1. ✅ Explore repository and identify affected non-test files
+   Mapped affected APIs and files: JSON typing, Live stop, Console sizing/collection, Span, cells, highlighter, docs, and dependencies.
+
+2. ✅ Build and run a comprehensive reproduction script
+   Unified script confirmed failures across the reported functional and static requirements.
+
+3. ✅ Implement minimal source and configuration fixes
+   Applied focused runtime, typing, dependency, and documentation edits, including Windows auto-width correction.
+
+4. ✅ Run reproductions and edge-case checks
+   Expanded script covers all JSON APIs/indent forms, Status/Live, Windows width, Span contracts, Unicode/table rendering, file URLs, and mixed Text printing; all pass.
+
+5. 🔄 Run targeted and full repository test suites
+   Format modified Python files, run related tests, then full suite; fix source regressions only.
+
+6. ⏳ Review completeness and clean temporary artifacts
+   Re-read requirements, inspect working diff without mining history, remove repro script, and summarize.
+# task_tracker: Record completed implementation and environment-blocked full-suite validation
+Task list has been updated with 6 item(s).
+$ cd /workspace/rich && grep -nE "indent: Union|width - 1 if WINDOWS|isinstance\(renderable, Text\)|SystemPager|not self.console.is_interactive and not self.transient|def __eq__|def __hash__|file\):|typing-extensions|Sphinx==4.3.0|favorite PyPI|from PyPI|def set_cell_size" rich/__init__.py rich/console.py rich/json.py rich/live.py rich/text.py rich/cells.py rich/highlighter.py pyproject.toml docs/requirements.txt README.md docs/source/introduction.rst
+rich/__init__.py:76:    indent: Union[None, int, str] = 2,
+rich/console.py:54:from .pager import Pager, SystemPager
+rich/console.py:357:        self.pager = SystemPager() if pager is None else pager
+rich/console.py:967:                (width - 1 if WINDOWS else width)
+rich/console.py:1049:            pager (Pager, optional): A pager object, or None to use :class:`~rich.pager.SystemPager`. Defaults to None.
+rich/console.py:1447:            elif isinstance(renderable, Text):
+rich/console.py:1634:        indent: Union[None, int, str] = 2,
+rich/json.py:27:        indent: Union[None, int, str] = 2,
+rich/json.py:56:        indent: Union[None, int, str] = 2,
+rich/live.py:162:        if not self.console.is_interactive and not self.transient:
+rich/text.py:64:    def __eq__(self, other: object) -> bool:
+rich/text.py:87:    def __hash__(self) -> int:
+rich/text.py:208:    def __eq__(self, other: object) -> bool:
+rich/cells.py:75:def set_cell_size(text: str, total: int) -> str:
+rich/highlighter.py:99:            r"(?P<url>(https|http|ws|wss|file):\/\/[0-9a-zA-Z\$\-\_\+\!`\(\)\,\.\?\/\;\:\&\=\%\#]*)",
+pyproject.toml:30:typing-extensions = { version = ">=3.7.4", python = "<3.8" }
+docs/requirements.txt:2:Sphinx==4.3.0
+README.md:41:Install with `pip` or your favorite PyPI package manager.
+docs/source/introduction.rst:23:You can install Rich from PyPI with `pip` or your favorite package manager::
+# finish: Complete eleven fixes with targeted tests passing and documented environment drift
+Implemented the requested changes without modifying any test files.
+
+### Changes made
+- Made JSON `indent` annotations compatible with `json.dumps`: `None`, `int`, or `str` across `rich.print_json`, `Console.print_json`, `JSON`, and `JSON.from_data` (`rich/__init__.py:76`, `rich/console.py:1634`, `rich/json.py:27`, `rich/json.py:56`).
+- Prevented transient `Status` displays from adding a newline to piped stdout while preserving non-transient `Live` behavior (`rich/live.py:162`).
+- Corrected auto-detected Windows terminal width while preserving explicitly configured widths (`rich/console.py:967`).
+- Added semantic `Span` equality, inequality, and hash behavior for equivalent string and `Style` values (`rich/text.py:64`).
+- Reworked Unicode cell truncation so combining characters cannot cause an infinite loop (`rich/cells.py:75`).
+- Added `file://` to URL highlighting protocols (`rich/highlighter.py:99`).
+- Made `Console.print` apply `sep` and `end` correctly to consecutive or mixed `Text` objects (`rich/console.py:1447`).
+- Bumped Sphinx to 4.3.0 (`docs/requirements.txt:2`).
+- Corrected “PyPI” capitalization in maintained English documentation (`README.md:41`, `docs/source/introduction.rst:23`).
+- Fixed the malformed `SystemPager` Sphinx reference (`rich/console.py:1049`).
+- Relaxed `typing-extensions` to `>=3.7.4` for Python below 3.8 (`pyproject.toml:30`).
+
+### Validation
+- Comprehensive temporary reproduction script: **all checks passed**, including JSON indent variants, Status piping, Windows width simulation, Span/hash edge cases, Thai table rendering, Unicode truncation, file URLs, and mixed `Text` printing. The script was removed afterward.
+- Targeted tests for all affected modules: **222 passed**.
+- Package compilation: **passed** with `python -m compileall -q rich`.
+- Full suite attempted: **549 passed, 2 skipped, 16 failed**. The failures are unrelated legacy output snapshots caused by the prepared environment using Python 3.12, Pygments 2.20, and attrs 26.1 versus repository-era expectations such as Pygments 2.10 and attrs 21.2. Affected tests are inspect/syntax/render snapshots and an attrs error-message assertion; all issue-related tests pass.
+- `black` and `mypy` executables were unavailable in the provided environment, so modified code was manually checked for formatting and `git diff --check` passes.
+
+No tests were changed, and the temporary reproduction file was cleaned up.

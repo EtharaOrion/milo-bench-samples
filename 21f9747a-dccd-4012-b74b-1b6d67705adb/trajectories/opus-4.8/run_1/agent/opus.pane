@@ -1,0 +1,213 @@
+         ),
+     ]
+
+diff --git a/rich/json.py b/rich/json.py
+index 4f3199f..1fc115a 100644
+--- a/rich/json.py
++++ b/rich/json.py
+@@ -1,5 +1,5 @@
+ from json import loads, dumps
+-from typing import Any, Callable, Optional
++from typing import Any, Callable, Optional, Union
+
+ from .text import Text
+ from .highlighter import JSONHighlighter, NullHighlighter
+@@ -10,7 +10,7 @@ class JSON:
+
+     Args:
+         json (str): JSON encoded data.
+-        indent (int, optional): Number of characters to indent by. Defaults to 2.
++        indent (Union[None, int, str], optional): Number of characters to indent by. Defaults to 2.
+         highlight (bool, optional): Enable highlighting. Defaults to True.
+         skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+         ensure_ascii (bool, optional): Escape all non-ascii characters. Defaults to False.
+@@ -24,7 +24,7 @@ class JSON:
+     def __init__(
+         self,
+         json: str,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -53,7 +53,7 @@ class JSON:
+     def from_data(
+         cls,
+         data: Any,
+-        indent: int = 2,
++        indent: Union[None, int, str] = 2,
+         highlight: bool = True,
+         skip_keys: bool = False,
+         ensure_ascii: bool = True,
+@@ -66,7 +66,7 @@ class JSON:
+
+         Args:
+             data (Any): An object that may be encoded in to JSON
+-            indent (int, optional): Number of characters to indent by. Defaults to 2.
++            indent (Union[None, int, str], optional): Number of characters to indent by. Defaults to 2.
+             highlight (bool, optional): Enable highlighting. Defaults to True.
+             default (Callable, optional): Optional callable which will be called for objects that cannot be serialized. Defaults to None.
+             skip_keys (bool, optional): Skip keys not of a basic type. Defaults to False.
+diff --git a/rich/live.py b/rich/live.py
+index cb36ddb..02f479a 100644
+--- a/rich/live.py
++++ b/rich/live.py
+@@ -159,8 +159,11 @@ class Live(JupyterMixin, RenderHook):
+                 # jupyter last refresh must occur after console pop render hook
+                 # i am not sure why this is needed
+                 self.refresh()
+-        if not self.console.is_interactive:
+-            return self.console.print()
++        # to ensure the last refresh that occurs in stop() ends with a new line
++        # we use console.line() rather than console.print() to avoid printing
++        # an extra new line when the live display is transient.
++        if not self.console.is_interactive and not self.transient:
++            self.console.line()
+
+     def __enter__(self) -> "Live":
+         self.start(refresh=self._renderable is not None)
+# think: My live.py change uses `console.line()` instead of `console.print()`. Let me double-check that `console.line()` produces the same output as `console.print()` for the non-transient file-console case (test_growing_display_file_console expects `\n\n`).
+
+`console.print()` with no args prints a NewLine() -> outputs "\n".
+`console.line()` -> outputs "\n" (count=1).
+
+Earlier I verified test_growing_display_file_console passed (12 passed in test_live). Let me re-confirm specifically. Actually I ran test_live.py and it passed (10 tests). Good.
+
+But wait, my comment says "use console.line() rather than console.print()". Actually let me reconsider whether changing to `line()` vs keeping `print()` matters. The original was `return self.console.print()`. I changed to `self.console.line()` with the `and not self.transient` condition. Both print a single newline. Using `line()` is cleaner. But to minimize risk and keep behavior identical for the non-transient case, maybe I should keep `console.print()`. Let me check: does `console.print()` vs `console.line()` produce identical bytes?
+
+console.print() -> objects empty -> NewLine() renderable. Let me check what NewLine renders. console.line(1) -> self.print(NewLine(1)) probably. Let me verify they're equivalent. The test passed, so it's fine. But let me keep it minimal and just keep print() to be safe and reduce surprise.
+
+Actually, my edited comment references console.line(). Let me simplify — just keep the original `self.console.print()` but add the condition. That's the most minimal change and guarantees identical behavior for the file-console case.
+
+Let me revise.
+Your thought has been logged.
+# file_editor: /workspace/rich/rich/live.py
+The file /workspace/rich/rich/live.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/live.py:
+   159	                # jupyter last refresh must occur after console pop render hook
+   160	                # i am not sure why this is needed
+   161	                self.refresh()
+   162	        # Print a new line at the end so non-interactive output ends on its
+   163	        # own line. Skip this for a transient display (e.g. Status) as it is
+   164	        # removed on exit and should not add an extra new line.
+   165	        if not self.console.is_interactive and not self.transient:
+   166	            self.console.print()
+   167	
+   168	    def __enter__(self) -> "Live":
+   169	        self.start(refresh=self._renderable is not None)
+   170	        return self
+   171	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && export PYTHONPATH=/workspace/rich && python -m pytest tests/test_live.py tests/test_status.py tests/test_progress.py -q 2>&1 | tail -8; echo "=== status echo test ==="; echo "WHAT=$(python /tmp/bug.py)" | cat -A
+....................................                                     [100%]
+36 passed in 2.63s
+=== status echo test ===
+WHAT=1 2 3 $
+# file_editor: /workspace/rich/CHANGELOG.md
+Here's the result of running `cat -n` on /workspace/rich/CHANGELOG.md:
+     1	# Changelog
+     2	
+     3	All notable changes to this project will be documented in this file.
+     4	
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [10.13.0] - 2021-11-07
+     9	
+    10	### Added
+    11	
+    12	- Added json.dumps parameters to print_json https://github.com/willmcgugan/rich/issues/1638
+    13	
+    14	### Fixed
+    15	
+    16	- Fixed an edge case bug when console module try to detect if they are in a tty at the end of a pytest run
+    17	- Fixed a bug where logging handler raises an exception when running with pythonw (related to https://bugs.python.org/issue13807)
+    18	- Fixed issue with TERM env vars that have more than one hyphen https://github.com/willmcgugan/rich/issues/1640
+    19	- Fixed missing new line after progress bar when terminal is not interactive https://github.com/willmcgugan/rich/issues/1606
+    20	- Fixed exception in IPython when disabling pprint with %pprint https://github.com/willmcgugan/rich/issues/1646
+    21	- Fixed issue where values longer than the console width produced invalid JSON https://github.com/willmcgugan/rich/issues/1653
+    22	- Fixes trailing comma when pretty printing dataclass with last field repr=False https://github.com/willmcgugan/rich/issues/1599
+    23	
+    24	## Changed
+    25	
+    26	- Markdown codeblocks now word-wrap https://github.com/willmcgugan/rich/issues/1515
+# file_editor: /workspace/rich/CHANGELOG.md
+The file /workspace/rich/CHANGELOG.md has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/CHANGELOG.md:
+     2	
+     3	All notable changes to this project will be documented in this file.
+     4	
+     5	The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+     6	and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+     7	
+     8	## [Unreleased]
+     9	
+    10	### Added
+    11	
+    12	- `indent` argument to `print_json`, `JSON` and `JSON.from_data` is now compatible with `json.dumps` and accepts `None`, an `int`, or a `str` https://github.com/willmcgugan/rich/issues/1657
+    13	- Added `file` protocol to the repr URL highlighter https://github.com/willmcgugan/rich/pull/1684
+    14	
+    15	### Fixed
+    16	
+    17	- Fixed `Status` (and other transient `Live` displays) adding an extra new line to non-interactive output https://github.com/willmcgugan/rich/issues/1662
+    18	- Fixed an infinite loop when rendering text containing zero-width characters that needed truncating https://github.com/willmcgugan/rich/issues/1682
+    19	- Fixed `sep` and `end` arguments being ignored when printing `Text` instances https://github.com/willmcgugan/rich/issues/1689
+    20	- Fixed broken `pager` cross reference in the docs https://github.com/willmcgugan/rich/pull/1687
+    21	
+    22	### Changed
+    23	
+    24	- Relaxed `typing-extensions` version constraint to `>=3.7.4,<5.0` https://github.com/willmcgugan/rich/issues/1695
+    25	
+    26	## [10.13.0] - 2021-11-07
+    27	
+    28	### Added
+    29	
+    30	- Added json.dumps parameters to print_json https://github.com/willmcgugan/rich/issues/1638
+    31	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && export PYTHONPATH=/workspace/rich && python -m pytest -q 2>&1 | tail -5
+FAILED tests/test_syntax.py::test_python_render_simple_indent_guides - assert...
+FAILED tests/test_syntax.py::test_python_render_line_range_indent_guides - as...
+FAILED tests/test_syntax.py::test_python_render_indent_guides - assert '╭────...
+FAILED tests/test_syntax.py::test_option_no_wrap - AssertionError: assert '\x...
+16 failed, 549 passed, 2 skipped, 18 warnings in 3.57s
+$ rm -f /tmp/bug.py /tmp/bug2.py /tmp/bug3.py /tmp/text_bug.py /tmp/table_bug.py /tmp/output.txt /tmp/err.txt; echo "cleaned"
+cleaned
+Task list has been updated with 11 item(s).
+# finish: Summarize implemented fixes and rationale
+I analyzed all 11 items in the issue description and implemented the necessary code/doc changes. All changes were verified, and no new test failures were introduced (the 16 failing tests in `test_syntax/test_markdown/test_card/test_inspect/test_log/test_pretty` are **pre-existing** environment failures — confirmed by running the suite against the unmodified base via `git stash`).
+
+## Implemented fixes
+
+**Issue 1 (#1657) — `print_json` indent compatible with `json.dumps`**
+- `rich/json.py` and `rich/console.py`: changed `indent` type from `int` to `Union[None, int, str]` for `JSON`, `JSON.from_data`, and `Console.print_json`. Verified `indent=None`, `indent=4`, and `indent="\t"` all match `json.dumps` output.
+
+**Issue 2 (#1662) — `Status` adds an extra newline to non-interactive stdout**
+- `rich/live.py` `stop()`: the unconditional trailing `self.console.print()` only ran for non-interactive consoles, adding a stray newline for transient displays (Status). Now guarded with `and not self.transient`. Verified `echo "WHAT=$(python bug.py)"` now yields `WHAT=1 2 3 ` (no extra newline), while the non-transient file-console behavior (which legitimately ends in a newline) is preserved.
+
+**Issue 6 (#1682) — Infinite loop printing wide/zero-width unicode in a Table**
+- `rich/cells.py` `set_cell_size()`: the binary search could spin forever on text containing zero-width combining characters (e.g., Thai). Rewrote it with an ASCII fast-path (`_is_single_cell_widths`) and a provably-terminating bias-up binary search. Verified the reported Table example now completes; all `test_cells.py` cases still pass.
+
+**Issue 11 (#1689) — `sep`/`end` ignored for `Text` objects**
+- `rich/console.py` `_collect_renderables()`: `Text` instances bypassed the text-joining path (used only for `str`), so `sep`/`end` were dropped. Added an `isinstance(renderable, Text)` branch that routes `Text` into the joined-text path. Verified `print(Text('aa',end=''), Text('bb',end=''), sep=' potatoes ', end='\n\n')` now outputs `aa potatoes bb\n\n`.
+
+**Issue 7 (#1684) — Add `file` to highlighter protocols**
+- `rich/highlighter.py`: added `file` to the URL scheme alternation so `file://...` URLs are highlighted as `repr.url`.
+
+**Issue 8 (#1685) — Capitalize "PyPI"**
+- Fixed `README.md` and `docs/source/introduction.rst` ("PyPi" → "PyPI").
+
+**Issue 9 (#1687) — Broken pager doc reference**
+- `rich/console.py`: fixed the missing backtick in `:class:`~rich.pager.SystemPager``.
+
+**Issue 5 (#1679) — Bump Sphinx**
+- `docs/requirements.txt`: `Sphinx==4.2.0` → `4.3.0`.
+
+**Issue 10 (#1695) — Relax typing-extensions**
+- `pyproject.toml`: `^3.7.4` → `>=3.7.4,<5.0`.
+
+Also added an `[Unreleased]` section to `CHANGELOG.md` documenting these changes.
+
+## Intentionally not changed (with rationale)
+- **Issue 4 (#1676) — `Span` `__eq__` for str vs `Style`:** This is a bug *report/observation*, not a merged code change, and there is no test for it in the repo. Making `Span`/`Style` equality normalize str↔Style would break the extensive existing tests that compare `Span(start, end, "named.style")` by exact string (e.g. `repr.path`, which is not a parseable `Style`). Changing it carried high regression risk with no verifiable benefit here.
+- **Issue 3 (#1669) — "Fix win width":** The relevant code is Windows-only inside a `# pragma: no cover` block, the PR has no description, and it cannot be exercised/verified in this (non-Windows) environment. I avoided guessing at an unverifiable change.
+
+All temporary reproduction scripts were removed. Tests related to the modified files (`test_json`, `test_live`, `test_status`, `test_cells`, `test_console`, `test_text`, `test_highlighter`, `test_segment`, `test_rule`, `test_table`, `test_progress`) all pass.

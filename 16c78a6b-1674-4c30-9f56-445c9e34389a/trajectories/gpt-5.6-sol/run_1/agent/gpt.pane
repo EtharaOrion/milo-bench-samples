@@ -1,0 +1,200 @@
+ func (c *Ctx) BaseURL() string {
+-       // TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+-       // Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+-       return c.Protocol() + "://" + c.Hostname()
++       if c.baseURIString == "" {
++               c.baseURI = append(c.baseURI, c.Protocol()...)
++               c.baseURI = append(c.baseURI, "://"...)
++               c.baseURI = append(c.baseURI, c.Hostname()...)
++               c.baseURIString = getString(c.baseURI)
++       }
++       return c.baseURIString
+ }
+
+ // Body contains the raw body submitted in a POST request.
+diff --git a/middleware/requestid/requestid.go b/middleware/requestid/requestid.go
+index ef0de78..6ef6079 100644
+--- a/middleware/requestid/requestid.go
++++ b/middleware/requestid/requestid.go
+@@ -60,6 +60,9 @@ func New(config ...Config) fiber.Handler {
+                // Set new id to response header
+                c.Set(cfg.Header, rid)
+
++               // Add the request ID to locals
++               c.Locals("requestid", rid)
++
+                // Continue stack
+                return c.Next()
+        }
+diff --git a/router.go b/router.go
+index 63874f3..242b1e0 100644
+--- a/router.go
++++ b/router.go
+@@ -61,6 +61,7 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
+                return true
+                // '*' wildcard matches any path
+        } else if r.star {
++               params[0] = ""
+                if len(original) > 1 {
+                        params[0] = original[1:]
+                }
+$ cd /workspace/fiber && python3 - <<'PY'
+$ from pathlib import Path
+$ path = Path('ctx.go')
+$ text = path.read_text().replace('baseURIString', 'baseURL')
+$ path.write_text(text)
+$ PY
+$ gofmt -w ctx.go && git --no-pager diff --stat -- ctx.go && git --no-pager diff -- ctx.go | sed -n '1,180p'
+cd /workspace/fiber && python3 - <<'PY'
+from pathlib import Path
+path = Path('ctx.go')
+text = path.read_text().replace('baseURIString', 'baseURL')
+path.write_text(text)
+PY
+
+
+
+gofmt -w ctx.go && git --no-pager diff --stat -- ctx.go && git --no-pager diff -- ctx.go | sed -n '1,180p'
+ ctx.go | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+diff --git a/ctx.go b/ctx.go
+index 33ba1fa..d52b243 100644
+--- a/ctx.go
++++ b/ctx.go
+@@ -43,6 +43,8 @@ type Ctx struct {
+        pathBuffer   []byte               // Prettified HTTP path buffer
+        treePath     string               // Path for the search in the tree
+        pathOriginal string               // Original HTTP path
++       baseURI      []byte               // Cached protocol + host buffer
++       baseURL      string               // Cached protocol + host string
+        values       [maxParams]string    // Route parameter values
+        fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+        matched      bool                 // Non use route matched
+@@ -86,6 +88,9 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+        c.indexHandler = 0
+        // Reset matched flag
+        c.matched = false
++       // Reset base URI
++       c.baseURI = c.baseURI[:0]
++       c.baseURL = ""
+        // Set paths
+        c.pathBuffer = append(c.pathBuffer[0:0], fctx.URI().PathOriginal()...)
+        c.pathOriginal = getString(fctx.URI().PathOriginal())
+@@ -204,9 +209,13 @@ func (c *Ctx) Attachment(filename ...string) {
+
+ // BaseURL returns (protocol + host + base path).
+ func (c *Ctx) BaseURL() string {
+-       // TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+-       // Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+-       return c.Protocol() + "://" + c.Hostname()
++       if c.baseURL == "" {
++               c.baseURI = append(c.baseURI, c.Protocol()...)
++               c.baseURI = append(c.baseURI, "://"...)
++               c.baseURI = append(c.baseURI, c.Hostname()...)
++               c.baseURL = getString(c.baseURI)
++       }
++       return c.baseURL
+ }
+
+ // Body contains the raw body submitted in a POST request.
+$ cd /workspace/fiber && go test . ./middleware/requestid ./middleware/proxy -count=1 && go test -run '^$' -bench '^Benchmark_Ctx_BaseURL$' -benchmem . && packages=$(go list ./... | grep -v '/internal/go-ole') && go test $packages -count=1 && git diff --check && test -z "$(git diff --name-only -- '*_test.go')"
+ok      github.com/gofiber/fiber/v2     6.187s
+ok      github.com/gofiber/fiber/v2/middleware/requestid        0.008s
+ok      github.com/gofiber/fiber/v2/middleware/proxy    1.009s
+goos: linux
+goarch: arm64
+pkg: github.com/gofiber/fiber/v2
+Benchmark_Ctx_BaseURL-64        455343222                2.629 ns/op           0 B/op          0 allocs/op
+PASS
+ok      github.com/gofiber/fiber/v2     1.473s
+ok      github.com/gofiber/fiber/v2     6.187s
+?       github.com/gofiber/fiber/v2/internal/bytebufferpool     [no test files]
+?       github.com/gofiber/fiber/v2/internal/colorable  [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/ascii     [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/iso8601   [no test files]
+?       github.com/gofiber/fiber/v2/internal/encoding/json      [no test files]
+?       github.com/gofiber/fiber/v2/internal/fasttemplate       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/common    [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/cpu       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/mem       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/net       [no test files]
+?       github.com/gofiber/fiber/v2/internal/gopsutil/process   [no test files]
+?       github.com/gofiber/fiber/v2/internal/isatty     [no test files]
+?       github.com/gofiber/fiber/v2/internal/schema     [no test files]
+ok      github.com/gofiber/fiber/v2/middleware/basicauth        0.005s
+ok      github.com/gofiber/fiber/v2/middleware/cache    1.507s
+ok      github.com/gofiber/fiber/v2/middleware/compress 0.013s
+ok      github.com/gofiber/fiber/v2/middleware/cors     0.008s
+ok      github.com/gofiber/fiber/v2/middleware/csrf     0.007s
+ok      github.com/gofiber/fiber/v2/middleware/etag     0.006s
+ok      github.com/gofiber/fiber/v2/middleware/expvar   0.005s
+ok      github.com/gofiber/fiber/v2/middleware/favicon  0.005s
+ok      github.com/gofiber/fiber/v2/middleware/filesystem       0.008s
+ok      github.com/gofiber/fiber/v2/middleware/limiter  3.006s
+ok      github.com/gofiber/fiber/v2/middleware/logger   0.005s
+ok      github.com/gofiber/fiber/v2/middleware/monitor  0.012s
+ok      github.com/gofiber/fiber/v2/middleware/pprof    2.030s
+ok      github.com/gofiber/fiber/v2/middleware/proxy    1.009s
+ok      github.com/gofiber/fiber/v2/middleware/recover  0.007s
+ok      github.com/gofiber/fiber/v2/middleware/requestid        0.005s
+ok      github.com/gofiber/fiber/v2/middleware/timeout  0.006s [no tests to run]
+ok      github.com/gofiber/fiber/v2/utils       0.027s
+# task_tracker: Review task list before final completion update
+# Task List
+
+1. ✅ Explore repository and identify issue-related code
+   Inspected guidance, status, middleware, context/router behavior, docs, tests, fasthttp URI internals, and benchmark behavior.
+
+2. ✅ Reproduce reported runtime defects
+   Created /workspace/reproduce.go and confirmed wildcard persistence, missing request ID local, proxy c.Set misunderstanding, and BaseURL allocation benchmark.
+
+3. ✅ Implement minimal source and documentation fixes
+   Updated BaseURL caching, wildcard clearing, request ID locals, version, proxy/request-ID docs, contributing typo, proxy URL, and Indonesian translation.
+
+4. ✅ Verify reproductions and edge cases
+   Expanded external harness for pooled wildcard state, parameterized wildcards, HTTP/HTTPS BaseURL isolation, custom/generated/incoming request IDs, proxy request headers, and version; all pass.
+
+5. 🔄 Review base delta and run related/full tests
+   Compare against requested base after deriving changes, inspect remaining gaps, run targeted and complete Go test suites, and fix source failures.
+# task_tracker: Mark all implementation and verification tasks complete
+Task list has been updated with 5 item(s).
+# finish: Complete Fiber fixes with passing tests and documented ARM64 limitation
+Implemented the requested fixes in `/workspace/fiber` without modifying any test files.
+
+### Source changes
+- **BaseURL performance:** added a reusable per-context cache in `ctx.go`, preserving forwarded-protocol behavior.
+  - Benchmark: **2.629 ns/op, 0 B/op, 0 allocs/op** on linux/arm64.
+- **Wildcard persistence:** direct `*` routes now clear the wildcard value before every match, preventing pooled context state from leaking between requests.
+- **Request ID locals:** request IDs are now available through:
+  ```go
+  c.Locals("requestid")
+  ```
+  This works for generated IDs, incoming IDs, and custom request-ID headers.
+- **Version:** bumped `fiber.Version` from `2.1.0` to `2.1.1`.
+
+### Documentation changes
+- Fixed `Comits` → `Commits` in `.github/CONTRIBUTING.md`.
+- Improved and completed Indonesian translations in `.github/README_id.md`.
+- Corrected the proxy middleware link in `.github/README.md`.
+- Updated proxy documentation to modify upstream request headers correctly:
+  ```go
+  c.Request().Header.Add("X-Real-IP", c.IP())
+  ```
+  `c.Set` modifies the response header, which explains issue #947.
+- Documented request-ID retrieval through locals.
+
+### Verification
+- Created and ran a temporary `go run` reproduction covering:
+  - repeated pooled wildcard requests,
+  - direct and parameterized wildcards,
+  - BaseURL across hosts and forwarded protocols,
+  - generated and client-provided request IDs,
+  - custom request-ID headers,
+  - proxy request-header forwarding,
+  - the package version.
+- All reproduction checks passed; the temporary script was removed.
+- Related root, proxy, and request-ID package tests passed.
+- Every package buildable on the current ARM64 environment passed.
+- Confirmed `git diff --check` is clean and **no `*_test.go` files were modified**.
+
+A raw `go test ./...` additionally tries to compile the vendored `internal/go-ole` package, which lacks a `VARIANT` definition for ARM64 in the specified base commit. That unrelated package has no tests and cannot compile on this architecture. Running all packages except that unsupported subtree succeeds.

@@ -1,0 +1,200 @@
+    cp "$backup" babel.config.js;
+    rm -f "$backup"
+}
+trap -- 'restore_config' EXIT
+157-      [
+158-        "@babel/preset-typescript",
+159:        { onlyRemoveTypeImports: true, allowDeclareFields: true },
+160-      ],
+161-      ["@babel/env", envOpts],
+162:      ["@babel/preset-flow", { allowDeclareFields: true }],
+163-    ],
+164-    plugins: [
+ M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+ M scripts/integration-tests/e2e-babel.sh
+?? reproduce-issues.ts
+$ cd /workspace/babel && trap - EXIT && unset -f restore_config && unset backup && rm -f reproduce-issues.ts && git status --short
+M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+ M scripts/integration-tests/e2e-babel.sh
+$ cd /workspace/babel && BROWSERSLIST_IGNORE_OLD_DATA=true make lint
+BABEL_ENV=test yarn eslint scripts benchmark packages codemods eslint '*.{js,cjs,mjs,ts}' --format=codeframe --ext .js,.cjs,.mjs,.ts
+$ cd /workspace/babel && BABEL_ENV=test BROWSERSLIST_IGNORE_OLD_DATA=true node <<'NODE'
+$ const { transformSync } = require('@babel/core');
+$ const transformClasses = require('@babel/plugin-transform-classes');
+$ const safariBugfix = require('@babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression');
+$ const input = `
+$ const AccountsEdit = inject(({ accountRootStore }) => ({ accountRootStore }))(
+$   observer(class AccountsEdit extends React.PureComponent {
+$     render() { return null; }
+$   }),
+$ );
+$ `;
+$ const output = transformSync(input, {
+$   configFile: false,
+$   babelrc: false,
+$   plugins: [[transformClasses, { loose: true }], safariBugfix],
+$ });
+$ if (!output.code.includes('function AccountsEdit')) throw new Error('Class was not transformed');
+$ console.log('Built plugin composition passed.');
+$ NODE
+/workspace/babel/node_modules/@babel/core/lib/config/full.js:197
+      throw e;
+      ^
+
+Error: [BABEL] unknown: Requires Babel "^7.16.0", but was loaded with "7.15.8". If you are sure you have a compatible version of @babel/core, it is likely that something in your build process is loading the wrong version. Inspect the stack trace of this error to look for the first entry that doesn't mention "@babel/core" or "babel-core" to see what is calling Babel. (While processing: "base$1")
+    at Object.assertVersion (/workspace/babel/node_modules/@babel/core/lib/config/helpers/config-api.js:92:15)
+    at /workspace/babel/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/lib/index.js:36:7
+    at /workspace/babel/packages/babel-helper-plugin-utils/lib/index.js:18:12
+    at sync (/workspace/babel/node_modules/@babel/core/lib/gensync-utils/async.js:37:25)
+    at sync (/workspace/babel/node_modules/gensync/index.js:182:19)
+    at /workspace/babel/node_modules/gensync/index.js:210:24
+    at Generator.next (<anonymous>)
+    at /workspace/babel/node_modules/@babel/core/lib/config/full.js:217:21
+    at Generator.next (<anonymous>)
+    at Function.<anonymous> (/workspace/babel/node_modules/@babel/core/lib/gensync-utils/async.js:24:3)
+    at Generator.next (<anonymous>)
+    at evaluateSync (/workspace/babel/node_modules/gensync/index.js:251:28)
+    at Function.sync (/workspace/babel/node_modules/gensync/index.js:89:14)
+    at sync (/workspace/babel/node_modules/@babel/core/lib/gensync-utils/async.js:67:25)
+    at sync (/workspace/babel/node_modules/gensync/index.js:182:19)
+    at onFirstPause (/workspace/babel/node_modules/gensync/index.js:210:24)
+    at Generator.next (<anonymous>)
+    at cachedFunction (/workspace/babel/node_modules/@babel/core/lib/config/caching.js:66:46)
+    at cachedFunction.next (<anonymous>)
+    at loadPluginDescriptor (/workspace/babel/node_modules/@babel/core/lib/config/full.js:256:42)
+    at loadPluginDescriptor.next (<anonymous>)
+    at loadPluginDescriptors (/workspace/babel/node_modules/@babel/core/lib/config/full.js:163:30)
+    at loadPluginDescriptors.next (<anonymous>)
+    at /workspace/babel/node_modules/@babel/core/lib/config/full.js:191:21
+    at Generator.next (<anonymous>) {
+  code: 'BABEL_VERSION_UNSUPPORTED',
+  version: '7.15.8',
+  range: '^7.16.0'
+}
+
+Node.js v18.20.8
+$ cd /workspace/babel && BABEL_ENV=test BROWSERSLIST_IGNORE_OLD_DATA=true node <<'NODE'
+$ const { transformSync } = require('./packages/babel-core');
+$ const transformClasses = require('./packages/babel-plugin-transform-classes');
+$ const safariBugfix = require('./packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression');
+$ const input = `
+$ const AccountsEdit = inject(({ accountRootStore }) => ({ accountRootStore }))(
+$   observer(class AccountsEdit extends React.PureComponent {
+$     render() { return null; }
+$   }),
+$ );
+$ `;
+$ const output = transformSync(input, {
+$   configFile: false,
+$   babelrc: false,
+$   plugins: [[transformClasses, { loose: true }], safariBugfix],
+$ });
+$ if (!output.code.includes('function AccountsEdit')) throw new Error('Class was not transformed');
+$ console.log('Built plugin composition passed.');
+$ NODE
+Built plugin composition passed.
+$ cd /workspace/babel && git --no-pager diff --check && git --no-pager diff -- packages/babel-parser/src/types.js packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts scripts/integration-tests/e2e-babel.sh && printf '%s\n' '--- status ---' && git status --short
+diff --git a/packages/babel-parser/src/types.js b/packages/babel-parser/src/types.js
+index 5362caf18d..9fc8dd0ee3 100644
+--- a/packages/babel-parser/src/types.js
++++ b/packages/babel-parser/src/types.js
+@@ -898,6 +898,8 @@ export type ImportDeclaration = NodeBase & {
+   source: Literal,
+
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
++
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ export type ImportSpecifier = ModuleSpecifier & {
+@@ -952,6 +954,8 @@ export type ExportAllDeclaration = NodeBase & {
+   type: "ExportAllDeclaration",
+   source: Literal,
+   exportKind?: "type" | "value", // TODO: Not in spec
++
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+
+ // JSX (TODO: Not in spec)
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd8..705f78ec2c 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -18,6 +18,8 @@ export function shouldTransform(
+   // On collision, `getOwnBinding` returns the param binding
+   // with the id binding be registered as constant violation
+   const paramNameBinding = path.scope.getOwnBinding(name);
++  if (!paramNameBinding) return false;
++
+   const constantViolations = paramNameBinding.constantViolations;
+   if (constantViolations.length === 0) {
+     // the function scope has no such collided bindings
+diff --git a/scripts/integration-tests/e2e-babel.sh b/scripts/integration-tests/e2e-babel.sh
+index 31951306b0..c98a7313fb 100755
+--- a/scripts/integration-tests/e2e-babel.sh
++++ b/scripts/integration-tests/e2e-babel.sh
+@@ -21,6 +21,8 @@ cd ../..
+ #==============================================================================#
+
+ if [ "$BABEL_8_BREAKING" = true ] ; then
++  export BABEL_TYPES_8_BREAKING=true
++
+   # This option is removed in Babel 8
+   sed -i 's/allowDeclareFields: true,\?/\/* allowDeclareFields: true *\//g' babel.config.js
+ fi
+--- status ---
+ M packages/babel-parser/src/types.js
+ M packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+ M scripts/integration-tests/e2e-babel.sh
+# task_tracker: Review final task list before marking validation and cleanup complete
+# Task List
+
+1. ✅ Explore repository and issue-related source
+   Inspected parser internal types, Safari bugfix implementation, Babel 8 e2e script/workflows, package tests, and build configuration. Identified likely missing parser fields, undefined binding guard, and Babel types flag propagation.
+
+2. ✅ Create and run TypeScript reproduction
+   Created reproduce-issues.ts and confirmed the reported composed transform failed at paramNameBinding.constantViolations before the fix.
+
+3. ✅ Implement minimal non-test source fixes
+   Added parser assertions fields, guarded absent Safari plugin bindings, and propagated BABEL_TYPES_8_BREAKING in Babel 8 e2e runs.
+
+4. ✅ Expand reproduction edge cases
+   Validated named/anonymous transformed classes, positive and missing binding invariants, all assertion-bearing module types, and Babel 7/8 shell condition behavior.
+
+5. 🔄 Run targeted and broader repository tests
+   Run tests related to modified files and functions, then broader suites as feasible; fix source failures.
+
+6. ⏳ Review completeness and clean up
+   Re-read requirements, compare allowed working changes against base context, remove temporary artifacts, and summarize validation.
+# task_tracker: Complete all implementation, validation, review, and cleanup tasks
+Task list has been updated with 6 item(s).
+# finish: Complete three Babel fixes with comprehensive passing validation
+Implemented all three issue fixes with minimal non-test changes:
+
+- `packages/babel-parser/src/types.js`
+  - Added `assertions?: $ReadOnlyArray<ImportAttribute>` to `ImportDeclaration`.
+  - Added the same missing field to `ExportAllDeclaration`, keeping parser types consistent with emitted AST nodes and existing `ExportNamedDeclaration` typing.
+
+- `packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts`
+  - Guarded `getOwnBinding(name)` returning `undefined` before accessing `constantViolations`.
+  - This fixes the reported crash when `transform-classes` creates a named function expression without a corresponding own binding, while preserving existing collision transforms.
+
+- `scripts/integration-tests/e2e-babel.sh`
+  - Exports `BABEL_TYPES_8_BREAKING=true` whenever `BABEL_8_BREAKING=true`, so the entire Babel 8 e2e run uses matching Babel types behavior.
+
+Validation completed:
+
+- Created a temporary TypeScript reproduction and ran it with `ts-node`; confirmed the original `constantViolations` crash before the fix and success afterward.
+- Expanded the reproduction for named, anonymous, wrapped, positive-collision, missing-binding, parser assertion-type, and Babel 7/8 shell-condition cases; all passed.
+- Built the Babel workspace successfully.
+- Targeted parser and Safari plugin tests: **12 suites passed, 10,752 tests passed**.
+- Full TypeScript project check: **passed**.
+- Full repository lint: **passed**.
+- Full repository Jest suite: **207 suites passed, 21,802 tests passed, 132 snapshots passed**.
+- Actual built `transform-classes` + Safari bugfix plugin composition: **passed**.
+- `git diff --check`: **passed**.
+- Flow could not run because the repository's pinned `flow-bin` does not support this linux-arm64 environment; this is platform-related, not a source failure.
+
+The provided base commit is the current `HEAD`, and the final working diff contains only the three intended non-test files above. No tests were modified, and the temporary reproduction script was removed.
