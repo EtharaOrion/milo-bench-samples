@@ -8,7 +8,7 @@ Hard gates assert. Requirement outcomes are recorded rather than
 asserted: this module's job is to produce a score and a readable
 checklist, and failing every imperfect run would destroy both.
 
-    pytest <corpus>/dataset/0ae03990-71bf-4ab7-9788-d4084b1817c7/tests/test_pytest.py -v
+    pytest <corpus>/dataset/0ae03990-71bf-4ab7-9788-d4084b1817c7/tests/test_output.py -v
 
 Every task's module carries this same filename, matching tests/run_tests.py,
 so running several at once needs --import-mode=importlib.
