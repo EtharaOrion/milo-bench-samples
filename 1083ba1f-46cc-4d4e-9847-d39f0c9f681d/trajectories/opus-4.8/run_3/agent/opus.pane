@@ -1,0 +1,200 @@
++                    run.id,
++                    evaluation_result.key,
++                    score=evaluation_result.score,
++                    value=evaluation_result.value,
++                    comment=evaluation_result.comment,
++                    correction=evaluation_result.correction,
++                    source_info=evaluation_result.evaluator_info,
++                    source_run_id=evaluation_result.source_run_id or run_id,
++                    feedback_source_type=langsmith.schemas.FeedbackSourceType.MODEL,
++                )
++                eval_result = evaluation_result
+         except Exception as e:
+             logger.error(
+                 f"Error evaluating run {run.id} with "
+diff --git a/libs/langchain/langchain/chat_models/tongyi.py b/libs/langchain/langchain/chat_models/tongyi.py
+index 42326b32..d9180429 100644
+--- a/libs/langchain/langchain/chat_models/tongyi.py
++++ b/libs/langchain/langchain/chat_models/tongyi.py
+@@ -235,7 +235,9 @@ class ChatTongyi(BaseChatModel):
+     @root_validator()
+     def validate_environment(cls, values: Dict) -> Dict:
+         """Validate that api key and python package exists in environment."""
+-        get_from_dict_or_env(values, "dashscope_api_key", "DASHSCOPE_API_KEY")
++        values["dashscope_api_key"] = get_from_dict_or_env(
++            values, "dashscope_api_key", "DASHSCOPE_API_KEY"
++        )
+         try:
+             import dashscope
+         except ImportError:
+@@ -374,7 +376,7 @@ class ChatTongyi(BaseChatModel):
+     def _client_params(self) -> Dict[str, Any]:
+         """Get the parameters used for the openai client."""
+         creds: Dict[str, Any] = {
+-            "dashscope_api_key": self.dashscope_api_key,
++            "api_key": self.dashscope_api_key,
+         }
+         return {**self._default_params, **creds}
+$ cd /workspace/langchain/libs/langchain && poetry run python -c "
+$ from langchain.tools import GoogleScholarQueryRun, TavilySearchResults
+$ from langchain.utilities import GoogleScholarAPIWrapper, TavilySearchAPIWrapper
+$ from langchain.chat_models import ChatHunyuan
+$ from langchain.chat_models.hunyuan import _signature, _to_secret
+$ from langchain.pydantic_v1 import SecretStr
+$ import json
+$ sig=_signature(SecretStr('key'),'https://hunyuan.cloud.tencent.com/hyllm/v1/chat/completions',{'a':1,'b':[1,2]})
+$ print('sig ok', bool(sig))
+$ print('all imports ok')
+$ "
+sig ok True
+all imports ok
+Task list has been updated with 11 item(s).
+$ cd /workspace/langchain && grep -n "def similarity_search_by_vector\|def similarity_search_with_relevance_scores" libs/langchain/langchain/vectorstores/clickhouse.py
+392:    def similarity_search_by_vector(
+428:    def similarity_search_with_relevance_scores(
+$ cd /workspace/langchain && sed -n '392,470p' libs/langchain/langchain/vectorstores/clickhouse.py
+def similarity_search_by_vector(
+        self,
+        embedding: List[float],
+        k: int = 4,
+        where_str: Optional[str] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Perform a similarity search with ClickHouse by vectors
+
+        Args:
+            query (str): query string
+            k (int, optional): Top K neighbors to retrieve. Defaults to 4.
+            where_str (Optional[str], optional): where condition string.
+                                                 Defaults to None.
+
+            NOTE: Please do not let end-user to fill this and always be aware
+                  of SQL injection. When dealing with metadatas, remember to
+                  use `{self.metadata_column}.attribute` instead of `attribute`
+                  alone. The default name for it is `metadata`.
+
+        Returns:
+            List[Document]: List of (Document, similarity)
+        """
+        q_str = self._build_query_sql(embedding, k, where_str)
+        try:
+            return [
+                Document(
+                    page_content=r[self.config.column_map["document"]],
+                    metadata=r[self.config.column_map["metadata"]],
+                )
+                for r in self.client.query(q_str).named_results()
+            ]
+        except Exception as e:
+            logger.error(f"\033[91m\033[1m{type(e)}\033[0m \033[95m{str(e)}\033[0m")
+            return []
+
+    def similarity_search_with_relevance_scores(
+        self, query: str, k: int = 4, where_str: Optional[str] = None, **kwargs: Any
+    ) -> List[Tuple[Document, float]]:
+        """Perform a similarity search with ClickHouse
+
+        Args:
+            query (str): query string
+            k (int, optional): Top K neighbors to retrieve. Defaults to 4.
+            where_str (Optional[str], optional): where condition string.
+                                                 Defaults to None.
+
+            NOTE: Please do not let end-user to fill this and always be aware
+                  of SQL injection. When dealing with metadatas, remember to
+                  use `{self.metadata_column}.attribute` instead of `attribute`
+                  alone. The default name for it is `metadata`.
+
+        Returns:
+            List[Document]: List of documents
+        """
+        q_str = self._build_query_sql(
+            self.embedding_function.embed_query(query), k, where_str
+        )
+        try:
+            return [
+                (
+                    Document(
+                        page_content=r[self.config.column_map["document"]],
+                        metadata=r[self.config.column_map["metadata"]],
+                    ),
+                    r["dist"],
+                )
+                for r in self.client.query(q_str).named_results()
+            ]
+        except Exception as e:
+            logger.error(f"\033[91m\033[1m{type(e)}\033[0m \033[95m{str(e)}\033[0m")
+            return []
+
+    def drop(self) -> None:
+        """
+        Helper function: Drop data
+        """
+        self.client.command(
+            f"DROP TABLE IF EXISTS {self.config.database}.{self.config.table}"
+# file_editor: /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py
+The file /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py:
+   409	                  use `{self.metadata_column}.attribute` instead of `attribute`
+   410	                  alone. The default name for it is `metadata`.
+   411	
+   412	        Returns:
+   413	            List[Document]: List of documents
+   414	        """
+   415	        q_str = self._build_query_sql(embedding, k, where_str)
+   416	        try:
+   417	            return [
+   418	                Document(
+   419	                    page_content=r[self.config.column_map["document"]],
+   420	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py
+The file /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/langchain/libs/langchain/langchain/vectorstores/clickhouse.py:
+   441	                  use `{self.metadata_column}.attribute` instead of `attribute`
+   442	                  alone. The default name for it is `metadata`.
+   443	
+   444	        Returns:
+   445	            List[Document]: List of (Document, similarity)
+   446	        """
+   447	        q_str = self._build_query_sql(
+   448	            self.embedding_function.embed_query(query), k, where_str
+   449	        )
+   450	        try:
+   451	            return [
+   452	                (
+   453	                    Document(
+   454	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/langchain/libs/langchain && poetry run ruff check langchain/vectorstores/clickhouse.py && echo "lint ok"
+lint ok
+$ cd /workspace/langchain/libs/langchain && poetry run python -m pytest tests/unit_tests/vectorstores -q 2>&1 | tail -6
+============================= slowest 5 durations ==============================
+0.10s call     tests/unit_tests/vectorstores/test_imports.py::test_all_imports
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+======================== 6 passed, 27 skipped in 1.13s =========================
+# finish: Completed implementation of code-related issues
+I implemented all of the functional / code-related issues from the description (the remaining items are pure documentation, notebook, CI, or version-bump changes with no testable code surface). All edits are under `libs/langchain/langchain/`.
+
+## New integrations
+- **Issue 1 — Google Scholar (serpapi):** Added `utilities/google_scholar.py` (`GoogleScholarAPIWrapper`) and `tools/google_scholar/` (`GoogleScholarQueryRun`). Registered in `utilities/__init__.py`, `tools/__init__.py`, and added a `google-scholar` loader in `agents/load_tools.py`.
+- **Issue 4 — Tencent Hunyuan chat model:** Added `chat_models/hunyuan.py` (`ChatHunyuan` with HMAC-SHA1 signature) and exported it in `chat_models/__init__.py`.
+- **Issue 22 — Tavily Search tool:** Added `utilities/tavily_search.py` (`TavilySearchAPIWrapper`, sync + async) and `tools/tavily_search/` (`TavilySearchResults`); registered in both `__init__.py` files.
+
+## Bug fixes / features
+- **Issue 3 — Tongyi/DashScope:** `_client_params` now passes `api_key` (was `dashscope_api_key`) and `validate_environment` stores the resolved key.
+- **Issue 8 — Zapier deprecation:** Added `@deprecated` warnings to `ZapierNLARunAction`, `ZapierNLAListActions`, and `ZapierNLAWrapper`.
+- **Issue 9 — Always add run ID:** `EvaluatorCallbackHandler._evaluate_in_project` now captures the eval run id (`cb.latest_run.id`) and sets `source_run_id` on the created feedback.
+- **Issue 16 — Runnable factories:** `configurable_alternatives()` accepts `Callable[[], Runnable]` factories, invoked lazily in `_prepare`, with factory specs excluded from `config_specs`.
+- **Issue 18 — Neo4j env vars:** `Neo4jGraph.__init__` resolves url/username/password/database from `NEO4J_URI`/`NEO4J_USERNAME`/`NEO4J_PASSWORD`/`NEO4J_DATABASE`.
+- **Issue 19 — Vertex AI Search retriever:** Declared `_serving_config: str` as a private attr on both retriever subclasses, fixing `"... object has no field '_serving_config'"`.
+- **Issue 10 — Clickhouse docstrings:** Corrected the wrong `Returns:` descriptions for `similarity_search_by_vector` and `similarity_search_with_relevance_scores`.
+
+## Tests
+- Updated the `_EXPECTED` data list in `tests/unit_tests/tools/test_public_api.py` to include the two new public tools so the existing public-API test remains consistent with the new exports (no test logic changed).
+
+## Verification
+- `ruff check langchain/` passes; changed files formatted with black.
+- Verified the new factory behavior, Zapier deprecation warning emission, and signature helpers via ad-hoc runs.
+- Ran targeted unit suites — all green: tools, utilities, chat_models, callbacks, agents, schema/runnable, evaluation, smith, retrievers, graphs, vectorstores, and dependency/import tests (600+ passed, only pre-existing skips).
+
+Skipped (non-code / untestable): Issues 2, 5, 6, 7, 11, 12, 13, 14, 15, 17, 20, 21, 23, 24 (docs, notebooks, CI checks, version bump).
