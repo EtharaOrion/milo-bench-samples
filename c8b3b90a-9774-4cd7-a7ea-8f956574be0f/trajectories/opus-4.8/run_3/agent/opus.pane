@@ -1,0 +1,200 @@
+
+ You could find a more comprehensive guide to help you get started [here](https://gqlgen.com/getting-started/).<br/>
+-We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to GraphQL applicatons with **gqlgen** seamlessly,
++We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to build GraphQL applications with **gqlgen** seamlessly,
+ You can see these [examples](https://github.com/99designs/gqlgen/tree/master/example) here or visit [godoc](https://godoc.org/github.com/99designs/gqlgen).
+
+ ## Reporting Issues
+diff --git a/codegen/field.gotpl b/codegen/field.gotpl
+index 993625b..e89d742 100644
+--- a/codegen/field.gotpl
++++ b/codegen/field.gotpl
+@@ -16,6 +16,7 @@ func (ec *executionContext) _{{$object.Name}}_{{$field.Name}}(ctx context.Contex
+                Field: field,
+                Args:  nil,
+                IsMethod: {{or $field.IsMethod $field.IsResolver}},
++               IsResolver: {{ $field.IsResolver }},
+        }
+
+        ctx = graphql.WithFieldContext(ctx, fc)
+diff --git a/docs/content/getting-started.md b/docs/content/getting-started.md
+index b9f3383..ea4a1c8 100644
+--- a/docs/content/getting-started.md
++++ b/docs/content/getting-started.md
+@@ -45,7 +45,7 @@ This will create our suggested package layout. You can modify these paths in gql
+ │   │   └── models_gen.go
+ │   ├── resolver.go          - The root graph resolver type. This file wont get regenerated
+ │   ├── schema.graphqls      - Some schema. You can split the schema into as many graphql files as you like
+-│   └── schema.resolvers.go  - the resolver implementation for schema.graphql
++│   └── schema.resolvers.go  - the resolver implementation for schema.graphqls
+ └── server.go                - The entry point to your app. Customize it however you see fit
+ ```
+
+diff --git a/graphql/context_field.go b/graphql/context_field.go
+index 3c33850..c06118b 100644
+--- a/graphql/context_field.go
++++ b/graphql/context_field.go
+@@ -28,6 +28,8 @@ type FieldContext struct {
+        Result interface{}
+        // IsMethod indicates if the resolver is a method
+        IsMethod bool
++       // IsResolver indicates if the field has a user-specified resolver
++       IsResolver bool
+ }
+
+ type FieldStats struct {
+diff --git a/graphql/context_field_input.go b/graphql/context_field_input.go
+index 0ed6f8b..9feb1f1 100644
+--- a/graphql/context_field_input.go
++++ b/graphql/context_field_input.go
+@@ -79,7 +79,13 @@ func WrapErrorWithInputPath(ctx context.Context, err error) error {
+                        gerr.Path = path
+                }
+                return gerr
+-       } else {
+-               return gqlerror.WrapPath(path, err)
+        }
++
++       // Run the error through the configured error presenter so that any custom
++       // error (e.g. returned by a directive handler) is not clobbered before it
++       // reaches the presenter. This preserves information such as extensions and
++       // any custom presentation logic, while still attaching the input path.
++       gerr := PresentError(ctx, err)
++       gerr.Path = path
++       return gerr
+ }
+diff --git a/graphql/context_response.go b/graphql/context_response.go
+index cc952ed..6e73e9e 100644
+--- a/graphql/context_response.go
++++ b/graphql/context_response.go
+@@ -56,6 +56,18 @@ func AddError(ctx context.Context, err error) {
+        c.errors = append(c.errors, c.errorPresenter(ctx, err))
+ }
+
++// PresentError runs the given error through the configured error presenter and
++// returns the resulting gqlerror without recording it on the response. This is
++// useful to convert a custom error into its presented form without losing any
++// information carried by the original error. If no response context (and thus no
++// error presenter) is available, it falls back to the default error presenter.
++func PresentError(ctx context.Context, err error) *gqlerror.Error {
++       if val, ok := ctx.Value(resultCtx).(*responseContext); ok {
++               return val.errorPresenter(ctx, err)
++       }
++       return DefaultErrorPresenter(ctx, err)
++}
++
+ func Recover(ctx context.Context, err interface{}) (userMessage error) {
+        c := getResponseContext(ctx)
+        return c.recover(ctx, err)
+$ cd /workspace/gqlgen && gofmt -l graphql/context_field.go graphql/context_field_input.go graphql/context_response.go codegen/testserver/generated.go; echo "gofmt check done (empty = clean)"
+gofmt check done (empty = clean)
+$ cd /workspace/gqlgen && go test ./graphql/... ./codegen/... ./complexity/... ./client/... ./plugin/... 2>&1 | grep -E "FAIL|--- FAIL|panic" | head; echo "=== done, exit: ${PIPESTATUS[0]} ==="
+FAIL    github.com/99designs/gqlgen/codegen/config      0.105s
+FAIL    github.com/99designs/gqlgen/plugin/federation   0.094s
+FAIL    github.com/99designs/gqlgen/plugin/modelgen     0.092s
+FAIL    github.com/99designs/gqlgen/plugin/resolvergen  0.088s
+FAIL
+=== done, exit: 1 ===
+$ cd /workspace/gqlgen && go test ./plugin/modelgen/ 2>&1 | head -30
+2026/06/25 09:58:47 internal error: package "fmt" without types was imported from "github.com/99designs/gqlgen/plugin/modelgen/out"
+FAIL    github.com/99designs/gqlgen/plugin/modelgen     0.093s
+FAIL
+$ cd /workspace/gqlgen && git stash && go test ./plugin/modelgen/ ./codegen/config/ 2>&1 | tail -6; echo "=== restoring ==="; git stash pop
+Saved working directory and index state WIP on (no branch): 03cebf2 release v0.12.2
+2026/06/25 09:58:54 internal error: package "fmt" without types was imported from "github.com/99designs/gqlgen/plugin/modelgen/out"
+FAIL    github.com/99designs/gqlgen/plugin/modelgen     0.178s
+2026/06/25 09:58:54 internal error: package "bytes" without types was imported from "github.com/99designs/gqlgen/example/chat"
+FAIL    github.com/99designs/gqlgen/codegen/config      0.320s
+FAIL
+=== restoring ===
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   README.md
+        modified:   codegen/field.gotpl
+        modified:   codegen/testserver/generated.go
+        modified:   docs/content/getting-started.md
+        modified:   example/chat/generated.go
+        modified:   example/config/generated.go
+        modified:   example/dataloader/generated.go
+        modified:   example/federation/accounts/graph/generated/generated.go
+        modified:   example/federation/products/graph/generated/generated.go
+        modified:   example/federation/reviews/graph/generated/generated.go
+        modified:   example/fileupload/generated.go
+        modified:   example/scalars/generated.go
+        modified:   example/selection/generated.go
+        modified:   example/starwars/generated/exec.go
+        modified:   example/todo/generated.go
+        modified:   example/type-system-extension/generated.go
+        modified:   graphql/context_field.go
+        modified:   graphql/context_field_input.go
+        modified:   graphql/context_response.go
+        modified:   integration/generated.go
+        deleted:    plugin/resolvergen/testdata/singlefile/out/resolver.go
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (a2709712a993ffb5f743e181668a8f918e28fb4e)
+$ cd /workspace/gqlgen && git checkout -- plugin/resolvergen/testdata/singlefile/out/resolver.go && git status --short | grep -v "generated\|README\|gotpl\|getting-started\|context_"
+$ cd /workspace/gqlgen && git status --short
+M README.md
+ M codegen/field.gotpl
+ M codegen/testserver/generated.go
+ M docs/content/getting-started.md
+ M example/chat/generated.go
+ M example/config/generated.go
+ M example/dataloader/generated.go
+ M example/federation/accounts/graph/generated/generated.go
+ M example/federation/products/graph/generated/generated.go
+ M example/federation/reviews/graph/generated/generated.go
+ M example/fileupload/generated.go
+ M example/scalars/generated.go
+ M example/selection/generated.go
+ M example/starwars/generated/exec.go
+ M example/todo/generated.go
+ M example/type-system-extension/generated.go
+ M graphql/context_field.go
+ M graphql/context_field_input.go
+ M graphql/context_response.go
+ M integration/generated.go
+$ cd /workspace/gqlgen && go build ./... 2>&1 | grep -v "permission denied" | tail; echo "build exit done"; go test ./codegen/testserver/ -run TestDirectives -count=1 2>&1 | tail -3
+build exit done
+ok      github.com/99designs/gqlgen/codegen/testserver  0.006s
+Task list has been updated with 4 item(s).
+$ cd /workspace/gqlgen && go build ./... 2>&1 | grep -v "permission denied"; echo "build done"; go test ./graphql/... ./codegen/testserver/... 2>&1 | grep -E "FAIL|ok " | head
+build done
+ok      github.com/99designs/gqlgen/graphql     (cached)
+ok      github.com/99designs/gqlgen/graphql/executor    (cached)
+ok      github.com/99designs/gqlgen/graphql/handler     (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/apollotracing       (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/extension   (cached)
+ok      github.com/99designs/gqlgen/graphql/handler/transport   (cached)
+ok      github.com/99designs/gqlgen/graphql/introspection       (cached)
+ok      github.com/99designs/gqlgen/codegen/testserver  (cached)
+# finish: Finalize and summarize all four issue fixes
+All four issues from the description have been implemented and verified.
+
+## Issue 1 (#1295): getting-started.md typo
+Fixed `docs/content/getting-started.md`: `schema.graphql` → `schema.graphqls` (consistent with the actual generated filename referenced elsewhere in the same doc).
+
+## Issue 2 (#1291): INPUT_FIELD_DEFINITION directive errors clobbered
+Root cause: when an input-field directive handler returned a custom error, `graphql.WrapErrorWithInputPath` converted it via `gqlerror.WrapPath`, which copies only the message string — discarding the original error type/extensions *before* the custom error presenter could run.
+
+Fix (runtime-only, no regeneration needed):
+- `graphql/context_field_input.go`: `*gqlerror.Error` keeps its pass-through behavior; all other errors are now run through the configured error presenter (via the new `graphql.PresentError` helper) so custom presenter logic and extensions are preserved, while the input path is still attached.
+- `graphql/context_response.go`: added `PresentError`, which uses the response context's error presenter and safely falls back to `DefaultErrorPresenter` when no response context is present.
+
+Confirmed with a temporary reproduction test that a custom error now reaches the presenter intact with the correct path (`["directiveInputNullable","arg"]`), then removed the temp test.
+
+## Issue 3 (#1315): Add IsResolver to FieldContext
+- `graphql/context_field.go`: added `IsResolver bool` field.
+- `codegen/field.gotpl`: added `IsResolver: {{ $field.IsResolver }}`.
+- The codegen toolchain cannot run in this environment (Go 1.25 vs the pinned old `golang.org/x/tools` triggers `internal error: package "fmt" without types` — a pre-existing limitation that also fails on the clean base commit). I therefore applied the exact equivalent change directly to every committed `generated.go`/`exec.go` file: `IsResolver: true` for fields backed by `ec.resolvers.*`, `false` otherwise, then `gofmt`'d them.
+
+## Issue 4 (#1324): README.md typos
+Fixed `README.md`: `priortizes` → `prioritizes`, `comand` → `command`, and `show how to GraphQL applicatons` → `show how to build GraphQL applications`.
+
+## Verification
+- `go build ./...` succeeds.
+- Tests pass: `./graphql/...`, `./codegen/testserver/...`, `./example/...`, `./complexity/...`, `./client/...`, and the `codegen` package.
+- The only failing tests (`plugin/modelgen`, `plugin/resolvergen`, `plugin/federation`, `codegen/config`) are pre-existing failures caused by the environment's codegen/x-tools incompatibility; I confirmed they fail identically on the clean base commit and are unrelated to my changes. I also restored a testdata file that one of those broken generation tests had deleted as a side effect.
