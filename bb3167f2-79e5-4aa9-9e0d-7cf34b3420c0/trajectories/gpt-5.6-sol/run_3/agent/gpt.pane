@@ -1,0 +1,200 @@
++    statusCode: number
+     header(name: string, value: any): FastifyReply<HttpResponse>
+     headers(headers: { [key: string]: any }): FastifyReply<HttpResponse>
+     getHeader(name: string): string | undefined
+diff --git a/lib/reply.js b/lib/reply.js
+index 6e354e3..4114e35 100644
+--- a/lib/reply.js
++++ b/lib/reply.js
+@@ -67,6 +67,13 @@ function Reply (res, context, request, log) {
+   this.log = log
+ }
+
++Object.defineProperty(Reply.prototype, 'statusCode', {
++  enumerable: true,
++  get () {
++    return this.res.statusCode
++  }
++})
++
+ Object.defineProperty(Reply.prototype, 'sent', {
+   enumerable: true,
+   get () {
+diff --git a/lib/schemas.js b/lib/schemas.js
+index 4008030..49e5d8f 100644
+--- a/lib/schemas.js
++++ b/lib/schemas.js
+@@ -106,8 +106,8 @@ Schemas.prototype.traverse = function (schema, refResolver) {
+       schema[key] = this.resolve(schema[key].slice(0, -1))
+     } else if (key === '$ref' && refResolver) {
+       const refValue = schema[key]
+-
+-      const refId = refValue.slice(0, refValue.indexOf('#'))
++      const fragmentIndex = refValue.indexOf('#')
++      const refId = fragmentIndex === -1 ? refValue : refValue.slice(0, fragmentIndex)
+       if (refId.length > 0 && !this.store[refId]) {
+         const resolvedSchema = refResolver(refId)
+         if (resolvedSchema) {
+diff --git a/package.json b/package.json
+index 583d58f..f575f27 100644
+--- a/package.json
++++ b/package.json
+@@ -99,7 +99,7 @@
+     "ajv-pack": "^0.3.1",
+     "autocannon": "^3.2.0",
+     "branch-comparer": "^0.4.0",
+-    "concurrently": "^4.1.2",
++    "concurrently": "^5.0.0",
+     "cors": "^2.8.5",
+     "coveralls": "^3.0.6",
+     "dns-prefetch-control": "^0.2.0",
+@@ -156,6 +156,7 @@
+       "autocannon",
+       "boom",
+       "joi",
++      "lolex",
+       "@types/node",
+       "tap",
+       "tap-mocha-reporter",
+--- test files modified ---
+# file_editor: Keep statusCode getter non-enumerable to minimize behavior changes
+The file /workspace/fastify/lib/reply.js has been edited. Here's the result of running `cat -n` on a snippet of /workspace/fastify/lib/reply.js:
+    67	  this.log = log
+    68	}
+    69	
+    70	Object.defineProperty(Reply.prototype, 'statusCode', {
+    71	  get () {
+    72	    return this.res.statusCode
+    73	  }
+    74	})
+    75	
+    76	Object.defineProperty(Reply.prototype, 'sent', {
+    77	  enumerable: true,
+    78	  get () {
+    79	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/fastify && ./node_modules/.bin/standard lib/schemas.js lib/reply.js && node - <<'NODE'
+$ const assert = require('assert')
+$ const Reply = require('./lib/reply')
+$ const { Schemas } = require('./lib/schemas')
+$ const reply = new Reply({ statusCode: 200 }, null, null)
+$ assert.strictEqual(reply.statusCode, 200)
+$ reply.code(418)
+$ assert.strictEqual(reply.statusCode, 418)
+$ const schemas = new Schemas()
+$ let resolved
+$ schemas.resolveRefs({ value: { $ref: 'urn:schema:foo' } }, false, id => {
+$   resolved = id
+$   return { $id: id, type: 'string' }
+$ })
+$ assert.strictEqual(resolved, 'urn:schema:foo')
+$ console.log('Direct schema and reply checks passed')
+$ NODE
+$ NODE_OPTIONS=--dns-result-order=ipv4first ./node_modules/.bin/tap --no-esm -J test/schemas.test.js test/shared-schemas.test.js test/internals/schemas.test.js test/internals/reply.test.js && npm run typescript
+cd /workspace/fastify && ./node_modules/.bin/standard lib/schemas.js lib/reply.js && node - <<'NODE'
+const assert = require('assert')
+const Reply = require('./lib/reply')
+const { Schemas } = require('./lib/schemas')
+const reply = new Reply({ statusCode: 200 }, null, null)
+assert.strictEqual(reply.statusCode, 200)
+reply.code(418)
+assert.strictEqual(reply.statusCode, 418)
+const schemas = new Schemas()
+let resolved
+schemas.resolveRefs({ value: { $ref: 'urn:schema:foo' } }, false, id => {
+  resolved = id
+  return { $id: id, type: 'string' }
+})
+assert.strictEqual(resolved, 'urn:schema:foo')
+console.log('Direct schema and reply checks passed')
+NODE
+
+Direct schema and reply checks passed
+
+
+NODE_OPTIONS=--dns-result-order=ipv4first ./node_modules/.bin/tap --no-esm -J test/schemas.test.js test/shared-schemas.test.js test/internals/schemas.test.js test/internals/reply.test.js && npm run typescript
+$ printf 'node: '; node --version; printf 'npm: '; npm --version; command -v nodejs >/dev/null && printf 'nodejs: ' && nodejs --version; for d in "$HOME/.nvm/versions/node" /opt/node /usr/local/node; do if [ -d "$d" ]; then find "$d" -maxdepth 2 -type f -name node -print; fi; done
+node: v22.23.0
+npm: 10.9.8
+nodejs: v22.23.0
+$ cd /workspace/fastify && git --no-pager diff --check && git status --short && node - <<'NODE'
+$ const p = require('./package.json')
+$ if (p.devDependencies.concurrently !== '^5.0.0') throw new Error('concurrently range mismatch')
+$ if (!p.greenkeeper.ignore.includes('lolex')) throw new Error('lolex is not ignored')
+$ console.log('Package requirements verified')
+$ NODE
+$ printf '%s\n' '--- changed files ---' && git --no-pager diff --name-only && printf '%s\n' '--- forbidden test changes ---' && git status --short -- test
+cd /workspace/fastify && git --no-pager diff --check && git status --short && node - <<'NODE'
+const p = require('./package.json')
+if (p.devDependencies.concurrently !== '^5.0.0') throw new Error('concurrently range mismatch')
+if (!p.greenkeeper.ignore.includes('lolex')) throw new Error('lolex is not ignored')
+console.log('Package requirements verified')
+NODE
+
+ M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+Package requirements verified
+
+
+printf '%s\n' '--- changed files ---' && git --no-pager diff --name-only && printf '%s\n' '--- forbidden test changes ---' && git status --short -- test
+--- changed files ---
+docs/Reply.md
+fastify.d.ts
+lib/reply.js
+lib/schemas.js
+package.json
+--- forbidden test changes ---
+# task_tracker: Review final task states before recording outcomes
+# Task List
+
+1. ✅ Explore repository and issue-relevant files
+   Inspected structure, clean status, source, docs, typings, package metadata, lockfile, and focused tests. No AGENTS.md exists.
+
+2. ✅ Reproduce schema resolution failure
+   Created reproduce.js and confirmed the resolver receives truncated urn:schema:fo for a bare full-schema reference.
+
+3. ✅ Implement minimal non-test changes
+   Fixed bare reference parsing; exposed and typed reply.statusCode; documented statusCode and headers; updated concurrently and Greenkeeper lolex metadata.
+
+4. ✅ Verify reproduction and edge cases
+   Expanded reproduce.js for bare, trailing-fragment, subschema, cached, local references, default/plugin status codes, and bulk headers. All checks pass.
+
+5. 🔄 Run related and full test suites
+   Run tests related to modified files/functions, then the complete repository suite; fix source failures only.
+
+6. ⏳ Review completeness and clean up
+   Re-read requirements, inspect working diff without historical solution lookup, remove temporary script, and report results.
+# task_tracker: Record completed implementation and unresolved legacy environment test failures
+Task list has been updated with 6 item(s).
+# finish: Complete five Fastify fixes and verify focused behavior
+Implemented all five requested non-test changes in `/workspace/fastify`.
+
+### Changes
+- Fixed bare full-schema `$ref` resolution in `lib/schemas.js` by preserving the complete reference when no `#` fragment exists. Fragmented and local references retain their previous behavior.
+- Added a read-only `reply.statusCode` getter in `lib/reply.js`, backed by the underlying response status code.
+- Added `statusCode: number` to `FastifyReply` in `fastify.d.ts`.
+- Documented both `.statusCode` and the existing `.headers(object)` API in `docs/Reply.md`.
+- Updated `concurrently` from `^4.1.2` to `^5.0.0` in `package.json`.
+- Added `lolex` to Greenkeeper’s ignore list.
+
+### Verification
+- Created the requested reproduction script and confirmed the original truncation to `urn:schema:fo`.
+- Expanded it to cover:
+  - bare full-schema references
+  - trailing `#` references
+  - referenced subschemas
+  - cached external schemas
+  - local fragments
+  - default and plugin-set reply status codes
+  - bulk response headers
+- All reproduction and edge-case checks passed; the temporary script was then removed.
+- Focused schema/reply tests passed: `314/314`.
+- Source lint, direct assertions, and TypeScript compilation passed.
+- `git diff --check` passed.
+- No test files were modified.
+
+### Full suite note
+The full `npm test` suite was run. On the installed Node.js `v22.23.0`, the repository’s legacy test harness initially had IPv6/IPv4 localhost mismatches. Rerunning with `NODE_OPTIONS=--dns-result-order=ipv4first` produced **4141 passing and 19 failing**. The remaining failures are unrelated legacy-runtime/dependency incompatibilities in close/pipelining timing, old Avvio promise behavior, empty-body HTTP handling, and changed validation error wording. All schema and reply tests relevant to these changes pass.

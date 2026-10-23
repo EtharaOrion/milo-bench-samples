@@ -1,0 +1,107 @@
+diff --git a/test/internals/reply.test.js b/test/internals/reply.test.js
+index 9e851296962..fe05dc2f02c 100644
+--- a/test/internals/reply.test.js
++++ b/test/internals/reply.test.js
+@@ -924,6 +924,23 @@ test('.status() is an alias for .code()', t => {
+   })
+ })
+ 
++test('.statusCode is getter and setter', t => {
++  t.plan(4)
++  const fastify = require('../..')()
++
++  fastify.get('/', function (req, reply) {
++    t.ok(reply.statusCode, 200, 'default status value')
++    reply.statusCode = 418
++    t.ok(reply.statusCode, 418)
++    reply.send()
++  })
++
++  fastify.inject('/', (err, res) => {
++    t.error(err)
++    t.is(res.statusCode, 418)
++  })
++})
++
+ test('reply.header setting multiple cookies as multiple Set-Cookie headers', t => {
+   t.plan(7)
+ 
+diff --git a/test/schemas.test.js b/test/schemas.test.js
+index 1d5f4c6b736..69607dee7ba 100644
+--- a/test/schemas.test.js
++++ b/test/schemas.test.js
+@@ -269,3 +269,56 @@ test('Triple $ref deep', t => {
+     t.deepEquals(JSON.parse(res.payload).message, "body should have required property 'foo'")
+   })
+ })
++
++test('$ref with a simple $id', t => {
++  t.plan(4)
++  const fastify = Fastify()
++  const ajv = new AJV()
++  ajv.addSchema(fastClone(schemaUsed))
++  ajv.addSchema({
++    $id: 'urn:schema:response',
++    type: 'object',
++    required: ['foo'],
++    properties: {
++      foo: { $ref: 'urn:schema:foo' }
++    }
++  })
++  ajv.addSchema({
++    $id: 'urn:schema:request',
++    type: 'object',
++    required: ['foo'],
++    properties: {
++      foo: { $ref: 'urn:schema:foo' }
++    }
++  })
++
++  fastify.setSchemaCompiler(schema => ajv.compile(schema))
++  fastify.setSchemaResolver((ref) => {
++    t.equals(ref, 'urn:schema:foo')
++    return ajv.getSchema(ref).schema
++  })
++
++  fastify.route({
++    method: 'POST',
++    url: '/',
++    schema: {
++      body: ajv.getSchema('urn:schema:request').schema,
++      response: {
++        '2xx': ajv.getSchema('urn:schema:response').schema
++      }
++    },
++    handler (req, reply) {
++      reply.send({ foo: { foo: 'bar', bar: 'foo' } })
++    }
++  })
++
++  fastify.inject({
++    method: 'POST',
++    url: '/',
++    payload: { foo: { foo: 'bar' } }
++  }, (err, res) => {
++    t.error(err)
++    t.equals(res.statusCode, 200)
++    t.deepEquals(JSON.parse(res.payload), { foo: { foo: 'bar' } })
++  })
++})
+diff --git a/test/types/index.ts b/test/types/index.ts
+index 0a9a35d0fd5..67423ccb15d 100644
+--- a/test/types/index.ts
++++ b/test/types/index.ts
+@@ -558,6 +558,13 @@ server.setSchemaCompiler(function (schema: object) {
+   return () => true
+ })
+ 
++server.setSchemaResolver(function (ref: string) {
++  return {
++    $id: ref,
++    type: 'string'
++  }
++})
++
+ server.addSchema({})
+ 
+ server.addContentTypeParser('*', (req, done) => {

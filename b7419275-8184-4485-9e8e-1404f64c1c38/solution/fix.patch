@@ -1,0 +1,137 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fd608b238c04..e802061b0317 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -20,6 +20,14 @@ See [`eslint-plugin-babel`'s releases](https://github.com/babel/eslint-plugin-ba
+ 
+ <!-- DO NOT CHANGE THESE COMMENTS - See .github/actions/trigger-github-release/update-changelog.js -->
+ <!-- insert-new-changelog-here -->
++## v7.16.1 (2021-10-30)
++
++#### :bug: Bug Fix
++* `babel-plugin-transform-typescript`
++  * [#13900](https://github.com/babel/babel/pull/13900) Fix binding access for plugin-transform-typescript ([@PeachScript](https://github.com/PeachScript))
++
++#### :house: Internal
++* [#13898](https://github.com/babel/babel/pull/13898) Skip ESLint 8 tests on publish ([@nicolo-ribaudo](https://github.com/nicolo-ribaudo))
+ 
+ ## v7.16.0 (2021-10-30)
+ 
+diff --git a/package.json b/package.json
+index 8fdcf6484994..1df205fd7068 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "babel",
+-  "version": "7.16.1",
++  "version": "7.16.2",
+   "private": true,
+   "type": "commonjs",
+   "scripts": {
+diff --git a/packages/babel-parser/package.json b/packages/babel-parser/package.json
+index 463c87e0f7eb..0250bd1f3f3a 100644
+--- a/packages/babel-parser/package.json
++++ b/packages/babel-parser/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@babel/parser",
+-  "version": "7.16.0",
++  "version": "7.16.2",
+   "description": "A JavaScript parser",
+   "author": "The Babel Team (https://babel.dev/team)",
+   "homepage": "https://babel.dev/docs/en/next/babel-parser",
+diff --git a/packages/babel-parser/src/types.js b/packages/babel-parser/src/types.js
+index 5362caf18d3e..de307580843b 100644
+--- a/packages/babel-parser/src/types.js
++++ b/packages/babel-parser/src/types.js
+@@ -898,6 +898,8 @@ export type ImportDeclaration = NodeBase & {
+   source: Literal,
+ 
+   importKind?: "type" | "typeof" | "value", // TODO: Not in spec
++
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+ 
+ export type ImportSpecifier = ModuleSpecifier & {
+@@ -952,6 +954,7 @@ export type ExportAllDeclaration = NodeBase & {
+   type: "ExportAllDeclaration",
+   source: Literal,
+   exportKind?: "type" | "value", // TODO: Not in spec
++  assertions?: $ReadOnlyArray<ImportAttribute>,
+ };
+ 
+ // JSX (TODO: Not in spec)
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/package.json b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/package.json
+index 0035c2b449af..a30ddb7a0b6d 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/package.json
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression",
+-  "version": "7.16.0",
++  "version": "7.16.2",
+   "description": "Rename destructuring parameter to workaround https://bugs.webkit.org/show_bug.cgi?id=220517",
+   "repository": {
+     "type": "git",
+@@ -30,6 +30,7 @@
+   },
+   "devDependencies": {
+     "@babel/core": "workspace:^",
++    "@babel/helper-function-name": "workspace:^",
+     "@babel/helper-plugin-test-runner": "workspace:^",
+     "@babel/traverse": "workspace:^"
+   },
+diff --git a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+index e884f47fd85a..e0bfc8b108ed 100644
+--- a/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
++++ b/packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression/src/util.ts
+@@ -18,16 +18,16 @@ export function shouldTransform(
+   // On collision, `getOwnBinding` returns the param binding
+   // with the id binding be registered as constant violation
+   const paramNameBinding = path.scope.getOwnBinding(name);
+-  const constantViolations = paramNameBinding.constantViolations;
+-  if (constantViolations.length === 0) {
+-    // the function scope has no such collided bindings
++  if (paramNameBinding === undefined) {
++    // Case 1: the function id is injected by babel-helper-name-function, which
++    // assigns `NOT_LOCAL_BINDING` to the `functionId` and thus not registering id
++    // in scope tracking
++    // Case 2: the function id is injected by a third party plugin which does not update the
++    // scope info
+     return false;
+   }
+-  const firstViolation = constantViolations[0];
+-
+-  if (firstViolation.node !== node) {
+-    // the violation does not happen in id
+-    // e.g. (function a() { var a; })
++  if (paramNameBinding.kind !== "param") {
++    // the function id does not reproduce in params
+     return false;
+   }
+ 
+diff --git a/packages/babel-standalone/package.json b/packages/babel-standalone/package.json
+index 41a1f5574fd0..e318144cf73e 100644
+--- a/packages/babel-standalone/package.json
++++ b/packages/babel-standalone/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@babel/standalone",
+-  "version": "7.16.1",
++  "version": "7.16.2",
+   "description": "Standalone build of Babel for use in non-Node.js environments.",
+   "main": "./babel.js",
+   "files": [
+diff --git a/yarn.lock b/yarn.lock
+index 742828b9991e..0f11ef2ddada 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -1047,6 +1047,7 @@ __metadata:
+   resolution: "@babel/plugin-bugfix-safari-id-destructuring-collision-in-function-expression@workspace:packages/babel-plugin-bugfix-safari-id-destructuring-collision-in-function-expression"
+   dependencies:
+     "@babel/core": "workspace:^"
++    "@babel/helper-function-name": "workspace:^"
+     "@babel/helper-plugin-test-runner": "workspace:^"
+     "@babel/helper-plugin-utils": "workspace:^"
+     "@babel/traverse": "workspace:^"

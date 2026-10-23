@@ -1,0 +1,200 @@
+       schema[key] = this.resolve(schema[key].slice(0, -1))
+     } else if (key === '$ref' && refResolver) {
+       const refValue = schema[key]
++      const fragmentIndex = refValue.indexOf('#')
++      const refId = fragmentIndex === -1 ? refValue : refValue.slice(0, fragmentIndex)
+
+-      const refId = refValue.slice(0, refValue.indexOf('#'))
+       if (refId.length > 0 && !this.store[refId]) {
+         const resolvedSchema = refResolver(refId)
+         if (resolvedSchema) {
+diff --git a/package.json b/package.json
+index 583d58f..645bee5 100644
+--- a/package.json
++++ b/package.json
+@@ -99,7 +99,7 @@
+     "ajv-pack": "^0.3.1",
+     "autocannon": "^3.2.0",
+     "branch-comparer": "^0.4.0",
+-    "concurrently": "^4.1.2",
++    "concurrently": "^5.0.0",
+     "cors": "^2.8.5",
+     "coveralls": "^3.0.6",
+     "dns-prefetch-control": "^0.2.0",
+@@ -157,6 +157,7 @@
+       "boom",
+       "joi",
+       "@types/node",
++      "lolex",
+       "tap",
+       "tap-mocha-reporter",
+       "@typescript-eslint/eslint-plugin"
+# think: Assess all requirements edge cases and unrelated suite failures
+Your thought has been logged.
+$ grep -n '\breadonly\b' /workspace/fastify/fastify.d.ts | head -30; grep -RIn 'statusCode[[:space:]]*=' /workspace/fastify/test/types /workspace/fastify/docs | head -30
+/workspace/fastify/test/types/index.ts:486:  if (statusCode === 201) {
+/workspace/fastify/docs/ContentTypeParser.md:50:    err.statusCode = 400
+/workspace/fastify/docs/Reply.md:265:  var statusCode = error.statusCode >= 400 ? error.statusCode : 500
+/workspace/fastify/docs/Reply.md:318:  err.statusCode = 418
+/workspace/fastify/docs/Server.md:680:var statusCode = error.statusCode
+$ rm /workspace/fastify/reproduce.js && GIT_PAGER=cat git -C /workspace/fastify status --short && GIT_PAGER=cat git -C /workspace/fastify diff --check && printf '\n--- final stat ---\n' && GIT_PAGER=cat git -C /workspace/fastify diff --stat && printf '\n--- requirement metadata ---\n' && node -e "const p=require('/workspace/fastify/package.json'); if (p.devDependencies.concurrently !== '^5.0.0' || !p.greenkeeper.ignore.includes('lolex')) process.exit(1); console.log('concurrently:', p.devDependencies.concurrently); console.log('lolex ignored:', p.greenkeeper.ignore.includes('lolex'))" && printf '\n--- tests unchanged ---\n' && test -z "$(GIT_PAGER=cat git -C /workspace/fastify diff --name-only -- test)" && echo confirmed
+M docs/Reply.md
+ M fastify.d.ts
+ M lib/reply.js
+ M lib/schemas.js
+ M package.json
+
+--- final stat ---
+ docs/Reply.md  | 12 ++++++++++++
+ fastify.d.ts   |  1 +
+ lib/reply.js   |  7 +++++++
+ lib/schemas.js |  3 ++-
+ package.json   |  3 ++-
+ 5 files changed, 24 insertions(+), 2 deletions(-)
+
+--- requirement metadata ---
+concurrently: ^5.0.0
+lolex ignored: true
+
+--- tests unchanged ---
+confirmed
+$ nl -ba /workspace/fastify/lib/schemas.js | sed -n '104,118p'; nl -ba /workspace/fastify/lib/reply.js | sed -n '84,99p'; nl -ba /workspace/fastify/fastify.d.ts | sed -n '162,172p'; nl -ba /workspace/fastify/docs/Reply.md | sed -n '3,14p;32,43p;72,92p'; nl -ba /workspace/fastify/package.json | sed -n '98,105p;154,165p'
+104      // resolve the `sharedSchemaId#' only if is not a standard $ref JSON Pointer
+   105      if (typeof schema[key] === 'string' && key !== '$schema' && key !== '$ref' && schema[key].slice(-1) === '#') {
+   106        schema[key] = this.resolve(schema[key].slice(0, -1))
+   107      } else if (key === '$ref' && refResolver) {
+   108        const refValue = schema[key]
+   109        const fragmentIndex = refValue.indexOf('#')
+   110        const refId = fragmentIndex === -1 ? refValue : refValue.slice(0, fragmentIndex)
+   111
+   112        if (refId.length > 0 && !this.store[refId]) {
+   113          const resolvedSchema = refResolver(refId)
+   114          if (resolvedSchema) {
+   115            this.add(resolvedSchema, refResolver)
+   116          }
+   117        }
+   118      }
+    84      this[kReplySentOverwritten] = true
+    85      this[kReplySent] = true
+    86    }
+    87  })
+    88
+    89  Object.defineProperty(Reply.prototype, 'statusCode', {
+    90    enumerable: true,
+    91    get () {
+    92      return this.res.statusCode
+    93    }
+    94  })
+    95
+    96  Reply.prototype.send = function (payload) {
+    97    if (this[kReplyIsRunningOnErrorHook] === true) {
+    98      throw new FST_ERR_SEND_INSIDE_ONERR()
+    99    }
+   162     * Response object that is used to build and send a http response
+   163     */
+   164    interface FastifyReply<HttpResponse> {
+   165      code(statusCode: number): FastifyReply<HttpResponse>
+   166      status(statusCode: number): FastifyReply<HttpResponse>
+   167      statusCode: number
+   168      header(name: string, value: any): FastifyReply<HttpResponse>
+   169      headers(headers: { [key: string]: any }): FastifyReply<HttpResponse>
+   170      getHeader(name: string): string | undefined
+   171      hasHeader(name: string): boolean
+   172      removeHeader(name: string): FastifyReply<HttpResponse>
+     3  ## Reply
+     4  - [Reply](#reply)
+     5    - [Introduction](#introduction)
+     6    - [.code(statusCode)](#codestatuscode)
+     7    - [.statusCode](#statuscode)
+     8    - [.header(key, value)](#headerkey-value)
+     9    - [.headers(headers)](#headersheaders)
+    10    - [.getHeader(key)](#getheaderkey)
+    11    - [.removeHeader(key)](#removeheaderkey)
+    12    - [.hasHeader(key)](#hasheaderkey)
+    13    - [.redirect(dest)](#redirectdest)
+    14    - [.callNotFound()](#callnotfound)
+    32  Reply is a core Fastify object that exposes the following functions
+    33  and properties:
+    34
+    35  - `.code(statusCode)` - Sets the status code.
+    36  - `.status(statusCode)` - An alias for `.code(statusCode)`.
+    37  - `.statusCode` - The response status code.
+    38  - `.header(name, value)` - Sets a response header.
+    39  - `.headers(object)` - Sets all the keys of the object as response headers.
+    40  - `.getHeader(name)` - Retrieve value of already set header.
+    41  - `.removeHeader(key)` - Remove the value of a previously set header.
+    42  - `.hasHeader(name)` - Determine if a header has been set.
+    43  - `.type(value)` - Sets the header `Content-Type`.
+    72  <a name="code"></a>
+    73  ### .code(statusCode)
+    74  If not set via `reply.code`, the resulting `statusCode` will be `200`.
+    75
+    76  <a name="statusCode"></a>
+    77  ### .statusCode
+    78  The response status code.
+    79
+    80  <a name="header"></a>
+    81  ### .header(key, value)
+    82  Sets a response header. If the value is omitted or undefined it is coerced
+    83  to `''`.
+    84
+    85  For more information, see [`http.ServerResponse#setHeader`](https://nodejs.org/dist/latest/docs/api/http.html#http_response_setheader_name_value).
+    86
+    87  <a name="headers"></a>
+    88  ### .headers(headers)
+    89  Sets multiple response headers from the keys of an object.
+    90
+    91  <a name="getHeader"></a>
+    92  ### .getHeader(key)
+    98      "JSONStream": "^1.3.5",
+    99      "ajv-pack": "^0.3.1",
+   100      "autocannon": "^3.2.0",
+   101      "branch-comparer": "^0.4.0",
+   102      "concurrently": "^5.0.0",
+   103      "cors": "^2.8.5",
+   104      "coveralls": "^3.0.6",
+   105      "dns-prefetch-control": "^0.2.0",
+   154    "greenkeeper": {
+   155      "ignore": [
+   156        "autocannon",
+   157        "boom",
+   158        "joi",
+   159        "@types/node",
+   160        "lolex",
+   161        "tap",
+   162        "tap-mocha-reporter",
+   163        "@typescript-eslint/eslint-plugin"
+   164      ]
+   165    },
+# task_tracker: Record final implementation and verification status
+Task list has been updated with 6 item(s).
+# finish: Complete five Fastify fixes and report verification results
+Implemented all five requested changes without modifying any tests.
+
+### Changes
+- Fixed full-schema `$ref` resolution in `lib/schemas.js:108` by preserving the entire reference when no `#` fragment delimiter exists.
+- Added a live `reply.statusCode` getter in `lib/reply.js:89`, reflecting status codes set through plugins, `reply.res`, or `reply.code()`.
+- Added `statusCode` to the TypeScript `FastifyReply` interface in `fastify.d.ts:167`.
+- Documented both `.statusCode` and the existing `.headers(headers)` API in `docs/Reply.md`.
+- Updated `concurrently` from `^4.1.2` to `^5.0.0` in `package.json:102`.
+- Added `lolex` to Greenkeeper’s ignore list in `package.json:160`.
+
+### Verification
+- Reproduced the original broken full-schema reference before the fix.
+- Reran the reproducer successfully after the fix.
+- Expanded the temporary reproducer to cover:
+  - references without fragments
+  - JSON Pointer and named fragments
+  - trailing `#`
+  - local references
+  - nested external references
+  - already-cached schemas
+  - default, plugin-set, and `reply.code()` status values
+- Removed the temporary reproduction script afterward.
+- Confirmed no test files were changed.
+- `npm run lint`: passed.
+- `npm run typescript`: passed.
+- Schema-focused suites: **93/93 passed**.
+- Reply-focused suite with consistent localhost DNS ordering: **205/205 passed**.
+- Full `npm test` under Node 22 with IPv4-first DNS: **4,141/4,160 assertions passed**. The remaining 19 failures are unrelated legacy runtime/dependency compatibility issues involving connection-close behavior, empty-body request timeouts, an old Avvio initialization error, and changed validation-message quoting; all suites directly related to the modified code pass.
+- Final diff is clean and contains only five intended non-test files.
