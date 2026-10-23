@@ -1,0 +1,200 @@
++
+ func gofmt(filename string, b []byte) ([]byte, error) {
+        out, err := imports.Process(filename, b, nil)
+        if err != nil {
+diff --git a/codegen/import.go b/codegen/import.go
+index 123d310..b1f82ec 100644
+--- a/codegen/import.go
++++ b/codegen/import.go
+@@ -11,8 +11,9 @@ type Import struct {
+ }
+
+ type Imports struct {
+-       imports []*Import
+-       destDir string
++       imports        []*Import
++       destDir        string
++       destImportPath string
+ }
+
+ func (i *Import) Write() string {
+diff --git a/codegen/import_build.go b/codegen/import_build.go
+index 24646b7..de474fd 100644
+--- a/codegen/import_build.go
++++ b/codegen/import_build.go
+@@ -3,6 +3,7 @@ package codegen
+ import (
+        "fmt"
+        "go/build"
++       "path/filepath"
+        "sort"
+        "strconv"
+        "strings"
+@@ -26,39 +27,48 @@ var ambientImports = []string{
+        "github.com/vektah/gqlgen/graphql",
+ }
+
+-func buildImports(types NamedTypes, destDir string) *Imports {
++func buildImports(types NamedTypes, destDir string) (*Imports, error) {
+        imports := Imports{
+-               destDir: destDir,
++               destDir:        destDir,
++               destImportPath: importPath(destDir, filepath.Base(destDir)),
+        }
+
+        for _, ambient := range ambientImports {
+-               imports.add(ambient)
++               _, err := imports.add(ambient)
++               if err != nil {
++                       return nil, err
++               }
+        }
+
+        // Imports from top level user types
+        for _, t := range types {
+-               t.Import = imports.add(t.Package)
++               imp, err := imports.add(t.Package)
++               if err != nil {
++                       return nil, err
++               }
++               t.Import = imp
+        }
+
+-       return &imports
++       return &imports, nil
+ }
+
+-func (s *Imports) add(path string) *Import {
++func (s *Imports) add(path string) (*Import, error) {
+        if path == "" {
+-               return nil
++               return nil, nil
+        }
+
+-       if stringHasSuffixFold(s.destDir, path) {
+-               return nil
++       // don't import the package the generated code lives in
++       if path == s.destImportPath || stringHasSuffixFold(s.destDir, path) {
++               return nil, nil
+        }
+
+        if existing := s.findByPath(path); existing != nil {
+-               return existing
++               return existing, nil
+        }
+
+        pkg, err := build.Default.Import(path, s.destDir, 0)
+        if err != nil {
+-               panic(err)
++               return nil, err
+        }
+
+        imp := &Import{
+@@ -67,7 +77,7 @@ func (s *Imports) add(path string) *Import {
+        }
+        s.imports = append(s.imports, imp)
+
+-       return imp
++       return imp, nil
+ }
+
+ func stringHasSuffixFold(s, suffix string) bool {
+diff --git a/codegen/type_build.go b/codegen/type_build.go
+index 76426a2..baf98d4 100644
+--- a/codegen/type_build.go
++++ b/codegen/type_build.go
+@@ -34,7 +34,7 @@ func (cfg *Config) buildNamedTypes() NamedTypes {
+        return types
+ }
+
+-func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) {
++func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir string, prog *loader.Program) error {
+        for _, t := range namedTypes {
+                if t.Package == "" {
+                        continue
+@@ -48,9 +48,14 @@ func (cfg *Config) bindTypes(imports *Imports, namedTypes NamedTypes, destDir st
+                        t.Marshaler = &cpy
+
+                        t.Package, t.GoType = pkgAndType(sig.Params().At(0).Type().String())
+-                       t.Import = imports.add(t.Package)
++                       imp, err := imports.add(t.Package)
++                       if err != nil {
++                               return err
++                       }
++                       t.Import = imp
+                }
+        }
++       return nil
+ }
+
+ // namedTypeFromSchema objects for every graphql type, including primitives.
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && go test -vet=off ./codegen/... 2>&1 | tail -5
+ok      github.com/vektah/gqlgen/codegen        (cached)
+ok      github.com/vektah/gqlgen/codegen/templates      (cached)
+?       github.com/vektah/gqlgen/codegen/templates/inliner      [no test files]
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && go test -vet=off ./... 2>&1 | grep -E "FAIL|ok " | grep -v "no test files"
+FAIL    github.com/vektah/gqlgen/example/scalars [setup failed]
+FAIL    github.com/vektah/gqlgen/example/scalars/server [setup failed]
+FAIL    github.com/vektah/gqlgen/test [setup failed]
+ok      github.com/vektah/gqlgen/client (cached)
+ok      github.com/vektah/gqlgen/codegen        (cached)
+ok      github.com/vektah/gqlgen/codegen/templates      (cached)
+ok      github.com/vektah/gqlgen/example/chat   (cached)
+ok      github.com/vektah/gqlgen/example/dataloader     (cached)
+ok      github.com/vektah/gqlgen/example/selection      (cached)
+ok      github.com/vektah/gqlgen/example/starwars       (cached)
+ok      github.com/vektah/gqlgen/example/todo   (cached)
+ok      github.com/vektah/gqlgen/graphql        (cached)
+ok      github.com/vektah/gqlgen/handler        (cached)
+ok      github.com/vektah/gqlgen/neelance/tests (cached)
+FAIL
+# task_tracker: Mark tasks done
+Task list has been updated with 5 item(s).
+$ cd /workspace/gqlgen && export GIT_PAGER=cat && go vet ./codegen/ 2>&1 | grep -v "non-constant format" | head; echo "=== run issue+regression tests ==="; go test -vet=off ./codegen/ -run 'TestInvalidPackagenames|TestImportCollisions|TestDeterministicDecollisioning|Test_fullPackageName|TestComplexInputTypes|TestKeywordInputFields|TestShapes|TestRecursiveInputType|TestRawMapInputs' -v 2>&1 | grep -E "^(--- |=== RUN|PASS|FAIL|ok)"
+# github.com/vektah/gqlgen/codegen
+# [github.com/vektah/gqlgen/codegen]
+=== run issue+regression tests ===
+=== RUN   Test_fullPackageName
+=== RUN   Test_fullPackageName/gopath_longer_than_package_name
+=== RUN   Test_fullPackageName/stop_searching_on_first_hit
+--- PASS: Test_fullPackageName (0.00s)
+=== RUN   TestInvalidPackagenames
+--- PASS: TestInvalidPackagenames (1.69s)
+=== RUN   TestImportCollisions
+--- PASS: TestImportCollisions (1.69s)
+=== RUN   TestDeterministicDecollisioning
+--- PASS: TestDeterministicDecollisioning (0.00s)
+=== RUN   TestRawMapInputs
+--- PASS: TestRawMapInputs (1.70s)
+=== RUN   TestRecursiveInputType
+--- PASS: TestRecursiveInputType (1.71s)
+=== RUN   TestComplexInputTypes
+--- PASS: TestComplexInputTypes (1.72s)
+=== RUN   TestKeywordInputFields
+--- PASS: TestKeywordInputFields (1.72s)
+=== RUN   TestShapes
+--- PASS: TestShapes (2.02s)
+PASS
+ok      github.com/vektah/gqlgen/codegen        12.274s
+# finish: Summarize fixes for issues #170 and #180
+I resolved both issues described in the report by making the gqlgen code generator robust about Go package/import resolution and by replacing a hard panic with proper error propagation.
+
+## Root cause
+Both issues stem from the codegen package conflating *filesystem paths* with *Go import paths*:
+- `importPath()` only knew how to strip a `GOPATH/src` prefix. When that failed it returned an absolute filesystem path, which then got fed into `build.Default.Import(...)` → `panic` (issue #170 "shouldn't panic on bad input"), or produced invalid generated code.
+- The "don't import my own package" check (`stringHasSuffixFold(destDir, importPath)`) compared an absolute directory against an import path, which only happens to work under GOPATH. When it failed, generated code would `import` (and reference, e.g. `pkg.MarshalX`) the very package it lives in — exactly the "invalid code from custom scalar marshallers in external packages" of issue #180.
+
+## Changes (all in `codegen/`)
+1. **`codegen.go`** – `importPath()` now, after the GOPATH lookup, falls back to resolving the import path from the enclosing `go.mod` (new `modulePackagePath` / `modulePathFromGoMod` helpers). This makes it work in module mode as well as GOPATH, returning a real import path instead of an absolute filesystem path.
+2. **`import.go` / `import_build.go`** – `Imports` now stores `destImportPath` (the import path of the package being generated). `add()` skips a package when its import path equals `destImportPath` (in addition to the legacy suffix check), correctly avoiding self-imports under modules. This fixes the #180 invalid-code generation for marshallers that live in the same package as the generated code.
+3. **`import_build.go`** – `add()` and `buildImports()` now return an `error` instead of calling `panic(err)` when a package can't be resolved (issue #170: a CLI must not panic on bad input).
+4. **`type_build.go` / `build.go`** – `bindTypes()` and the `models()`/`bind()` callers were updated to propagate those errors up to `Generate`, which already returns them cleanly to `main`.
+
+## Verification
+- `go test ./codegen/...` now fully passes (previously `TestComplexInputTypes` and `TestKeywordInputFields` failed with "cannot import absolute path" / import-cycle errors).
+- The issue-specific tests pass: `TestInvalidPackagenames`, `TestImportCollisions`, `TestDeterministicDecollisioning`, `Test_fullPackageName`.
+- A manual reproduction feeding a malformed model (`example.com/foo-bar`) now returns `model plan failed: package example is not in std ...` instead of panicking.
+- Manual reproductions of custom scalar marshallers in external packages (and across multiple packages) generate valid code (`extmarshal.MarshalObject`, `extdep.Thing`, etc.).
+
+## Out of scope (pre-existing, unrelated)
+`example/scalars` and `test/` fail to compile because they use fake *vendored* packages with bare import paths (`external`, `remote_api`) that are only valid in GOPATH mode and were broken by the repository's `go.mod` bootstrap commit — not by this issue or my fix. Making those compile would require restructuring the example fixtures (a change orthogonal to the reported bugs), so I left them untouched.

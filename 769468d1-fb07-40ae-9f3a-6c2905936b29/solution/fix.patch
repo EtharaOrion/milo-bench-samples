@@ -1,0 +1,720 @@
+diff --git a/codegen/build.go b/codegen/build.go
+index 20129e4f..d56fc06f 100644
+--- a/codegen/build.go
++++ b/codegen/build.go
+@@ -81,6 +81,7 @@ func (cfg *Config) bind() (*Build, error) {
+ 		Interfaces:  cfg.buildInterfaces(namedTypes, prog),
+ 		Inputs:      inputs,
+ 		Imports:     imports.finalize(),
++		SchemaRaw:   cfg.SchemaStr,
+ 	}
+ 
+ 	if qr, ok := cfg.schema.EntryPoints["query"]; ok {
+@@ -102,19 +103,19 @@ func (cfg *Config) bind() (*Build, error) {
+ 	// Poke a few magic methods into query
+ 	q := b.Objects.ByName(b.QueryRoot.GQLType)
+ 	q.Fields = append(q.Fields, Field{
+-		Type:         &Type{namedTypes["__Schema"], []string{modPtr}, ""},
++		Type:         &Type{namedTypes["__Schema"], []string{modPtr}, nil},
+ 		GQLName:      "__schema",
+ 		NoErr:        true,
+ 		GoMethodName: "ec.introspectSchema",
+ 		Object:       q,
+ 	})
+ 	q.Fields = append(q.Fields, Field{
+-		Type:         &Type{namedTypes["__Type"], []string{modPtr}, ""},
++		Type:         &Type{namedTypes["__Type"], []string{modPtr}, nil},
+ 		GQLName:      "__type",
+ 		NoErr:        true,
+ 		GoMethodName: "ec.introspectType",
+ 		Args: []FieldArgument{
+-			{GQLName: "name", Type: &Type{namedTypes["String"], []string{}, ""}, Object: &Object{}},
++			{GQLName: "name", Type: &Type{namedTypes["String"], []string{}, nil}, Object: &Object{}},
+ 		},
+ 		Object: q,
+ 	})
+diff --git a/codegen/codegen.go b/codegen/codegen.go
+index 8c3e0a82..cad1e4f3 100644
+--- a/codegen/codegen.go
++++ b/codegen/codegen.go
+@@ -3,12 +3,10 @@ package codegen
+ import (
+ 	"bytes"
+ 	"fmt"
+-	"go/build"
+ 	"io/ioutil"
+ 	"os"
+ 	"path/filepath"
+ 	"regexp"
+-	"strings"
+ 	"syscall"
+ 
+ 	"github.com/pkg/errors"
+@@ -30,7 +28,6 @@ func Generate(cfg Config) error {
+ 		return errors.Wrap(err, "model plan failed")
+ 	}
+ 	if len(modelsBuild.Models) > 0 || len(modelsBuild.Enums) > 0 {
+-		modelsBuild.PackageName = cfg.Model.Package
+ 		var buf *bytes.Buffer
+ 		buf, err = templates.Run("models.gotpl", modelsBuild)
+ 		if err != nil {
+@@ -57,8 +54,6 @@ func Generate(cfg Config) error {
+ 	if err != nil {
+ 		return errors.Wrap(err, "exec plan failed")
+ 	}
+-	build.SchemaRaw = cfg.SchemaStr
+-	build.PackageName = cfg.Exec.Package
+ 
+ 	var buf *bytes.Buffer
+ 	buf, err = templates.Run("generated.gotpl", build)
+@@ -129,22 +124,6 @@ func abs(path string) string {
+ 	return filepath.ToSlash(absPath)
+ }
+ 
+-func importPath(dir string, pkgName string) string {
+-	fullPkgName := filepath.Join(filepath.Dir(dir), pkgName)
+-
+-	for _, gopath := range filepath.SplitList(build.Default.GOPATH) {
+-		gopath = filepath.Join(gopath, "src") + string(os.PathSeparator)
+-		if len(gopath) > len(fullPkgName) {
+-			continue
+-		}
+-		if strings.EqualFold(gopath, fullPkgName[0:len(gopath)]) {
+-			fullPkgName = fullPkgName[len(gopath):]
+-			break
+-		}
+-	}
+-	return filepath.ToSlash(fullPkgName)
+-}
+-
+ func gofmt(filename string, b []byte) ([]byte, error) {
+ 	out, err := imports.Process(filename, b, nil)
+ 	if err != nil {
+diff --git a/codegen/config.go b/codegen/config.go
+index 874f6e32..d33b6e7c 100644
+--- a/codegen/config.go
++++ b/codegen/config.go
+@@ -2,9 +2,11 @@ package codegen
+ 
+ import (
+ 	"fmt"
++	"go/build"
+ 	"io/ioutil"
+ 	"os"
+ 	"path/filepath"
++	"strings"
+ 
+ 	"github.com/pkg/errors"
+ 	"github.com/vektah/gqlgen/neelance/schema"
+@@ -80,25 +82,59 @@ func (c *PackageConfig) normalize() error {
+ 		return errors.New("Filename is required")
+ 	}
+ 	c.Filename = abs(c.Filename)
++	// If Package is not set, first attempt to load the package at the output dir. If that fails
++	// fallback to just the base dir name of the output filename.
+ 	if c.Package == "" {
+-		c.Package = filepath.Base(c.Dir())
++		cwd, _ := os.Getwd()
++		pkg, _ := build.Default.Import(c.ImportPath(), cwd, 0)
++		if pkg.Name != "" {
++			c.Package = pkg.Name
++		} else {
++			c.Package = filepath.Base(c.Dir())
++		}
+ 	}
+ 	c.Package = sanitizePackageName(c.Package)
+ 	return nil
+ }
+ 
+ func (c *PackageConfig) ImportPath() string {
+-	return importPath(c.Dir(), c.Package)
++	dir := c.Dir()
++	for _, gopath := range filepath.SplitList(build.Default.GOPATH) {
++		gopath = filepath.Join(gopath, "src") + string(os.PathSeparator)
++		if len(gopath) > len(dir) {
++			continue
++		}
++		if strings.EqualFold(gopath, dir[0:len(gopath)]) {
++			dir = dir[len(gopath):]
++			break
++		}
++	}
++	return filepath.ToSlash(dir)
+ }
+ 
+ func (c *PackageConfig) Dir() string {
+ 	return filepath.ToSlash(filepath.Dir(c.Filename))
+ }
+ 
++func (c *PackageConfig) Check() error {
++	if strings.ContainsAny(c.Package, "./\\") {
++		return fmt.Errorf("package should be the output package name only, do not include the output filename")
++	}
++	if c.Filename != "" && !strings.HasSuffix(c.Filename, ".go") {
++		return fmt.Errorf("filename should be path to a go source file")
++	}
++	return nil
++}
++
+ func (cfg *Config) Check() error {
+-	err := cfg.Models.Check()
+-	if err != nil {
+-		return fmt.Errorf("config: %s", err.Error())
++	if err := cfg.Models.Check(); err != nil {
++		return errors.Wrap(err, "config.models")
++	}
++	if err := cfg.Exec.Check(); err != nil {
++		return errors.Wrap(err, "config.exec")
++	}
++	if err := cfg.Model.Check(); err != nil {
++		return errors.Wrap(err, "config.model")
+ 	}
+ 	return nil
+ }
+@@ -115,6 +151,9 @@ func (tm TypeMap) Check() error {
+ 		if entry.Model == "" {
+ 			return fmt.Errorf("model %s: entityPath is not defined", typeName)
+ 		}
++		if strings.LastIndex(entry.Model, ".") < strings.LastIndex(entry.Model, "/") {
++			return fmt.Errorf("model %s: invalid type specifier \"%s\" - you need to specify a struct to map to", typeName, entry.Model)
++		}
+ 	}
+ 	return nil
+ }
+diff --git a/codegen/import.go b/codegen/import.go
+index 123d310f..b511e8f6 100644
+--- a/codegen/import.go
++++ b/codegen/import.go
+@@ -5,9 +5,10 @@ import (
+ )
+ 
+ type Import struct {
+-	Name  string
+-	Alias string
+-	Path  string
++	Name string
++	Path string
++
++	alias string
+ }
+ 
+ type Imports struct {
+@@ -16,5 +17,13 @@ type Imports struct {
+ }
+ 
+ func (i *Import) Write() string {
+-	return i.Alias + " " + strconv.Quote(i.Path)
++	return i.Alias() + " " + strconv.Quote(i.Path)
++}
++
++func (i *Import) Alias() string {
++	if i.alias == "" {
++		panic("alias called before imports are finalized")
++	}
++
++	return i.alias
+ }
+diff --git a/codegen/import_build.go b/codegen/import_build.go
+index 24646b74..f0877ed3 100644
+--- a/codegen/import_build.go
++++ b/codegen/import_build.go
+@@ -88,10 +88,10 @@ func (s Imports) finalize() []*Import {
+ 			alias = imp.Name + strconv.Itoa(i)
+ 			i++
+ 			if i > 10 {
+-				panic(fmt.Errorf("too many collisions, last attempt was %s", imp.Alias))
++				panic(fmt.Errorf("too many collisions, last attempt was %s", alias))
+ 			}
+ 		}
+-		imp.Alias = alias
++		imp.alias = alias
+ 	}
+ 
+ 	return s.imports
+@@ -108,7 +108,7 @@ func (s Imports) findByPath(importPath string) *Import {
+ 
+ func (s Imports) findByAlias(alias string) *Import {
+ 	for _, imp := range s.imports {
+-		if imp.Alias == alias {
++		if imp.alias == alias {
+ 			return imp
+ 		}
+ 	}
+diff --git a/codegen/type.go b/codegen/type.go
+index 31fcefc1..7af24b3c 100644
+--- a/codegen/type.go
++++ b/codegen/type.go
+@@ -27,7 +27,7 @@ type Type struct {
+ 	*NamedType
+ 
+ 	Modifiers []string
+-	CastType  string // the type to cast to when unmarshalling
++	CastType  *Ref // the type to cast to when unmarshalling
+ }
+ 
+ const (
+@@ -40,10 +40,10 @@ func (t Ref) FullName() string {
+ }
+ 
+ func (t Ref) PkgDot() string {
+-	if t.Import == nil || t.Import.Alias == "" {
++	if t.Import == nil || t.Import.Alias() == "" {
+ 		return ""
+ 	}
+-	return t.Import.Alias + "."
++	return t.Import.Alias() + "."
+ }
+ 
+ func (t Type) Signature() string {
+@@ -125,7 +125,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+ 	}
+ 
+ 	realResult := result
+-	if t.CastType != "" {
++	if t.CastType != nil {
+ 		result = "castTmp"
+ 	}
+ 
+@@ -140,7 +140,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+ 				err = (&{{.result}}).UnmarshalGQL({{.raw}})
+ 			{{- end }}
+ 		{{- if .t.CastType }}
+-			{{ .realResult }} = {{.t.CastType}}(castTmp)
++			{{ .realResult }} = {{.t.CastType.FullName}}(castTmp)
+ 		{{- end }}`, map[string]interface{}{
+ 		"realResult": realResult,
+ 		"result":     result,
+@@ -150,7 +150,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+ }
+ 
+ func (t Type) Marshal(val string) string {
+-	if t.CastType != "" {
++	if t.CastType != nil {
+ 		val = t.GoType + "(" + val + ")"
+ 	}
+ 
+diff --git a/codegen/util.go b/codegen/util.go
+index dfd44d50..03e8e51d 100644
+--- a/codegen/util.go
++++ b/codegen/util.go
+@@ -185,10 +185,7 @@ func bindObject(t types.Type, object *Object, imports *Imports) error {
+ 			case normalizeVendor(structField.Type().Underlying().String()):
+ 				pkg, typ := pkgAndType(structField.Type().String())
+ 				imp := imports.findByPath(pkg)
+-				field.CastType = typ
+-				if imp != nil {
+-					field.CastType = imp.Alias + "." + typ
+-				}
++				field.CastType = &Ref{GoType: typ, Import: imp}
+ 
+ 			default:
+ 				// type mismatch, require custom resolver for field
+diff --git a/example/scalars/.gqlgen.yml b/example/scalars/.gqlgen.yml
+index 366f4f2f..a1806a54 100644
+--- a/example/scalars/.gqlgen.yml
++++ b/example/scalars/.gqlgen.yml
+@@ -1,13 +1,16 @@
++model:
++  filename: model/generated.go
++
+ models:
+   User:
+-    model: github.com/vektah/gqlgen/example/scalars.User
++    model: github.com/vektah/gqlgen/example/scalars/model.User
+   Timestamp:
+-    model: github.com/vektah/gqlgen/example/scalars.Timestamp
++    model: github.com/vektah/gqlgen/example/scalars/model.Timestamp
+   SearchArgs:
+-    model: github.com/vektah/gqlgen/example/scalars.SearchArgs
++    model: github.com/vektah/gqlgen/example/scalars/model.SearchArgs
+   Point:
+-    model: github.com/vektah/gqlgen/example/scalars.Point
++    model: github.com/vektah/gqlgen/example/scalars/model.Point
+   ID:
+-    model: github.com/vektah/gqlgen/example/scalars.ID
++    model: github.com/vektah/gqlgen/example/scalars/model.ID
+   Tier:
+-    model: github.com/vektah/gqlgen/example/scalars.Tier
++    model: github.com/vektah/gqlgen/example/scalars/model.Tier
+diff --git a/example/scalars/generated.go b/example/scalars/generated.go
+index 732e3922..dc588ec3 100644
+--- a/example/scalars/generated.go
++++ b/example/scalars/generated.go
+@@ -9,6 +9,7 @@ import (
+ 	strconv "strconv"
+ 	time "time"
+ 
++	model "github.com/vektah/gqlgen/example/scalars/model"
+ 	graphql "github.com/vektah/gqlgen/graphql"
+ 	introspection "github.com/vektah/gqlgen/neelance/introspection"
+ 	query "github.com/vektah/gqlgen/neelance/query"
+@@ -26,11 +27,11 @@ func NewExecutableSchema(resolvers ResolverRoot) graphql.ExecutableSchema {
+ }
+ 
+ type Resolvers interface {
+-	Query_user(ctx context.Context, id external.ObjectID) (*User, error)
+-	Query_search(ctx context.Context, input SearchArgs) ([]User, error)
++	Query_user(ctx context.Context, id external.ObjectID) (*model.User, error)
++	Query_search(ctx context.Context, input model.SearchArgs) ([]model.User, error)
+ 
+-	User_primitiveResolver(ctx context.Context, obj *User) (string, error)
+-	User_customResolver(ctx context.Context, obj *User) (Point, error)
++	User_primitiveResolver(ctx context.Context, obj *model.User) (string, error)
++	User_customResolver(ctx context.Context, obj *model.User) (model.Point, error)
+ }
+ 
+ type ResolverRoot interface {
+@@ -38,31 +39,31 @@ type ResolverRoot interface {
+ 	User() UserResolver
+ }
+ type QueryResolver interface {
+-	User(ctx context.Context, id external.ObjectID) (*User, error)
+-	Search(ctx context.Context, input SearchArgs) ([]User, error)
++	User(ctx context.Context, id external.ObjectID) (*model.User, error)
++	Search(ctx context.Context, input model.SearchArgs) ([]model.User, error)
+ }
+ type UserResolver interface {
+-	PrimitiveResolver(ctx context.Context, obj *User) (string, error)
+-	CustomResolver(ctx context.Context, obj *User) (Point, error)
++	PrimitiveResolver(ctx context.Context, obj *model.User) (string, error)
++	CustomResolver(ctx context.Context, obj *model.User) (model.Point, error)
+ }
+ 
+ type shortMapper struct {
+ 	r ResolverRoot
+ }
+ 
+-func (s shortMapper) Query_user(ctx context.Context, id external.ObjectID) (*User, error) {
++func (s shortMapper) Query_user(ctx context.Context, id external.ObjectID) (*model.User, error) {
+ 	return s.r.Query().User(ctx, id)
+ }
+ 
+-func (s shortMapper) Query_search(ctx context.Context, input SearchArgs) ([]User, error) {
++func (s shortMapper) Query_search(ctx context.Context, input model.SearchArgs) ([]model.User, error) {
+ 	return s.r.Query().Search(ctx, input)
+ }
+ 
+-func (s shortMapper) User_primitiveResolver(ctx context.Context, obj *User) (string, error) {
++func (s shortMapper) User_primitiveResolver(ctx context.Context, obj *model.User) (string, error) {
+ 	return s.r.User().PrimitiveResolver(ctx, obj)
+ }
+ 
+-func (s shortMapper) User_customResolver(ctx context.Context, obj *User) (Point, error) {
++func (s shortMapper) User_customResolver(ctx context.Context, obj *model.User) (model.Point, error) {
+ 	return s.r.User().CustomResolver(ctx, obj)
+ }
+ 
+@@ -107,7 +108,7 @@ type executionContext struct {
+ var addressImplementors = []string{"Address"}
+ 
+ // nolint: gocyclo, errcheck, gas, goconst
+-func (ec *executionContext) _Address(ctx context.Context, sel []query.Selection, obj *Address) graphql.Marshaler {
++func (ec *executionContext) _Address(ctx context.Context, sel []query.Selection, obj *model.Address) graphql.Marshaler {
+ 	fields := graphql.CollectFields(ec.Doc, sel, addressImplementors, ec.Variables)
+ 
+ 	out := graphql.NewOrderedMap(len(fields))
+@@ -129,7 +130,7 @@ func (ec *executionContext) _Address(ctx context.Context, sel []query.Selection,
+ 	return out
+ }
+ 
+-func (ec *executionContext) _Address_id(ctx context.Context, field graphql.CollectedField, obj *Address) graphql.Marshaler {
++func (ec *executionContext) _Address_id(ctx context.Context, field graphql.CollectedField, obj *model.Address) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "Address"
+ 	rctx.Args = nil
+@@ -137,10 +138,10 @@ func (ec *executionContext) _Address_id(ctx context.Context, field graphql.Colle
+ 	rctx.PushField(field.Alias)
+ 	defer rctx.Pop()
+ 	res := obj.ID
+-	return MarshalID(res)
++	return model.MarshalID(res)
+ }
+ 
+-func (ec *executionContext) _Address_location(ctx context.Context, field graphql.CollectedField, obj *Address) graphql.Marshaler {
++func (ec *executionContext) _Address_location(ctx context.Context, field graphql.CollectedField, obj *model.Address) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "Address"
+ 	rctx.Args = nil
+@@ -192,7 +193,7 @@ func (ec *executionContext) _Query_user(ctx context.Context, field graphql.Colle
+ 	var arg0 external.ObjectID
+ 	if tmp, ok := field.Args["id"]; ok {
+ 		var err error
+-		arg0, err = UnmarshalID(tmp)
++		arg0, err = model.UnmarshalID(tmp)
+ 		if err != nil {
+ 			ec.Error(ctx, err)
+ 			return graphql.Null
+@@ -223,7 +224,7 @@ func (ec *executionContext) _Query_user(ctx context.Context, field graphql.Colle
+ 		if resTmp == nil {
+ 			return graphql.Null
+ 		}
+-		res := resTmp.(*User)
++		res := resTmp.(*model.User)
+ 		if res == nil {
+ 			return graphql.Null
+ 		}
+@@ -233,7 +234,7 @@ func (ec *executionContext) _Query_user(ctx context.Context, field graphql.Colle
+ 
+ func (ec *executionContext) _Query_search(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+ 	args := map[string]interface{}{}
+-	var arg0 SearchArgs
++	var arg0 model.SearchArgs
+ 	if tmp, ok := field.Args["input"]; ok {
+ 		var err error
+ 		arg0, err = UnmarshalSearchArgs(tmp)
+@@ -267,7 +268,7 @@ func (ec *executionContext) _Query_search(ctx context.Context, field graphql.Col
+ 		}()
+ 
+ 		resTmp, err := ec.ResolverMiddleware(ctx, func(ctx context.Context) (interface{}, error) {
+-			return ec.resolvers.Query_search(ctx, args["input"].(SearchArgs))
++			return ec.resolvers.Query_search(ctx, args["input"].(model.SearchArgs))
+ 		})
+ 		if err != nil {
+ 			ec.Error(ctx, err)
+@@ -276,7 +277,7 @@ func (ec *executionContext) _Query_search(ctx context.Context, field graphql.Col
+ 		if resTmp == nil {
+ 			return graphql.Null
+ 		}
+-		res := resTmp.([]User)
++		res := resTmp.([]model.User)
+ 		arr1 := graphql.Array{}
+ 		for idx1 := range res {
+ 			arr1 = append(arr1, func() graphql.Marshaler {
+@@ -332,7 +333,7 @@ func (ec *executionContext) _Query___type(ctx context.Context, field graphql.Col
+ var userImplementors = []string{"User"}
+ 
+ // nolint: gocyclo, errcheck, gas, goconst
+-func (ec *executionContext) _User(ctx context.Context, sel []query.Selection, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User(ctx context.Context, sel []query.Selection, obj *model.User) graphql.Marshaler {
+ 	fields := graphql.CollectFields(ec.Doc, sel, userImplementors, ec.Variables)
+ 
+ 	out := graphql.NewOrderedMap(len(fields))
+@@ -366,7 +367,7 @@ func (ec *executionContext) _User(ctx context.Context, sel []query.Selection, ob
+ 	return out
+ }
+ 
+-func (ec *executionContext) _User_id(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_id(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -374,10 +375,10 @@ func (ec *executionContext) _User_id(ctx context.Context, field graphql.Collecte
+ 	rctx.PushField(field.Alias)
+ 	defer rctx.Pop()
+ 	res := obj.ID
+-	return MarshalID(res)
++	return model.MarshalID(res)
+ }
+ 
+-func (ec *executionContext) _User_name(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_name(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -388,7 +389,7 @@ func (ec *executionContext) _User_name(ctx context.Context, field graphql.Collec
+ 	return graphql.MarshalString(res)
+ }
+ 
+-func (ec *executionContext) _User_created(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_created(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -396,10 +397,10 @@ func (ec *executionContext) _User_created(ctx context.Context, field graphql.Col
+ 	rctx.PushField(field.Alias)
+ 	defer rctx.Pop()
+ 	res := obj.Created
+-	return MarshalTimestamp(res)
++	return model.MarshalTimestamp(res)
+ }
+ 
+-func (ec *executionContext) _User_isBanned(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_isBanned(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -410,7 +411,7 @@ func (ec *executionContext) _User_isBanned(ctx context.Context, field graphql.Co
+ 	return graphql.MarshalBoolean(bool(res))
+ }
+ 
+-func (ec *executionContext) _User_primitiveResolver(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_primitiveResolver(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	ctx = graphql.WithResolverContext(ctx, &graphql.ResolverContext{
+ 		Object: "User",
+ 		Args:   nil,
+@@ -440,7 +441,7 @@ func (ec *executionContext) _User_primitiveResolver(ctx context.Context, field g
+ 	})
+ }
+ 
+-func (ec *executionContext) _User_customResolver(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_customResolver(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	ctx = graphql.WithResolverContext(ctx, &graphql.ResolverContext{
+ 		Object: "User",
+ 		Args:   nil,
+@@ -465,12 +466,12 @@ func (ec *executionContext) _User_customResolver(ctx context.Context, field grap
+ 		if resTmp == nil {
+ 			return graphql.Null
+ 		}
+-		res := resTmp.(Point)
++		res := resTmp.(model.Point)
+ 		return res
+ 	})
+ }
+ 
+-func (ec *executionContext) _User_address(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_address(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -481,7 +482,7 @@ func (ec *executionContext) _User_address(ctx context.Context, field graphql.Col
+ 	return ec._Address(ctx, field.Selections, &res)
+ }
+ 
+-func (ec *executionContext) _User_tier(ctx context.Context, field graphql.CollectedField, obj *User) graphql.Marshaler {
++func (ec *executionContext) _User_tier(ctx context.Context, field graphql.CollectedField, obj *model.User) graphql.Marshaler {
+ 	rctx := graphql.GetResolverContext(ctx)
+ 	rctx.Object = "User"
+ 	rctx.Args = nil
+@@ -1218,15 +1219,15 @@ func (ec *executionContext) ___Type_ofType(ctx context.Context, field graphql.Co
+ 	return ec.___Type(ctx, field.Selections, res)
+ }
+ 
+-func UnmarshalSearchArgs(v interface{}) (SearchArgs, error) {
+-	var it SearchArgs
++func UnmarshalSearchArgs(v interface{}) (model.SearchArgs, error) {
++	var it model.SearchArgs
+ 	var asMap = v.(map[string]interface{})
+ 
+ 	for k, v := range asMap {
+ 		switch k {
+ 		case "location":
+ 			var err error
+-			var ptr1 Point
++			var ptr1 model.Point
+ 			if v != nil {
+ 				err = (&ptr1).UnmarshalGQL(v)
+ 				it.Location = &ptr1
+@@ -1239,7 +1240,7 @@ func UnmarshalSearchArgs(v interface{}) (SearchArgs, error) {
+ 			var err error
+ 			var ptr1 time.Time
+ 			if v != nil {
+-				ptr1, err = UnmarshalTimestamp(v)
++				ptr1, err = model.UnmarshalTimestamp(v)
+ 				it.CreatedAfter = &ptr1
+ 			}
+ 
+@@ -1251,7 +1252,7 @@ func UnmarshalSearchArgs(v interface{}) (SearchArgs, error) {
+ 
+ 			var castTmp bool
+ 			castTmp, err = graphql.UnmarshalBoolean(v)
+-			it.IsBanned = Banned(castTmp)
++			it.IsBanned = model.Banned(castTmp)
+ 			if err != nil {
+ 				return it, err
+ 			}
+diff --git a/example/scalars/models_gen.go b/example/scalars/model/generated.go
+similarity index 92%
+rename from example/scalars/models_gen.go
+rename to example/scalars/model/generated.go
+index 4a13829c..39afffeb 100644
+--- a/example/scalars/models_gen.go
++++ b/example/scalars/model/generated.go
+@@ -1,6 +1,6 @@
+ // Code generated by github.com/vektah/gqlgen, DO NOT EDIT.
+ 
+-package scalars
++package model
+ 
+ import (
+ 	external "external"
+diff --git a/example/scalars/model.go b/example/scalars/model/model.go
+similarity index 99%
+rename from example/scalars/model.go
+rename to example/scalars/model/model.go
+index 6c644758..7771affd 100644
+--- a/example/scalars/model.go
++++ b/example/scalars/model/model.go
+@@ -1,4 +1,4 @@
+-package scalars
++package model
+ 
+ import (
+ 	"errors"
+diff --git a/example/scalars/resolvers.go b/example/scalars/resolvers.go
+index bf5cc020..8b45f802 100644
+--- a/example/scalars/resolvers.go
++++ b/example/scalars/resolvers.go
+@@ -4,27 +4,28 @@ package scalars
+ 
+ import (
+ 	context "context"
++	"external"
+ 	"fmt"
+-	"time"
++	time "time"
+ 
+-	"external"
++	"github.com/vektah/gqlgen/example/scalars/model"
+ )
+ 
+ type Resolver struct {
+ }
+ 
+-func (r *Resolver) Query_user(ctx context.Context, id external.ObjectID) (*User, error) {
+-	return &User{
++func (r *Resolver) Query_user(ctx context.Context, id external.ObjectID) (*model.User, error) {
++	return &model.User{
+ 		ID:      id,
+ 		Name:    fmt.Sprintf("Test User %d", id),
+ 		Created: time.Now(),
+-		Address: Address{ID: 1, Location: &Point{1, 2}},
+-		Tier:    TierC,
++		Address: model.Address{ID: 1, Location: &model.Point{1, 2}},
++		Tier:    model.TierC,
+ 	}, nil
+ }
+ 
+-func (r *Resolver) Query_search(ctx context.Context, input SearchArgs) ([]User, error) {
+-	location := Point{1, 2}
++func (r *Resolver) Query_search(ctx context.Context, input model.SearchArgs) ([]model.User, error) {
++	location := model.Point{1, 2}
+ 	if input.Location != nil {
+ 		location = *input.Location
+ 	}
+@@ -34,28 +35,28 @@ func (r *Resolver) Query_search(ctx context.Context, input SearchArgs) ([]User,
+ 		created = *input.CreatedAfter
+ 	}
+ 
+-	return []User{
++	return []model.User{
+ 		{
+ 			ID:      1,
+ 			Name:    "Test User 1",
+ 			Created: created,
+-			Address: Address{ID: 2, Location: &location},
+-			Tier:    TierA,
++			Address: model.Address{ID: 2, Location: &location},
++			Tier:    model.TierA,
+ 		},
+ 		{
+ 			ID:      2,
+ 			Name:    "Test User 2",
+ 			Created: created,
+-			Address: Address{ID: 1, Location: &location},
+-			Tier:    TierC,
++			Address: model.Address{ID: 1, Location: &location},
++			Tier:    model.TierC,
+ 		},
+ 	}, nil
+ }
+ 
+-func (r *Resolver) User_primitiveResolver(ctx context.Context, obj *User) (string, error) {
++func (r *Resolver) User_primitiveResolver(ctx context.Context, obj *model.User) (string, error) {
+ 	return "test", nil
+ }
+ 
+-func (r *Resolver) User_customResolver(ctx context.Context, obj *User) (Point, error) {
+-	return Point{5, 1}, nil
++func (r *Resolver) User_customResolver(ctx context.Context, obj *model.User) (model.Point, error) {
++	return model.Point{5, 1}, nil
+ }

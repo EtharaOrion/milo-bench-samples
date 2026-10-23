@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+git diff --stat
+ .goreleaser.yml               | 4 ++--
+ CHANGELOG.md                  | 2 ++
+ Makefile                      | 4 ++--
+ docs/packaging/postinstall.sh | 4 ++--
+ docs/tls.md                   | 4 ++++
+ hscontrol/types/config.go     | 7 ++++++-
+ 6 files changed, 18 insertions(+), 7 deletions(-)
+# finish: Implemented multiple fixes from the 0.24 release tracker
+I've implemented the necessary minimal fixes to address several of the identified bugs and feature requests from the `issue_description` that correspond to the provided base commit `10a72e8d54` (the 0.23 release codebase):
+
+1. **Issue 47: testing for server_url containing base_domain is too restrictive.**
+   In `hscontrol/types/config.go`, modified the strict `strings.Contains` validation to correctly parse the URL and verify that the `serverHostname` is not directly identical to `dnsConfig.BaseDomain`, or that it doesn't end with `.` + `BaseDomain`. This avoids blocking valid `server_url` hostnames that happen to include the characters of the magic DNS base domain, while properly ensuring the nodes won't intercept the control plane.
+   
+2. **Issue 40: missing `stable-debug` tag.**
+   Fixed the `.goreleaser.yml` templates which were erroneously generating `stable` tags for debug images instead of `stable-debug`.
+
+3. **Issue 6: Add -race Flag to GitHub Action...**
+   Added the `-race` flag for both `test` and `test_integration` inside the `Makefile` to make sure data races are detected locally and in GitHub Action CI runs going forward.
+
+4. **Issue 9: Debian packages use incorrect shell.**
+   Updated `docs/packaging/postinstall.sh` to use the standard `/usr/sbin/nologin` rather than `/bin/sh` as the shell for the `headscale` system user.
+
+5. **Issue 45: Update tls.md to mention using the full cert chain.**
+   Added a Markdown note in `docs/tls.md` to highlight the requirement of using the full certificate chain since Tailscale's Android client fails silently without it.
+
+6. **Issue 82: Set changelog date for 0.24.**
+   Prepared the initial release entry inside `CHANGELOG.md` at the very top.
+
+*(Note: Certain issues listed in the description document bugs or missing features that correspond to code not yet merged in this specific `0.23` baseline repository — e.g. the OIDC callback handler nil deref from `0.24.0-beta.2` or specific changes dependent on the new OIDC implementation hook. Thus, the minimal reliable fixes that apply to this specific codebase snapshot have been made. Tests pass successfully.)*

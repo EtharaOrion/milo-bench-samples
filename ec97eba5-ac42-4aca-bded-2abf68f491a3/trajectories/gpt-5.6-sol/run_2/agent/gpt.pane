@@ -1,0 +1,200 @@
+     ptr = nullptr;
+     pos = nullptr;
+diff --git a/c++/src/kj/async.h b/c++/src/kj/async.h
+index 75d143cb..12a03ee3 100644
+--- a/c++/src/kj/async.h
++++ b/c++/src/kj/async.h
+@@ -643,7 +643,7 @@ public:
+   // happens to this Canceler.
+
+   bool isEmpty() const { return list == nullptr; }
+-  // Indicates if any previously-wrapped promises are still executing. (If this returns false, then
++  // Indicates if no previously-wrapped promises are still executing. (If this returns true, then
+   // cancel() would be a no-op.)
+
+ private:
+diff --git a/c++/src/kj/common.h b/c++/src/kj/common.h
+index 4fc0d9ad..809c6b7b 100644
+--- a/c++/src/kj/common.h
++++ b/c++/src/kj/common.h
+@@ -268,7 +268,15 @@ KJ_NORETURN(void unreachable());
+
+ #define KJ_IASSERT KJ_IREQUIRE
+
++#if __clang__
++#define KJ_UNREACHABLE \
++  _Pragma("clang diagnostic push") \
++  _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") \
++  ::kj::_::unreachable(); \
++  _Pragma("clang diagnostic pop")
++#else
+ #define KJ_UNREACHABLE ::kj::_::unreachable();
++#endif
+ // Put this on code paths that cannot be reached to suppress compiler warnings about missing
+ // returns.
+
+diff --git a/c++/src/kj/compat/http.c++ b/c++/src/kj/compat/http.c++
+index cb2d96cb..1d668381 100644
+--- a/c++/src/kj/compat/http.c++
++++ b/c++/src/kj/compat/http.c++
+@@ -1618,9 +1618,9 @@ struct FastCaseCmp<first, rest...> {
+   static constexpr bool apply(const char* actual) {
+     return
+       'a' <= first && first <= 'z'
+-        ? (*actual | 0x20) == first && FastCaseCmp<rest...>::apply(actual + 1)
++        ? (*actual | 0x20) == (first | 0x20) && FastCaseCmp<rest...>::apply(actual + 1)
+       : 'A' <= first && first <= 'Z'
+-        ? (*actual & ~0x20) == first && FastCaseCmp<rest...>::apply(actual + 1)
++        ? (*actual & ~0x20) == (first & ~0x20) && FastCaseCmp<rest...>::apply(actual + 1)
+         : *actual == first && FastCaseCmp<rest...>::apply(actual + 1);
+   }
+ };
+diff --git a/c++/src/kj/compat/tls.c++ b/c++/src/kj/compat/tls.c++
+index 0b69a184..7478b83c 100644
+--- a/c++/src/kj/compat/tls.c++
++++ b/c++/src/kj/compat/tls.c++
+@@ -185,7 +185,22 @@ public:
+   }
+
+   Promise<void> write(ArrayPtr<const ArrayPtr<const byte>> pieces) override {
+-    return writeInternal(pieces[0], pieces.slice(1, pieces.size()));
++    size_t size = 0;
++    for (auto piece: pieces) {
++      KJ_REQUIRE(piece.size() <= size_t(-1) - size, "write size overflow");
++      size += piece.size();
++    }
++
++    auto buffer = kj::heapArray<byte>(size);
++    byte* pos = buffer.begin();
++    for (auto piece: pieces) {
++      if (piece.size() > 0) {
++        memcpy(pos, piece.begin(), piece.size());
++        pos += piece.size();
++      }
++    }
++
++    return writeInternal(buffer, nullptr).attach(kj::mv(buffer));
+   }
+
+   Promise<void> whenWriteDisconnected() override {
+diff --git a/doc/encoding.md b/doc/encoding.md
+index 068cc3c3..ca744eca 100644
+--- a/doc/encoding.md
++++ b/doc/encoding.md
+@@ -375,6 +375,7 @@ A canonical Cap'n Proto message must adhere to the following rules:
+   then it must be truncated from all structs in the list. (All structs in a struct list must have
+   equal sizes, hence a trailing zero can only be removed if it is zero in all elements.)
+ * Any struct pointer pointing to a zero-sized struct should have an offset of -1.
++* Any list pointer with an element size of zero (C = 0) should have an offset of zero.
+ * Canonical messages are not packed. However, packing can still be applied for transmission
+   purposes; the message must simply be unpacked before checking signatures.
+
+diff --git a/release.sh b/release.sh
+index 57970bfc..b0fef2bb 100755
+--- a/release.sh
++++ b/release.sh
+@@ -177,7 +177,7 @@ case "${1-}:$BRANCH" in
+     declare -a VERSION_ARR=(${RELEASE_VERSION//./ })
+     NEXT_VERSION=${VERSION_ARR[0]}.$((VERSION_ARR[1] + 1))
+
+-    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainlaine"
++    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainline"
+
+     done_banner $RELEASE_VERSION-rc1 "master release-$RELEASE_VERSION" no
+     ;;
+# file_editor: Inspect Array null disposal behavior after empty builder finish
+Here's the result of running `cat -n` on /workspace/capnproto/c++/src/kj/array.h:
+   220	
+   221	  inline bool operator==(decltype(nullptr)) const { return size_ == 0; }
+   222	  inline bool operator!=(decltype(nullptr)) const { return size_ != 0; }
+   223	
+   224	  inline Array& operator=(decltype(nullptr)) {
+   225	    dispose();
+   226	    return *this;
+   227	  }
+   228	
+   229	  inline Array& operator=(Array&& other) {
+   230	    dispose();
+   231	    ptr = other.ptr;
+   232	    size_ = other.size_;
+   233	    disposer = other.disposer;
+   234	    other.ptr = nullptr;
+   235	    other.size_ = 0;
+   236	    return *this;
+   237	  }
+   238	
+   239	  template <typename... Attachments>
+   240	  Array<T> attach(Attachments&&... attachments) KJ_WARN_UNUSED_RESULT;
+   241	  // Like Own<T>::attach(), but attaches to an Array.
+   242	
+   243	private:
+   244	  T* ptr;
+   245	  size_t size_;
+   246	  const ArrayDisposer* disposer;
+   247	
+   248	  inline void dispose() {
+   249	    // Make sure that if an exception is thrown, we are left with a null ptr, so we won't possibly
+   250	    // dispose again.
+# file_editor: Confirm Array only dereferences disposer for non-null storage
+Here's the result of running `cat -n` on /workspace/capnproto/c++/src/kj/array.h:
+   243	private:
+   244	  T* ptr;
+   245	  size_t size_;
+   246	  const ArrayDisposer* disposer;
+   247	
+   248	  inline void dispose() {
+   249	    // Make sure that if an exception is thrown, we are left with a null ptr, so we won't possibly
+   250	    // dispose again.
+   251	    T* ptrCopy = ptr;
+   252	    size_t sizeCopy = size_;
+   253	    if (ptrCopy != nullptr) {
+   254	      ptr = nullptr;
+   255	      size_ = 0;
+   256	      disposer->dispose(ptrCopy, sizeCopy, sizeCopy);
+   257	    }
+   258	  }
+   259	
+   260	  template <typename U>
+   261	  friend class Array;
+   262	  template <typename U>
+   263	  friend class ArrayBuilder;
+   264	};
+   265	
+   266	static_assert(!canMemcpy<Array<char>>(), "canMemcpy<>() is broken");
+   267	
+   268	namespace _ {  // private
+   269	
+   270	class HeapArrayDisposer final: public ArrayDisposer {
+# task_tracker: Mark all implementation and validation tasks complete
+Task list has been updated with 5 item(s).
+# finish: Complete ten fixes and verify full C++ repository test coverage
+Implemented all ten requested fixes without modifying any test files.
+
+### Changes made
+- **TLS writes:** Coalesced vectored TLS writes into one contiguous owned buffer, including empty-vector handling and size-overflow protection.
+- **CMake install paths:** Defined `CAPNP_INCLUDE_DIR` for `capnp_tool` from `CMAKE_INSTALL_FULL_INCLUDEDIR`.
+- **Clang warnings:** Scoped `-Wunreachable-code` suppression to intentional `KJ_UNREACHABLE` sites.
+- **`fastCaseCmp`:** Removed GCC tautological-comparison warnings while preserving case-insensitive behavior.
+- **ArrayBuilder/Vector UBSAN:** Initialized `disposer`, safely finished null builders, and removed null pointer arithmetic from empty-builder operations.
+- **TextCodec errors:** Removed macro-expression garbage and added one-based line/column spans for lexical and semantic parse errors.
+- **HTTP-over-Capnp cancellation:** Corrected the reversed `Canceler::isEmpty()` check and its API documentation.
+- **Typo:** Changed `mainlaine` to `mainline` in `release.sh`.
+- **Canonicalization spec:** Specified offset zero for lists with `C = 0`.
+- **WebSocket-over-RPC:** Enabled RPC cancellation for text sends, data sends, and close operations.
+
+### Verification
+- Full repository build passed.
+- Full configured suites passed:
+  - `kj-tests`: **105 tests**
+  - `kj-heavy-tests`: **381 tests**
+  - `capnp-tests`: **222 tests**
+  - `capnp-heavy-tests`: **167 tests**
+  - Schema evolution fuzzer passed with fixed seed `1784611233`.
+- Manually built unchanged HTTP-over-Capnp suite: **6 tests passed**.
+- Additional build-only WebSocket cancellation checks passed with and without path shortening; the same checks failed against the original cancellation behavior as expected.
+- TLS write-count reproduction confirmed three small vectored writes now produce one underlying encrypted write; the original behavior produced three.
+- UBSAN/GCC reproduction passed for empty `Vector::releaseAsArray()` and `fastCaseCmp` under `-Werror=tautological-compare`.
+- TextCodec multiline error reproduction passed and confirmed clean line/column output.
+- Nonstandard CMake installation successfully compiled a schema importing `/capnp/c++.capnp` without `-I`.
+
+Clang was not installed in the environment, so the Clang-specific pragma path could not be compiled directly; the scoped implementation was reviewed, and the complete GCC build passed. Temporary reproduction and build artifacts were removed, leaving only the ten intended source/configuration/documentation files modified.

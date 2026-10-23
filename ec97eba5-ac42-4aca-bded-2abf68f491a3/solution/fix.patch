@@ -1,0 +1,456 @@
+diff --git a/c++/src/capnp/CMakeLists.txt b/c++/src/capnp/CMakeLists.txt
+index 2969c28f63..a47292b5be 100644
+--- a/c++/src/capnp/CMakeLists.txt
++++ b/c++/src/capnp/CMakeLists.txt
+@@ -168,6 +168,9 @@ if(NOT CAPNP_LITE)
+   set_target_properties(capnp_tool PROPERTIES CAPNP_INCLUDE_DIRECTORY
+     $<JOIN:$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>,$<INSTALL_INTERFACE:${CMAKE_INSTALL_BINDIR}/..>>
+   )
++  set_target_properties(capnp_tool PROPERTIES
++    COMPILE_DEFINITIONS CAPNP_INCLUDE_DIR=\"${CMAKE_INSTALL_FULL_INCLUDEDIR}\"
++  )
+ 
+   add_executable(capnpc_cpp
+     compiler/capnpc-c++.c++
+diff --git a/c++/src/capnp/compat/http-over-capnp.c++ b/c++/src/capnp/compat/http-over-capnp.c++
+index 3160a1d95d..8f1e2a8bd4 100644
+--- a/c++/src/capnp/compat/http-over-capnp.c++
++++ b/c++/src/capnp/compat/http-over-capnp.c++
+@@ -35,18 +35,18 @@ public:
+     tasks.emplace(*this);
+   }
+ 
+-  template <typename T>
+-  kj::Promise<T> wrap(kj::Promise<T>&& promise) {
++  template <typename Func>
++  auto wrap(Func&& func) -> decltype(func()) {
+     if (tasks == nullptr) {
+       return KJ_EXCEPTION(DISCONNECTED, "client canceled HTTP request");
+     } else {
+-      return canceler.wrap(kj::mv(promise));
++      return canceler.wrap(func());
+     }
+   }
+ 
+   void cancel() {
+     if (tasks != nullptr) {
+-      if (canceler.isEmpty()) {
++      if (!canceler.isEmpty()) {
+         canceler.cancel(KJ_EXCEPTION(DISCONNECTED, "request canceled"));
+       }
+       tasks = nullptr;
+@@ -123,14 +123,14 @@ public:
+   }
+ 
+   kj::Promise<void> sendText(SendTextContext context) override {
+-    return state->wrap(webSocket.send(context.getParams().getText()));
++    return state->wrap([&]() { return webSocket.send(context.getParams().getText()); });
+   }
+   kj::Promise<void> sendData(SendDataContext context) override {
+-    return state->wrap(webSocket.send(context.getParams().getData()));
++    return state->wrap([&]() { return webSocket.send(context.getParams().getData()); });
+   }
+   kj::Promise<void> close(CloseContext context) override {
+     auto params = context.getParams();
+-    return state->wrap(webSocket.close(params.getCode(), params.getReason()));
++    return state->wrap([&]() { return webSocket.close(params.getCode(), params.getReason()); });
+   }
+ 
+ private:
+diff --git a/c++/src/capnp/layout.c++ b/c++/src/capnp/layout.c++
+index 39cffa38c4..8158945fff 100644
+--- a/c++/src/capnp/layout.c++
++++ b/c++/src/capnp/layout.c++
+@@ -34,7 +34,7 @@ namespace capnp {
+ namespace _ {  // private
+ 
+ #if !CAPNP_LITE
+-static BrokenCapFactory* brokenCapFactory = nullptr;
++static BrokenCapFactory* globalBrokenCapFactory = nullptr;
+ // Horrible hack:  We need to be able to construct broken caps without any capability context,
+ // but we can't have a link-time dependency on libcapnp-rpc.
+ 
+@@ -42,14 +42,24 @@ void setGlobalBrokenCapFactoryForLayoutCpp(BrokenCapFactory& factory) {
+   // Called from capability.c++ when the capability API is used, to make sure that layout.c++
+   // is ready for it.  May be called multiple times but always with the same value.
+ #if __GNUC__ || defined(__clang__)
+-  __atomic_store_n(&brokenCapFactory, &factory, __ATOMIC_RELAXED);
++  __atomic_store_n(&globalBrokenCapFactory, &factory, __ATOMIC_RELAXED);
+ #elif _MSC_VER
+-  *static_cast<BrokenCapFactory* volatile*>(&brokenCapFactory) = &factory;
++  *static_cast<BrokenCapFactory* volatile*>(&globalBrokenCapFactory) = &factory;
+ #else
+ #error "Platform not supported"
+ #endif
+ }
+ 
++static BrokenCapFactory* readGlobalBrokenCapFactoryForLayoutCpp() {
++#if __GNUC__ || defined(__clang__)
++  // Thread-sanitizer doesn't have the right information to know this is safe without doing an
++  // atomic read. https://groups.google.com/g/capnproto/c/634juhn5ap0/m/pyRiwWl1AAAJ
++  return __atomic_load_n(&globalBrokenCapFactory, __ATOMIC_RELAXED);
++#else
++  return globalBrokenCapFactory;
++#endif
++}
++
+ }  // namespace _ (private)
+ 
+ const uint ClientHook::NULL_CAPABILITY_BRAND = 0;
+@@ -2185,6 +2195,8 @@ struct WireHelpers {
+       const WirePointer* ref, int nestingLimit)) {
+     kj::Maybe<kj::Own<ClientHook>> maybeCap;
+ 
++    auto brokenCapFactory = readGlobalBrokenCapFactoryForLayoutCpp();
++
+     KJ_REQUIRE(brokenCapFactory != nullptr,
+                "Trying to read capabilities without ever having created a capability context.  "
+                "To read capabilities from a message, you must imbue it with CapReaderContext, or "
+diff --git a/c++/src/capnp/serialize-text.c++ b/c++/src/capnp/serialize-text.c++
+index 738005f258..ac67880974 100644
+--- a/c++/src/capnp/serialize-text.c++
++++ b/c++/src/capnp/serialize-text.c++
+@@ -29,16 +29,36 @@
+ #include "compiler/node-translator.h"
+ #include "compiler/parser.h"
+ 
++namespace capnp {
++
+ namespace {
+ 
+ class ThrowingErrorReporter final: public capnp::compiler::ErrorReporter {
+   // Throws all errors as assertion failures.
+ public:
++  ThrowingErrorReporter(kj::StringPtr input): input(input) {}
++
+   void addError(uint32_t startByte, uint32_t endByte, kj::StringPtr message) override {
+-    KJ_FAIL_REQUIRE(kj::str(message, " (", startByte, ":", endByte, ")."));
++    // Note: Line and column numbers are usually 1-based.
++    uint line = 1;
++    uint32_t lineStart = 0;
++    for (auto i: kj::zeroTo(startByte)) {
++      if (input[i] == '\n') {
++        ++line;
++        lineStart = i;  // Omit +1 so that column is 1-based.
++      }
++    }
++
++    kj::throwRecoverableException(kj::Exception(
++      kj::Exception::Type::FAILED, "(capnp text input)", line,
++      kj::str(startByte - lineStart, "-", endByte - lineStart, ": ", message)
++    ));
+   }
+ 
+   bool hadErrors() override { return false; }
++
++private:
++  kj::StringPtr input;
+ };
+ 
+ class ExternalResolver final: public capnp::compiler::ValueTranslator::Resolver {
+@@ -59,7 +79,7 @@ template <typename Function>
+ void lexAndParseExpression(kj::StringPtr input, Function f) {
+   // Parses a single expression from the input and calls `f(expression)`.
+ 
+-  ThrowingErrorReporter errorReporter;
++  ThrowingErrorReporter errorReporter(input);
+ 
+   capnp::MallocMessageBuilder tokenArena;
+   auto lexedTokens = tokenArena.initRoot<capnp::compiler::LexedTokens>();
+@@ -90,8 +110,6 @@ void lexAndParseExpression(kj::StringPtr input, Function f) {
+ 
+ }  // namespace
+ 
+-namespace capnp {
+-
+ TextCodec::TextCodec() : prettyPrint(false) {}
+ TextCodec::~TextCodec() noexcept(true) {}
+ 
+@@ -112,10 +130,10 @@ kj::String TextCodec::encode(DynamicValue::Reader value) const {
+ }
+ 
+ void TextCodec::decode(kj::StringPtr input, DynamicStruct::Builder output) const {
+-  lexAndParseExpression(input, [&output](compiler::Expression::Reader expression) {
++  lexAndParseExpression(input, [&](compiler::Expression::Reader expression) {
+     KJ_REQUIRE(expression.isTuple(), "Input does not contain a struct.");
+ 
+-    ThrowingErrorReporter errorReporter;
++    ThrowingErrorReporter errorReporter(input);
+     ExternalResolver nullResolver;
+ 
+     Orphanage orphanage = Orphanage::getForMessageContaining(output);
+@@ -126,9 +144,9 @@ void TextCodec::decode(kj::StringPtr input, DynamicStruct::Builder output) const
+ 
+ Orphan<DynamicValue> TextCodec::decode(kj::StringPtr input, Type type, Orphanage orphanage) const {
+   Orphan<DynamicValue> output;
+-  
+-  lexAndParseExpression(input, [&type, &orphanage, &output](compiler::Expression::Reader expression) {
+-    ThrowingErrorReporter errorReporter;
++
++  lexAndParseExpression(input, [&](compiler::Expression::Reader expression) {
++    ThrowingErrorReporter errorReporter(input);
+     ExternalResolver nullResolver;
+ 
+     compiler::ValueTranslator translator(nullResolver, errorReporter, orphanage);
+@@ -138,7 +156,7 @@ Orphan<DynamicValue> TextCodec::decode(kj::StringPtr input, Type type, Orphanage
+       // An error should have already been given to the errorReporter.
+     }
+   });
+-  
++
+   return output;
+ }
+ 
+diff --git a/c++/src/kj/array.h b/c++/src/kj/array.h
+index 6d1972589a..a697a7e6ff 100644
+--- a/c++/src/kj/array.h
++++ b/c++/src/kj/array.h
+@@ -484,7 +484,7 @@ class ArrayBuilder {
+   T* ptr;
+   RemoveConst<T>* pos;
+   T* endPtr;
+-  const ArrayDisposer* disposer;
++  const ArrayDisposer* disposer = &NullArrayDisposer::instance;
+ 
+   inline void dispose() {
+     // Make sure that if an exception is thrown, we are left with a null ptr, so we won't possibly
+diff --git a/c++/src/kj/async-io-unix.c++ b/c++/src/kj/async-io-unix.c++
+index 94aeaea6c8..c304202cec 100644
+--- a/c++/src/kj/async-io-unix.c++
++++ b/c++/src/kj/async-io-unix.c++
+@@ -1110,6 +1110,7 @@ public:
+         KJ_SYSCALL_HANDLE_ERRORS(::setsockopt(
+               ownFd.get(), IPPROTO_TCP, TCP_NODELAY, (char*)&one, sizeof(one))) {
+           case EOPNOTSUPP:
++          case ENOPROTOOPT: // (returned for AF_UNIX in cygwin)
+             break;
+           default:
+             KJ_FAIL_SYSCALL("setsocketopt(IPPROTO_TCP, TCP_NODELAY)", error);
+diff --git a/c++/src/kj/async.h b/c++/src/kj/async.h
+index 75d143cb98..71b6ea5768 100644
+--- a/c++/src/kj/async.h
++++ b/c++/src/kj/async.h
+@@ -643,7 +643,7 @@ class Canceler {
+   // happens to this Canceler.
+ 
+   bool isEmpty() const { return list == nullptr; }
+-  // Indicates if any previously-wrapped promises are still executing. (If this returns false, then
++  // Indicates if any previously-wrapped promises are still executing. (If this returns true, then
+   // cancel() would be a no-op.)
+ 
+ private:
+diff --git a/c++/src/kj/common.c++ b/c++/src/kj/common.c++
+index 7d87587112..ca50a5d806 100644
+--- a/c++/src/kj/common.c++
++++ b/c++/src/kj/common.c++
+@@ -44,7 +44,7 @@ void unreachable() {
+   KJ_FAIL_ASSERT("Supposedly-unreachable branch executed.");
+ 
+   // Really make sure we abort.
+-  abort();
++  KJ_KNOWN_UNREACHABLE(abort());
+ }
+ 
+ }  // namespace _ (private)
+diff --git a/c++/src/kj/common.h b/c++/src/kj/common.h
+index 4fc0d9ad0b..a2f2d64d91 100644
+--- a/c++/src/kj/common.h
++++ b/c++/src/kj/common.h
+@@ -278,6 +278,20 @@ KJ_NORETURN(void unreachable());
+ #define KJ_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT KJ_UNREACHABLE
+ #endif
+ 
++#if __clang__
++#define KJ_KNOWN_UNREACHABLE(code) \
++    do { \
++      _Pragma("clang diagnostic push") \
++      _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") \
++      code; \
++      _Pragma("clang diagnostic pop") \
++    } while (false)
++// Suppress "unreachable code" warnings on intentionally unreachable code.
++#else
++// TODO(someday): Add support for non-clang compilers.
++#define KJ_KNOWN_UNREACHABLE(code) do {code;} while(false)
++#endif
++
+ // #define KJ_STACK_ARRAY(type, name, size, minStack, maxStack)
+ //
+ // Allocate an array, preferably on the stack, unless it is too big.  On GCC this will use
+diff --git a/c++/src/kj/compat/http.c++ b/c++/src/kj/compat/http.c++
+index cb2d96cb4c..d66ed9fe64 100644
+--- a/c++/src/kj/compat/http.c++
++++ b/c++/src/kj/compat/http.c++
+@@ -1617,10 +1617,8 @@ template <char first, char... rest>
+ struct FastCaseCmp<first, rest...> {
+   static constexpr bool apply(const char* actual) {
+     return
+-      'a' <= first && first <= 'z'
+-        ? (*actual | 0x20) == first && FastCaseCmp<rest...>::apply(actual + 1)
+-      : 'A' <= first && first <= 'Z'
+-        ? (*actual & ~0x20) == first && FastCaseCmp<rest...>::apply(actual + 1)
++      ('a' <= first && first <= 'z') || ('A' <= first && first <= 'Z')
++        ? (*actual | 0x20) == (first | 0x20) && FastCaseCmp<rest...>::apply(actual + 1)
+         : *actual == first && FastCaseCmp<rest...>::apply(actual + 1);
+   }
+ };
+diff --git a/c++/src/kj/compat/readiness-io.c++ b/c++/src/kj/compat/readiness-io.c++
+index 43ae44a070..ca85feba35 100644
+--- a/c++/src/kj/compat/readiness-io.c++
++++ b/c++/src/kj/compat/readiness-io.c++
+@@ -96,7 +96,7 @@ kj::Maybe<size_t> ReadyOutputStreamWrapper::write(kj::ArrayPtr<const byte> data)
+ 
+   filled += result;
+ 
+-  if (!isPumping) {
++  if (!isPumping && (!corked || filled == sizeof(buffer))) {
+     isPumping = true;
+     pumpTask = kj::evalNow([&]() {
+       return pump();
+@@ -110,6 +110,21 @@ kj::Promise<void> ReadyOutputStreamWrapper::whenReady() {
+   return pumpTask.addBranch();
+ }
+ 
++ReadyOutputStreamWrapper::Cork ReadyOutputStreamWrapper::cork() {
++  corked = true;
++  return Cork(*this);
++}
++
++void ReadyOutputStreamWrapper::uncork() {
++  corked = false;
++  if (!isPumping && filled > 0) {
++    isPumping = true;
++    pumpTask = kj::evalNow([&]() {
++      return pump();
++    }).fork();
++  }
++}
++
+ kj::Promise<void> ReadyOutputStreamWrapper::pump() {
+   uint oldFilled = filled;
+   uint end = start + filled;
+@@ -132,6 +147,9 @@ kj::Promise<void> ReadyOutputStreamWrapper::pump() {
+       return pump();
+     } else {
+       isPumping = false;
++      // As a small optimization, reset to the start of the buffer when it's empty so we can provide
++      // the underlying layer just one contiguous chunk of memory instead of two when possible.
++      start = 0;
+       return kj::READY_NOW;
+     }
+   });
+diff --git a/c++/src/kj/compat/readiness-io.h b/c++/src/kj/compat/readiness-io.h
+index 1c026574af..d55d8474b0 100644
+--- a/c++/src/kj/compat/readiness-io.h
++++ b/c++/src/kj/compat/readiness-io.h
+@@ -71,19 +71,54 @@ class ReadyOutputStreamWrapper {
+   kj::Promise<void> whenReady();
+   // Returns a promise that resolves when write() will return non-null.
+ 
++  class Cork;
++  // An object that, when destructed, will uncork its parent stream.
++
++  Cork cork();
++  // After calling, data won't be pumped until either the internal buffer fills up or the returned
++  // object is destructed. Use this if you know multiple small write() calls will be happening in
++  // the near future and want to flush them all at once.
++  // Once the returned object is destructed, behavior goes back to normal. The returned object
++  // must be destructed before the ReadyOutputStreamWrapper.
++  // TODO(perf): This is an ugly hack to avoid sending lots of tiny packets when using TLS, which
++  // has to work around OpenSSL's readiness-based I/O layer. We could certainly do better here.
++
+ private:
+   AsyncOutputStream& output;
+   ArrayPtr<const byte> segments[2];
+   kj::ForkedPromise<void> pumpTask = nullptr;
+   bool isPumping = false;
++  bool corked = false;
+ 
+   uint start = 0;   // index of first byte
+   uint filled = 0;  // number of bytes currently in buffer
+ 
+   byte buffer[8192];
+ 
++  void uncork();
++
+   kj::Promise<void> pump();
+   // Asynchronously push the buffer out to the underlying stream.
+ };
+ 
++class ReadyOutputStreamWrapper::Cork {
++  // An object that, when destructed, will uncork its parent stream.
++public:
++  ~Cork() {
++    KJ_IF_MAYBE(p, parent) {
++      p->uncork();
++    }
++  }
++  Cork(Cork&& other) : parent(kj::mv(other.parent)) {
++    other.parent = nullptr;
++  }
++  KJ_DISALLOW_COPY(Cork);
++
++private:
++  Cork(ReadyOutputStreamWrapper& parent) : parent(parent) {}
++
++  kj::Maybe<ReadyOutputStreamWrapper&> parent;
++  friend class ReadyOutputStreamWrapper;
++};
++
+ } // namespace kj
+diff --git a/c++/src/kj/compat/tls.c++ b/c++/src/kj/compat/tls.c++
+index 0b69a18439..1a44203610 100644
+--- a/c++/src/kj/compat/tls.c++
++++ b/c++/src/kj/compat/tls.c++
+@@ -185,7 +185,8 @@ public:
+   }
+ 
+   Promise<void> write(ArrayPtr<const ArrayPtr<const byte>> pieces) override {
+-    return writeInternal(pieces[0], pieces.slice(1, pieces.size()));
++    auto cork = writeBuffer.cork();
++    return writeInternal(pieces[0], pieces.slice(1, pieces.size())).attach(kj::mv(cork));
+   }
+ 
+   Promise<void> whenWriteDisconnected() override {
+diff --git a/c++/src/kj/debug.c++ b/c++/src/kj/debug.c++
+index 4fc1e47b04..087bc0f3d2 100644
+--- a/c++/src/kj/debug.c++
++++ b/c++/src/kj/debug.c++
+@@ -340,7 +340,7 @@ void Debug::Fault::fatal() {
+   delete exception;
+   exception = nullptr;
+   throwFatalException(mv(copy), 2);
+-  abort();
++  KJ_KNOWN_UNREACHABLE(abort());
+ }
+ 
+ void Debug::Fault::init(
+diff --git a/doc/encoding.md b/doc/encoding.md
+index 068cc3c3b4..5eeba8fa31 100644
+--- a/doc/encoding.md
++++ b/doc/encoding.md
+@@ -374,7 +374,10 @@ A canonical Cap'n Proto message must adhere to the following rules:
+ * Similarly, for a struct list, if a trailing word in a section of all structs in the list is zero,
+   then it must be truncated from all structs in the list. (All structs in a struct list must have
+   equal sizes, hence a trailing zero can only be removed if it is zero in all elements.)
+-* Any struct pointer pointing to a zero-sized struct should have an offset of -1.
++* Any struct pointer pointing to a zero-sized struct should have an
++  offset of -1.
++  * Note that this applies _only_ to structs; other zero-sized values should have offsets
++    allocated in preorder, as normal.
+ * Canonical messages are not packed. However, packing can still be applied for transmission
+   purposes; the message must simply be unpacked before checking signatures.
+ 
+diff --git a/release.sh b/release.sh
+index 57970bfcb2..b0fef2bb29 100755
+--- a/release.sh
++++ b/release.sh
+@@ -177,7 +177,7 @@ case "${1-}:$BRANCH" in
+     declare -a VERSION_ARR=(${RELEASE_VERSION//./ })
+     NEXT_VERSION=${VERSION_ARR[0]}.$((VERSION_ARR[1] + 1))
+ 
+-    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainlaine"
++    update_version $HEAD_VERSION $NEXT_VERSION-dev "mainline"
+ 
+     done_banner $RELEASE_VERSION-rc1 "master release-$RELEASE_VERSION" no
+     ;;

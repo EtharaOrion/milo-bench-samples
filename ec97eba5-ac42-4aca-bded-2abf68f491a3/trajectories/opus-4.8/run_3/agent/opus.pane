@@ -1,0 +1,200 @@
+./src/capnp/libcapnpc.a
+$ cd /workspace/capnproto/c++/src && g++ -std=c++14 -I. -I../build \
+$   capnp/compat/http-over-capnp-test.c++ \
+$   capnp/compat/http-over-capnp.c++ \
+$   capnp/compat/http-over-capnp.capnp.c++ \
+$   capnp/compat/byte-stream.c++ \
+$   capnp/compat/byte-stream.capnp.c++ \
+$   -L../build/src/capnp -L../build/src/kj \
+$   -lcapnp-rpc -lcapnp-json -lcapnp -lkj-http -lkj-async -lkj-test -lkj -lz -lpthread \
+$   -o /tmp/hoc-test 2>&1 | head -30; echo "build exit=$?"
+build exit=0
+$ cd /workspace/capnproto/c++/src && /tmp/hoc-test 2>&1 | tail -25; echo "exit=$?"
+[ TEST ] http-over-capnp-test.c++:28: KJ and RPC HTTP method enums match
+[ PASS ] http-over-capnp-test.c++:28: KJ and RPC HTTP method enums match (2 μs)
+[ TEST ] http-over-capnp-test.c++:397: HTTP-over-Cap'n-Proto E2E, no path shortening
+[ PASS ] http-over-capnp-test.c++:397: HTTP-over-Cap'n-Proto E2E, no path shortening (2469 μs)
+[ TEST ] http-over-capnp-test.c++:412: HTTP-over-Cap'n-Proto E2E, with path shortening
+[ PASS ] http-over-capnp-test.c++:412: HTTP-over-Cap'n-Proto E2E, with path shortening (1881 μs)
+[ TEST ] http-over-capnp-test.c++:425: HTTP-over-Cap'n-Proto 205 bug with HttpClientAdapter
+[ PASS ] http-over-capnp-test.c++:425: HTTP-over-Cap'n-Proto 205 bug with HttpClientAdapter (219 μs)
+[ TEST ] http-over-capnp-test.c++:568: HTTP-over-Cap'n Proto WebSocket, no path shortening
+[ PASS ] http-over-capnp-test.c++:568: HTTP-over-Cap'n Proto WebSocket, no path shortening (359 μs)
+[ TEST ] http-over-capnp-test.c++:582: HTTP-over-Cap'n Proto WebSocket, with path shortening
+[ PASS ] http-over-capnp-test.c++:582: HTTP-over-Cap'n Proto WebSocket, with path shortening (229 μs)
+6 test(s) passed
+exit=0
+$ cd /workspace/capnproto/c++/src && rm -f capnp/compat/http-over-capnp.capnp.c++ capnp/compat/http-over-capnp.capnp.h capnp/compat/byte-stream.capnp.c++ capnp/compat/byte-stream.capnp.h /tmp/hoc-test /tmp/repro /tmp/repro.c++ /tmp/t4 /tmp/t4.c++ && cd /workspace/capnproto && git status --short
+M c++/cmake/CapnProtoConfig.cmake.in
+ M c++/src/capnp/compat/http-over-capnp.c++
+ M c++/src/capnp/serialize-text.c++
+ M c++/src/kj/array.h
+ M c++/src/kj/async.h
+ M c++/src/kj/common.h
+ M c++/src/kj/compat/http.c++
+ M c++/src/kj/compat/readiness-io.c++
+ M doc/encoding.md
+ M release.sh
+?? c++/build/
+$ cd /workspace/capnproto && git --no-pager diff c++/src/capnp/serialize-text.c++ c++/src/kj/common.h c++/src/kj/async.h c++/src/capnp/compat/http-over-capnp.c++
+diff --git a/c++/src/capnp/compat/http-over-capnp.c++ b/c++/src/capnp/compat/http-over-capnp.c++
+index 3160a1d9..632be349 100644
+--- a/c++/src/capnp/compat/http-over-capnp.c++
++++ b/c++/src/capnp/compat/http-over-capnp.c++
+@@ -46,7 +46,7 @@ public:
+
+   void cancel() {
+     if (tasks != nullptr) {
+-      if (canceler.isEmpty()) {
++      if (!canceler.isEmpty()) {
+         canceler.cancel(KJ_EXCEPTION(DISCONNECTED, "request canceled"));
+       }
+       tasks = nullptr;
+@@ -123,12 +123,17 @@ public:
+   }
+
+   kj::Promise<void> sendText(SendTextContext context) override {
++    // Check for cancellation before touching `webSocket`, because if the request was canceled then
++    // the underlying WebSocket has already been destroyed and `webSocket` is a dangling reference.
++    state->assertNotCanceled();
+     return state->wrap(webSocket.send(context.getParams().getText()));
+   }
+   kj::Promise<void> sendData(SendDataContext context) override {
++    state->assertNotCanceled();
+     return state->wrap(webSocket.send(context.getParams().getData()));
+   }
+   kj::Promise<void> close(CloseContext context) override {
++    state->assertNotCanceled();
+     auto params = context.getParams();
+     return state->wrap(webSocket.close(params.getCode(), params.getReason()));
+   }
+diff --git a/c++/src/capnp/serialize-text.c++ b/c++/src/capnp/serialize-text.c++
+index 738005f2..383e28ba 100644
+--- a/c++/src/capnp/serialize-text.c++
++++ b/c++/src/capnp/serialize-text.c++
+@@ -32,13 +32,33 @@
+ namespace {
+
+ class ThrowingErrorReporter final: public capnp::compiler::ErrorReporter {
+-  // Throws all errors as assertion failures.
++  // Throws all errors as exceptions.
+ public:
++  ThrowingErrorReporter(kj::StringPtr input): input(input) {}
++
+   void addError(uint32_t startByte, uint32_t endByte, kj::StringPtr message) override {
+-    KJ_FAIL_REQUIRE(kj::str(message, " (", startByte, ":", endByte, ")."));
++    // Compute 1-based line and column numbers for the start of the error, which is usually more
++    // useful to a human than a raw byte offset.
++    uint32_t line = 1;
++    uint32_t column = 1;
++    for (uint32_t i = 0; i < startByte && i < input.size(); i++) {
++      if (input[i] == '\n') {
++        ++line;
++        column = 1;
++      } else {
++        ++column;
++      }
++    }
++
++    kj::throwFatalException(kj::Exception(
++        kj::Exception::Type::FAILED, __FILE__, __LINE__,
++        kj::str(line, ":", column, ": ", message)));
+   }
+
+   bool hadErrors() override { return false; }
++
++private:
++  kj::StringPtr input;
+ };
+
+ class ExternalResolver final: public capnp::compiler::ValueTranslator::Resolver {
+@@ -59,7 +79,7 @@ template <typename Function>
+ void lexAndParseExpression(kj::StringPtr input, Function f) {
+   // Parses a single expression from the input and calls `f(expression)`.
+
+-  ThrowingErrorReporter errorReporter;
++  ThrowingErrorReporter errorReporter(input);
+
+   capnp::MallocMessageBuilder tokenArena;
+   auto lexedTokens = tokenArena.initRoot<capnp::compiler::LexedTokens>();
+@@ -112,10 +132,10 @@ kj::String TextCodec::encode(DynamicValue::Reader value) const {
+ }
+
+ void TextCodec::decode(kj::StringPtr input, DynamicStruct::Builder output) const {
+-  lexAndParseExpression(input, [&output](compiler::Expression::Reader expression) {
++  lexAndParseExpression(input, [input, &output](compiler::Expression::Reader expression) {
+     KJ_REQUIRE(expression.isTuple(), "Input does not contain a struct.");
+
+-    ThrowingErrorReporter errorReporter;
++    ThrowingErrorReporter errorReporter(input);
+     ExternalResolver nullResolver;
+
+     Orphanage orphanage = Orphanage::getForMessageContaining(output);
+@@ -127,8 +147,9 @@ void TextCodec::decode(kj::StringPtr input, DynamicStruct::Builder output) const
+ Orphan<DynamicValue> TextCodec::decode(kj::StringPtr input, Type type, Orphanage orphanage) const {
+   Orphan<DynamicValue> output;
+
+-  lexAndParseExpression(input, [&type, &orphanage, &output](compiler::Expression::Reader expression) {
+-    ThrowingErrorReporter errorReporter;
++  lexAndParseExpression(input, [input, &type, &orphanage, &output]
++      (compiler::Expression::Reader expression) {
++    ThrowingErrorReporter errorReporter(input);
+     ExternalResolver nullResolver;
+
+     compiler::ValueTranslator translator(nullResolver, errorReporter, orphanage);
+diff --git a/c++/src/kj/async.h b/c++/src/kj/async.h
+index 75d143cb..205b35a9 100644
+--- a/c++/src/kj/async.h
++++ b/c++/src/kj/async.h
+@@ -643,7 +643,7 @@ public:
+   // happens to this Canceler.
+
+   bool isEmpty() const { return list == nullptr; }
+-  // Indicates if any previously-wrapped promises are still executing. (If this returns false, then
++  // Indicates that no previously-wrapped promises are still executing. (If this returns true, then
+   // cancel() would be a no-op.)
+
+ private:
+diff --git a/c++/src/kj/common.h b/c++/src/kj/common.h
+index 4fc0d9ad..92a31ee3 100644
+--- a/c++/src/kj/common.h
++++ b/c++/src/kj/common.h
+@@ -268,7 +268,19 @@ KJ_NORETURN(void unreachable());
+
+ #define KJ_IASSERT KJ_IREQUIRE
+
++#if __clang__
++#define KJ_UNREACHABLE \
++  _Pragma("clang diagnostic push") \
++  _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") \
++  ::kj::_::unreachable(); \
++  _Pragma("clang diagnostic pop")
++// Clang, when compiled with -Wunreachable-code, complains about the unreachable() call placed on
++// code paths that are known to be unreachable (e.g. after a switch that handles all enum values).
++// That's exactly the point of KJ_UNREACHABLE, so suppress the warning at these known-unreachable
++// locations.
++#else
+ #define KJ_UNREACHABLE ::kj::_::unreachable();
++#endif
+ // Put this on code paths that cannot be reached to suppress compiler warnings about missing
+ // returns.
+Task list has been updated with 11 item(s).
+# finish: Completed all 10 issue fixes with tests passing
+I implemented fixes for all 10 issues described and verified them by building the `kj`/`capnp` libraries and running the relevant test suites. All tests pass: **kj-tests (105)**, **kj-heavy-tests (381)**, **capnp-tests (222)**, **capnp-heavy-tests (167)** (incl. serialize-text-test), and **http-over-capnp-test (6, incl. WebSocket tests)**.
+
+## Changes by issue
+
+| # | Issue | File(s) | Fix |
+|---|-------|---------|-----|
+| **1** (#1069) | Combine small writes in TLS layer | `c++/src/kj/compat/readiness-io.c++` | `ReadyOutputStreamWrapper::write` now defers the pump with `evalLater` instead of `evalNow`, so the several BIO writes OpenSSL emits for one TLS record buffer together into a single underlying write. |
+| **2** (#1071) | Expose include dir to non-cmake consumers | `c++/cmake/CapnProtoConfig.cmake.in` | Added `set(CAPNP_INCLUDE_DIR ...)`. |
+| **3** (#1072) | clang `-Wunreachable-code` noise | `c++/src/kj/common.h` | `KJ_UNREACHABLE` wraps the `unreachable()` call in clang `_Pragma` push/ignore/pop (gcc path unchanged). |
+| **4** (#1073) | gcc `-Wtautological-compare` in `fastCaseCmp` | `c++/src/kj/compat/http.c++` | Moved the per-character comparison into a non-template `fastCaseCmpChar(actual, expected)` so `expected` is a runtime argument; the dead branch is no longer constant-folded into a tautology. Verified compiles clean under `-Wtautological-compare -Werror`. |
+| **5** (#1079) | UBSAN/null disposer in `ArrayBuilder` for empty arrays | `c++/src/kj/array.h` | Initialize `disposer` to `nullptr` in both default `ArrayBuilder` constructors; added an `Array` constructor accepting a possibly-null disposer pointer and made `finish()` use it, so producing an empty `Array` no longer dereferences a null disposer. Verified with a UBSAN reproduction. |
+| **6** (#1082) | `TextCodec` parse-error formatting garbage | `c++/src/capnp/serialize-text.c++` | Replaced `KJ_FAIL_REQUIRE(kj::str(...))` (which leaked the source-expression text into the message) with a directly-thrown exception, now reporting a friendly `line:column` computed from the input. |
+| **7** (#1083) | Inverted `canceler.isEmpty()` check + reversed doc | `c++/src/capnp/compat/http-over-capnp.c++`, `c++/src/kj/async.h` | `if (canceler.isEmpty())` → `if (!canceler.isEmpty())`; corrected the `isEmpty()` doc comment. |
+| **8** (#1088) | Typo | `release.sh` | `mainlaine` → `mainline`. |
+| **9** (#1085) | Canonicalization spec gap for C=0 lists | `doc/encoding.md` | Documented that pointers to zero-sized lists should use an offset of -1. |
+| **10** (#1091) | WebSocket-over-RPC cancellation logic | `c++/src/capnp/compat/http-over-capnp.c++` | Added `state->assertNotCanceled()` to `sendText`/`sendData`/`close` so a message arriving after the request was canceled no longer dereferences the already-destroyed `webSocket` reference (use-after-free); it now cleanly returns DISCONNECTED. All WebSocket tests still pass. |
+
+Generated schema headers used only to compile/verify `http-over-capnp.c++` were removed; only source/doc/cmake files are modified.

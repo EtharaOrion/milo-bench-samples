@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--- check base has same vet errors ---
+
+func validateNameCustomMsg(c *context, set nameSet, name common.Ident, rule string, msg func() string) {
+        if loc, ok := set[name.Name]; ok {
+                c.addErrMultiLoc([]errors.Location{loc, name.Loc}, rule, msg())
+                return
+        }
+===
+3:                              sendErrorf(w, http.StatusBadRequest, "json body could not be decoded: "+err.Error())
+26:                     sendErrorf(w, http.StatusUnprocessableEntity, err.Error())
+36:                             sendErrorf(w, http.StatusUnprocessableEntity, userErr.Error())
+$ cd /workspace/gqlgen && git stash pop && git status --short
+Not currently on any branch.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   codegen/build.go
+        modified:   codegen/import_build.go
+        modified:   codegen/type_build.go
+        modified:   codegen/util.go
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (e8cb6a3e442e5ddabaf7ba88559daba32dc9b716)
+ M codegen/build.go
+ M codegen/import_build.go
+ M codegen/type_build.go
+ M codegen/util.go
+$ cd /go/src/github.com/vektah/gqlgen && GO111MODULE=off go test ./codegen/... ./example/scalars/... 2>&1 | tail -8
+ok      github.com/vektah/gqlgen/codegen        8.679s
+ok      github.com/vektah/gqlgen/codegen/templates      (cached)
+?       github.com/vektah/gqlgen/codegen/templates/inliner      [no test files]
+ok      github.com/vektah/gqlgen/example/scalars        (cached)
+?       github.com/vektah/gqlgen/example/scalars/server [no test files]
+$ cd /workspace/gqlgen && rm -rf vendor && rm -f /go/src/github.com/vektah/gqlgen && rmdir /go/src/github.com/vektah 2>/dev/null; ls /go/src/github.com/ 2>/dev/null; echo "--- final git status ---"; cd /workspace/gqlgen && git status --short
+--- final git status ---
+ M codegen/build.go
+ M codegen/import_build.go
+ M codegen/type_build.go
+ M codegen/util.go
+$ cd /workspace/gqlgen && GO111MODULE=on go build ./codegen/... 2>&1 | head; echo "build exit $?"; GO111MODULE=on go vet ./codegen/ 2>&1 | head; echo "vet exit $?"
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/vektah: permission denied
+build exit 0
+vet exit 0
+# task_tracker: Mark all tasks complete
+Task list has been updated with 6 item(s).
+$ cd /workspace/gqlgen && GO111MODULE=on go build ./codegen/... ./... 2>&1 | grep -v "permission denied\|writing stat cache" | head; echo "build done"; git --no-pager diff --stat
+example/scalars/generated.go:8:2: package external is not in std (/usr/local/go/src/external)
+test/generated.go:8:2: package remote_api is not in std (/usr/local/go/src/remote_api)
+build done
+ codegen/build.go        | 19 +++++++++++++++----
+ codegen/import_build.go | 26 ++++++++++++++++----------
+ codegen/type_build.go   |  9 +++++++--
+ codegen/util.go         |  2 +-
+ 4 files changed, 39 insertions(+), 17 deletions(-)
+# finish: Completed fix for issues #170 and #180
+## Summary
+
+I resolved both issues described in the report by making `codegen` propagate import-resolution errors instead of panicking, and fixing a latent build/vet issue.
+
+### Root cause
+- **Issue #170 (panics in package main / mysterious "example" package):** I reproduced the exact panic. A typemap value such as `example.com/foo-bar` is parsed by `pkgAndType` into package `example` + type `com/foo-bar` (the dot in the domain is the type separator), so `build.Default.Import("example", ...)` fails. The code then called `panic(err)` directly inside `(*Imports).add`, crashing the CLI on bad input.
+- **Issue #180 (custom scalar marshallers in external packages):** The same `panic`-instead-of-`error` path was hit while resolving the package of a custom marshaller's parameter type (`bindTypes` → `imports.add`). Proper error propagation makes external-package marshaller resolution robust.
+
+### Changes (all in `codegen/`)
+1. **`import_build.go`** — `(*Imports).add` and `buildImports` now return an `error` instead of `panic`.
+2. **`type_build.go`** — `bindTypes` now returns an `error`, propagating import-resolution failures on the custom-marshaller code path.
+3. **`build.go`** — `models()` and `bind()` propagate the new errors to `Generate`; `main.go` already turns those into a clean message + non-zero exit (no more panic on bad input).
+4. **`util.go`** — fixed a `go vet` "non-constant format string" error so the `codegen` package builds and tests cleanly under modern Go.
+
+### Verification
+- Reproduced the original panic; it now returns `model plan failed: cannot find package "example" ...` (clean error, no stack-trace crash).
+- The `example/scalars` example (the #180 scaffolding with `external.ObjectID` and `MarshalID`/`UnmarshalID`) regenerates byte-for-byte identical, valid, compiling code, and `scalar_test.go` passes.
+- Built an additional scenario with a marshaller in a *separate* external package — generated code (`pkg.MarshalObject` / `pkg.UnmarshalObject` with correct imports) compiles and runs.
+- All `./codegen/...` and `./example/...` tests pass (incl. `Test_fullPackageName`, `TestInvalidPackagenames`, `TestComplexInputTypes`, `TestKeywordInputFields`, `TestScalars`) in the GOPATH layout the repo is designed for.
+
+The pre-existing `go vet` issues in `handler/graphql.go` and `neelance/validation/validation.go` were intentionally left untouched, as they are unrelated to this issue and exist independently at the base commit. Temporary verification artifacts (vendor dir, GOPATH symlink, scratch scripts) were removed, leaving only the focused 4-file source change.

@@ -1,0 +1,200 @@
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: /workspace/headscale/hscontrol/types/config.go
+The file /workspace/headscale/hscontrol/types/config.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/headscale/hscontrol/types/config.go:
+   763			return err
+   764		}
+   765	
+   766		serverDomainParts := strings.Split(server.Host, ".")
+   767		baseDomainParts := strings.Split(baseDomain, ".")
+   768	
+   769		// If the base domain has more labels than the server hostname, the server
+   770		// hostname cannot be equal to or a subdomain of the base domain, so it is safe.
+   771		if len(serverDomainParts) < len(baseDomainParts) {
+   772			return nil
+   773		}
+   774	
+   775		// The server hostname is unsafe if its last labels are equal to the base
+   776		// domain (i.e. the hostname is the base domain or a subdomain of it).
+   777		s := len(serverDomainParts)
+   778		b := len(baseDomainParts)
+   779		for i := range baseDomainParts {
+   780			if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
+   781				return nil
+   782			}
+   783		}
+   784	
+   785		return errServerURLSuffix
+   786	}
+   787	
+   788	// LoadServerConfig returns the full Headscale configuration to
+   789	// host a Headscale server. This is called as part of `headscale serve`.
+   790	func LoadServerConfig() (*Config, error) {
+   791	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: /workspace/headscale/hscontrol/types/config.go
+The file /workspace/headscale/hscontrol/types/config.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/headscale/hscontrol/types/config.go:
+    28		maxDuration           time.Duration = 1<<63 - 1
+    29	)
+    30	
+    31	var errOidcMutuallyExclusive = errors.New(
+    32		"oidc_client_secret and oidc_client_secret_path are mutually exclusive",
+    33	)
+    34	
+    35	var errServerURLSuffix = errors.New(
+    36		"server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
+    37	)
+    38	
+    39	type IPAllocationStrategy string
+    40	
+    41	const (
+    42	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/headscale && go build ./... 2>&1 | head -20
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/github.com/juanfont: permission denied
+$ cd /workspace/headscale && go test ./hscontrol/types/ -run TestReadConfig -v 2>&1 | head -60
+=== RUN   TestReadConfig
+=== RUN   TestReadConfig/unmarshal-dns-full-config
+=== RUN   TestReadConfig/dns-to-tailcfg.DNSConfig
+=== RUN   TestReadConfig/unmarshal-dns-full-no-magic
+=== RUN   TestReadConfig/dns-to-tailcfg.DNSConfig#01
+=== RUN   TestReadConfig/base-domain-in-server-url-err
+{"level":"warn","time":"2026-06-22T18:05:36Z","message":"\nWARN: The \"dns.use_username_in_magic_dns\" configuration key is deprecated and has been removed. Please see the changelog for more details.\n"}
+=== RUN   TestReadConfig/base-domain-not-in-server-url
+{"level":"warn","time":"2026-06-22T18:05:36Z","message":"\nWARN: The \"dns.use_username_in_magic_dns\" configuration key is deprecated and has been removed. Please see the changelog for more details.\n"}
+=== RUN   TestReadConfig/policy-path-is-loaded
+{"level":"warn","time":"2026-06-22T18:05:36Z","message":"\nWARN: The \"acl_policy_path\" configuration key is deprecated. Please use \"policy.path\" instead. \"acl_policy_path\" has been removed.\n"}
+--- PASS: TestReadConfig (0.00s)
+    --- PASS: TestReadConfig/unmarshal-dns-full-config (0.00s)
+    --- PASS: TestReadConfig/dns-to-tailcfg.DNSConfig (0.00s)
+    --- PASS: TestReadConfig/unmarshal-dns-full-no-magic (0.00s)
+    --- PASS: TestReadConfig/dns-to-tailcfg.DNSConfig#01 (0.00s)
+    --- PASS: TestReadConfig/base-domain-in-server-url-err (0.00s)
+    --- PASS: TestReadConfig/base-domain-not-in-server-url (0.00s)
+    --- PASS: TestReadConfig/policy-path-is-loaded (0.00s)
+=== RUN   TestReadConfigFromEnv
+=== RUN   TestReadConfigFromEnv/test-random-base-settings-with-env
+    config_test.go:225: all settings: map[string]interface {}{"cli":map[string]interface {}{"insecure":false, "timeout":"5s"}, "database":map[string]interface {}{"postgres":map[string]interface {}{"conn_max_idle_time_secs":3600, "max_idle_conns":10, "max_open_conns":10, "ssl":false}, "sqlite":map[string]interface {}{"write_ahead_log":"false"}}, "derp":map[string]interface {}{"server":map[string]interface {}{"automatically_add_embedded_derp_region":true, "enabled":false, "stun":map[string]interface {}{"enabled":true}}}, "dns":map[string]interface {}{"base_domain":"", "extra_records":[]tailcfg.DNSRecord{}, "magic_dns":true, "nameservers":map[string]interface {}{"global":[]string{}, "split":map[string]string{}}, "search_domains":[]string{}}, "ephemeral_node_inactivity_timeout":"120s", "grpc_allow_insecure":false, "grpc_listen_addr":":50443", "log":map[string]interface {}{"format":"text", "level":"trace"}, "logtail":map[string]interface {}{"enabled":false}, "noise":map[string]interface {}{"private_key_path":"private_key.pem"}, "oidc":map[string]interface {}{"expiry":"180d", "only_start_if_oidc_is_available":true, "scope":[]string{"openid", "profile", "email"}, "strip_email_domain":true, "use_expiry_from_token":false}, "policy":map[string]interface {}{"mode":"file"}, "prefixes":map[string]interface {}{"allocation":"sequential"}, "randomize_client_port":false, "server_url":"https://derp.no", "tls_letsencrypt_cache_dir":"/var/www/.cache", "tls_letsencrypt_challenge_type":"HTTP-01", "tuning":map[string]interface {}{"batch_change_delay":"800ms", "node_mapsession_buffered_chan_size":30, "notifier_send_timeout":"800ms"}, "unix_socket":"/var/run/headscale/headscale.sock", "unix_socket_permission":"0o770"}
+=== RUN   TestReadConfigFromEnv/unmarshal-dns-full-config
+    config_test.go:248: all settings: map[string]interface {}{"cli":map[string]interface {}{"insecure":false, "timeout":"5s"}, "database":map[string]interface {}{"postgres":map[string]interface {}{"conn_max_idle_time_secs":3600, "max_idle_conns":10, "max_open_conns":10, "ssl":false}, "sqlite":map[string]interface {}{"write_ahead_log":true}}, "derp":map[string]interface {}{"server":map[string]interface {}{"automatically_add_embedded_derp_region":true, "enabled":false, "stun":map[string]interface {}{"enabled":true}}}, "dns":map[string]interface {}{"base_domain":"example.com", "extra_records":[]tailcfg.DNSRecord{}, "magic_dns":"true", "nameservers":map[string]interface {}{"global":"1.1.1.1 8.8.8.8", "split":map[string]string{}}, "search_domains":"test.com bar.com"}, "ephemeral_node_inactivity_timeout":"120s", "grpc_allow_insecure":false, "grpc_listen_addr":":50443", "log":map[string]interface {}{"format":"text", "level":"info"}, "logtail":map[string]interface {}{"enabled":false}, "noise":map[string]interface {}{"private_key_path":"private_key.pem"}, "oidc":map[string]interface {}{"expiry":"180d", "only_start_if_oidc_is_available":true, "scope":[]string{"openid", "profile", "email"}, "strip_email_domain":true, "use_expiry_from_token":false}, "policy":map[string]interface {}{"mode":"file"}, "prefixes":map[string]interface {}{"allocation":"sequential"}, "randomize_client_port":false, "server_url":"https://derp.no", "tls_letsencrypt_cache_dir":"/var/www/.cache", "tls_letsencrypt_challenge_type":"HTTP-01", "tuning":map[string]interface {}{"batch_change_delay":"800ms", "node_mapsession_buffered_chan_size":30, "notifier_send_timeout":"800ms"}, "unix_socket":"/var/run/headscale/headscale.sock", "unix_socket_permission":"0o770"}
+--- PASS: TestReadConfigFromEnv (0.00s)
+    --- PASS: TestReadConfigFromEnv/test-random-base-settings-with-env (0.00s)
+    --- PASS: TestReadConfigFromEnv/unmarshal-dns-full-config (0.00s)
+PASS
+ok      github.com/juanfont/headscale/hscontrol/types   0.007s
+$ cd /workspace/headscale && go test ./hscontrol/types/ 2>&1 | tail -20
+ok      github.com/juanfont/headscale/hscontrol/types   0.010s
+# file_editor: /workspace/headscale/hscontrol/types/config.go
+The file /workspace/headscale/hscontrol/types/config.go has been edited. Here's the result of running `cat -n` on a snippet of /workspace/headscale/hscontrol/types/config.go:
+   767			return err
+   768		}
+   769	
+   770		serverDomainParts := strings.Split(server.Hostname(), ".")
+   771		baseDomainParts := strings.Split(baseDomain, ".")
+   772	
+   773		// If the base domain has more labels than the server hostname, the server
+   774		// hostname cannot be equal to or a subdomain of the base domain, so it is safe.
+   775		if len(serverDomainParts) < len(baseDomainParts) {
+   776	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/headscale && go test ./hscontrol/types/ 2>&1 | tail -5
+ok      github.com/juanfont/headscale/hscontrol/types   0.010s
+$ cd /workspace/headscale && export GIT_PAGER=cat && git diff
+diff --git a/hscontrol/types/config.go b/hscontrol/types/config.go
+index 50ce2f0..e6c39dc 100644
+--- a/hscontrol/types/config.go
++++ b/hscontrol/types/config.go
+@@ -32,6 +32,10 @@ var errOidcMutuallyExclusive = errors.New(
+        "oidc_client_secret and oidc_client_secret_path are mutually exclusive",
+ )
+
++var errServerURLSuffix = errors.New(
++       "server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.",
++)
++
+ type IPAllocationStrategy string
+
+ const (
+@@ -748,6 +752,43 @@ func LoadCLIConfig() (*Config, error) {
+        }, nil
+ }
+
++// isSafeServerURL checks if the server URL is safe to use with the given base domain.
++// The base domain takes over the DNS for *.base_domain via MagicDNS, so the server
++// must not be reachable under the base domain (otherwise headscale and the embedded
++// DERP server would become unreachable from the Tailscale nodes).
++//
++// It is considered unsafe when the server URL's hostname is equal to the base domain
++// or is a subdomain of the base domain. A base domain that is a subdomain of the
++// server URL's hostname (e.g. server "derp.no" and base domain "clients.derp.no") is
++// safe.
++func isSafeServerURL(serverURL, baseDomain string) error {
++       server, err := url.Parse(serverURL)
++       if err != nil {
++               return err
++       }
++
++       serverDomainParts := strings.Split(server.Hostname(), ".")
++       baseDomainParts := strings.Split(baseDomain, ".")
++
++       // If the base domain has more labels than the server hostname, the server
++       // hostname cannot be equal to or a subdomain of the base domain, so it is safe.
++       if len(serverDomainParts) < len(baseDomainParts) {
++               return nil
++       }
++
++       // The server hostname is unsafe if its last labels are equal to the base
++       // domain (i.e. the hostname is the base domain or a subdomain of it).
++       s := len(serverDomainParts)
++       b := len(baseDomainParts)
++       for i := range baseDomainParts {
++               if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
++                       return nil
++               }
++       }
++
++       return errServerURLSuffix
++}
++
+ // LoadServerConfig returns the full Headscale configuration to
+ // host a Headscale server. This is called as part of `headscale serve`.
+ func LoadServerConfig() (*Config, error) {
+@@ -816,8 +857,10 @@ func LoadServerConfig() (*Config, error) {
+        // - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
+        //
+        // TODO(kradalby): remove dnsConfig.UserNameInMagicDNS check when removed.
+-       if !dnsConfig.UserNameInMagicDNS && dnsConfig.BaseDomain != "" && strings.Contains(serverURL, dnsConfig.BaseDomain) {
+-               return nil, errors.New("server_url cannot contain the base_domain, this will cause the headscale server and embedded DERP to become unreachable from the Tailscale node.")
++       if !dnsConfig.UserNameInMagicDNS && dnsConfig.BaseDomain != "" {
++               if err := isSafeServerURL(serverURL, dnsConfig.BaseDomain); err != nil {
++                       return nil, err
++               }
+        }
+
+        return &Config{
+$ cd /workspace/headscale && go vet ./hscontrol/types/ 2>&1 | tail -5 && go test ./hscontrol/types/ -run TestReadConfig 2>&1 | tail -5
+# github.com/juanfont/headscale/hscontrol/types
+# [github.com/juanfont/headscale/hscontrol/types]
+hscontrol/types/common.go:193:8: the cancel function returned by context.WithTimeout should be called, not discarded, to avoid a context leak
+ok      github.com/juanfont/headscale/hscontrol/types   0.007s
+# finish: Completed fix for server_url/base_domain validation
+I resolved Issue #2210 ([Bug] testing for server_url containing base_domain is too restrictive).
+
+## Problem
+The `LoadServerConfig` validation used `strings.Contains(serverURL, dnsConfig.BaseDomain)`, which is far too strict. It rejected valid configurations such as:
+- `server_url: https://homer.example.com` with `base_domain: h`
+- `server_url: https://bar.foo.com` with `base_domain: foo`
+- `server_url: https://derp.no` with `base_domain: clients.derp.no`
+
+even though none of these actually cause the headscale server / embedded DERP to be shadowed by MagicDNS.
+
+## Fix (in `hscontrol/types/config.go`)
+1. Added an `errServerURLSuffix` error variable with the existing user-facing message (unchanged text).
+2. Added a helper `isSafeServerURL(serverURL, baseDomain)` that compares the server hostname (via `url.Hostname()`, ignoring any port) and the base domain by their dot-separated DNS labels. It returns an error only when the server hostname is equal to the base domain or is a subdomain of it — i.e., when MagicDNS for `*.base_domain` would genuinely make the server unreachable. A base domain that is a subdomain of the server hostname is treated as safe.
+3. Replaced the inline `strings.Contains` check in `LoadServerConfig` with a call to the new helper.
+
+## Verification
+The existing tests in `hscontrol/types/config_test.go` (`base-domain-in-server-url-err` and `base-domain-not-in-server-url`) both pass, confirming:
+- `server_url=https://derp.no` + `base_domain=derp.no` → rejected (equal hostname)
+- `server_url=https://derp.no` + `base_domain=clients.derp.no` → accepted
+
+All tests in `hscontrol/types/` pass. The only `go vet` warning (`common.go:193` context leak) is pre-existing and unrelated to this change.

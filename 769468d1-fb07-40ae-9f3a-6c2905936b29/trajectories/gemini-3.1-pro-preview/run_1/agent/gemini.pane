@@ -1,0 +1,200 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(END)
+$ q
+git diff
+diff --git a/codegen/import_build.go b/codegen/import_build.go
+index 24646b7..b7bef75 100644
+--- a/codegen/import_build.go
++++ b/codegen/import_build.go
+@@ -57,12 +57,16 @@ func (s *Imports) add(path string) *Import {
+        }
+
+        pkg, err := build.Default.Import(path, s.destDir, 0)
++       var name string
+        if err != nil {
+-               panic(err)
++               parts := strings.Split(path, "/")
++               name = parts[len(parts)-1]
++       } else {
++               name = pkg.Name
+        }
+
+        imp := &Import{
+-               Name: pkg.Name,
++               Name: name,
+                Path: path,
+        }
+        s.imports = append(s.imports, imp)
+diff --git a/codegen/type.go b/codegen/type.go
+index 31fcefc..811f406 100644
+--- a/codegen/type.go
++++ b/codegen/type.go
+@@ -151,7 +151,7 @@ func (t Type) unmarshal(result, raw string, remainingMods []string, depth int) s
+
+ func (t Type) Marshal(val string) string {
+        if t.CastType != "" {
+-               val = t.GoType + "(" + val + ")"
++               val = t.FullName() + "(" + val + ")"
+        }
+
+        if t.Marshaler != nil {
+diff --git a/codegen/type_build.go b/codegen/type_build.go
+index 76426a2..19d150a 100644
+--- a/codegen/type_build.go
++++ b/codegen/type_build.go
+@@ -70,12 +70,13 @@ func namedTypeFromSchema(schemaType schema.NamedType) *NamedType {
+
+ // take a string in the form github.com/package/blah.Type and split it into package and type
+ func pkgAndType(name string) (string, string) {
+-       parts := strings.Split(name, ".")
+-       if len(parts) == 1 {
++       lastSlash := strings.LastIndex(name, "/")
++       lastDot := strings.LastIndex(name[lastSlash+1:], ".")
++       if lastDot == -1 {
+                return "", name
+        }
+-
+-       return normalizeVendor(strings.Join(parts[:len(parts)-1], ".")), parts[len(parts)-1]
++       lastDot += lastSlash + 1
++       return normalizeVendor(name[:lastDot]), name[lastDot+1:]
+ }
+
+ func (n NamedTypes) getType(t common.Type) *Type {
+# finish: Finished task fixing gqlgen panics and custom scalar issues
+I've successfully identified and fixed the issues described in the ticket!
+
+Here is a summary of the root causes and how they were solved:
+
+1. **Issue 1 (#170): panics if run in package main and mystifying `example` package generation**
+   - **Root Cause**: The `pkgAndType` function used a naive `strings.Split(name, ".")` on the provided type mappings (e.g. `example.com/foo-bar`). Since `example.com` contains a dot, it was incorrectly split into `example` (the package) and `com/foo-bar` (the type name). When the code generator then tried to verify the `"example"` package by invoking `build.Default.Import("example", ...)`, it failed with `err != nil`. The `Imports.add()` function had a blind `panic(err)` in this scenario. Also, when running in the `main` package, `build.Default.Import("main", ...)` fails with `"package main is not in std"`, thus causing the panic to trigger there as well!
+   - **Fix**: 
+     - Modified `pkgAndType` in `codegen/type_build.go` to only search for a dot *after* the last slash, meaning dots belonging to a domain name aren't mistakenly treated as the separator between the package path and type name.
+     - Updated `add()` in `codegen/import_build.go` to fall back gracefully on the last URL segment of the import path (like standard Go toolchains do) when `build.Default.Import` encounters an error, rather than panicking.
+
+2. **Issue 2 (#180): Bug involving custom scalar marshallers in external packages**
+   - **Root Cause**: When evaluating custom scalars whose underlying representation happens to be an external type, the generated code calls `#179`'s type-cast wrapping. However, the generator was hardcoded to emit `val = t.GoType + "(" + val + ")"` in `Type.Marshal()`, stripping the external package name / alias prefix (e.g., resulting in `ObjectID(val)` instead of `external.ObjectID(val)`). This meant that the Go compiler threw errors for generating invalid type conversions. 
+   - **Fix**: Replaced `t.GoType` with `t.FullName()` in `Type.Marshal()` (`codegen/type.go`). This properly prefixes the required import alias onto the type being casted if the custom scalar definition originates from another package.
+
+Please verify the edits. Let me know if you need anything else!
