@@ -1,0 +1,215 @@
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index d7c6fccf28c..1df7ffaf751 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -5,7 +5,7 @@ jobs:
+   test:
+     strategy:
+       matrix:
+-        go: [1.12, 1.14]
++        go: [1.13, 1.14]
+         os: [ubuntu-latest, windows-latest]
+ 
+     runs-on: ${{ matrix.os }}
+diff --git a/codegen/testserver/directive_test.go b/codegen/testserver/directive_test.go
+index 22fc1db2604..32015005104 100644
+--- a/codegen/testserver/directive_test.go
++++ b/codegen/testserver/directive_test.go
+@@ -200,7 +200,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 			err := c.Post(`query { directiveArg(arg: "") }`, &resp)
+ 
+-			require.EqualError(t, err, `[{"message":"invalid length","path":["directiveArg"]}]`)
++			require.EqualError(t, err, `[{"message":"invalid length","path":["directiveArg","arg"]}]`)
+ 			require.Nil(t, resp.DirectiveArg)
+ 		})
+ 		t.Run("when function errors on nullable arg directives", func(t *testing.T) {
+@@ -210,7 +210,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 			err := c.Post(`query { directiveNullableArg(arg: -100) }`, &resp)
+ 
+-			require.EqualError(t, err, `[{"message":"too small","path":["directiveNullableArg"]}]`)
++			require.EqualError(t, err, `[{"message":"too small","path":["directiveNullableArg","arg"]}]`)
+ 			require.Nil(t, resp.DirectiveNullableArg)
+ 		})
+ 		t.Run("when function success on nullable arg directives", func(t *testing.T) {
+@@ -317,7 +317,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 			err := c.Post(`query { directiveInputNullable(arg: {text:"invalid text",inner:{message:"123"}}) }`, &resp)
+ 
+-			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg"]}]`)
++			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg","text"]}]`)
+ 			require.Nil(t, resp.DirectiveInputNullable)
+ 		})
+ 		t.Run("when function errors on inner directives", func(t *testing.T) {
+@@ -327,7 +327,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 			err := c.Post(`query { directiveInputNullable(arg: {text:"2",inner:{message:""}}) }`, &resp)
+ 
+-			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg","inner"]}]`)
++			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg","inner","message"]}]`)
+ 			require.Nil(t, resp.DirectiveInputNullable)
+ 		})
+ 		t.Run("when function errors on nullable inner directives", func(t *testing.T) {
+@@ -337,7 +337,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 			err := c.Post(`query { directiveInputNullable(arg: {text:"success",inner:{message:"1"},innerNullable:{message:""}}) }`, &resp)
+ 
+-			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg","innerNullable"]}]`)
++			require.EqualError(t, err, `[{"message":"not valid","path":["directiveInputNullable","arg","innerNullable","message"]}]`)
+ 			require.Nil(t, resp.DirectiveInputNullable)
+ 		})
+ 		t.Run("when function success", func(t *testing.T) {
+@@ -413,7 +413,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 				err := c.WebsocketOnce(`subscription { directiveArg(arg: "") }`, &resp)
+ 
+-				require.EqualError(t, err, `[{"message":"invalid length","path":["directiveArg"]}]`)
++				require.EqualError(t, err, `[{"message":"invalid length","path":["directiveArg","arg"]}]`)
+ 				require.Nil(t, resp.DirectiveArg)
+ 			})
+ 			t.Run("when function errors on nullable arg directives", func(t *testing.T) {
+@@ -423,7 +423,7 @@ func TestDirectives(t *testing.T) {
+ 
+ 				err := c.WebsocketOnce(`subscription { directiveNullableArg(arg: -100) }`, &resp)
+ 
+-				require.EqualError(t, err, `[{"message":"too small","path":["directiveNullableArg"]}]`)
++				require.EqualError(t, err, `[{"message":"too small","path":["directiveNullableArg","arg"]}]`)
+ 				require.Nil(t, resp.DirectiveNullableArg)
+ 			})
+ 			t.Run("when function success on nullable arg directives", func(t *testing.T) {
+diff --git a/codegen/testserver/middleware_test.go b/codegen/testserver/middleware_test.go
+index 07591dafc09..891280b9e21 100644
+--- a/codegen/testserver/middleware_test.go
++++ b/codegen/testserver/middleware_test.go
+@@ -2,6 +2,7 @@ package testserver
+ 
+ import (
+ 	"context"
++	"sync"
+ 	"testing"
+ 
+ 	"github.com/99designs/gqlgen/client"
+@@ -26,7 +27,13 @@ func TestMiddleware(t *testing.T) {
+ 		return []*User{{ID: 1}}, nil
+ 	}
+ 
+-	areMethods := []bool{}
++	resolvers.QueryResolver.ModelMethods = func(ctx context.Context) (methods *ModelMethods, e error) {
++		return &ModelMethods{}, nil
++	}
++
++	var mu sync.Mutex
++	areMethods := map[string]bool{}
++	areResolvers := map[string]bool{}
+ 	srv := handler.NewDefaultServer(
+ 		NewExecutableSchema(Config{Resolvers: resolvers}),
+ 	)
+@@ -41,7 +48,11 @@ func TestMiddleware(t *testing.T) {
+ 	})
+ 
+ 	srv.AroundFields(func(ctx context.Context, next graphql.Resolver) (res interface{}, err error) {
+-		areMethods = append(areMethods, graphql.GetFieldContext(ctx).IsMethod)
++		fc := graphql.GetFieldContext(ctx)
++		mu.Lock()
++		areMethods[fc.Field.Name] = fc.IsMethod
++		areResolvers[fc.Field.Name] = fc.IsResolver
++		mu.Unlock()
+ 		return next(ctx)
+ 	})
+ 
+@@ -54,6 +65,9 @@ func TestMiddleware(t *testing.T) {
+ 				ID int
+ 			}
+ 		}
++		ModelMethods struct {
++			NoContext bool
++		}
+ 	}
+ 
+ 	called := false
+@@ -63,12 +77,32 @@ func TestMiddleware(t *testing.T) {
+ 		return []*User{}, nil
+ 	}
+ 
+-	err := c.Post(`query { user(id: 1) { id, friends { id } } }`, &resp)
+-
+-	// First resolves user which is a method
+-	// Next resolves id which is not a method
+-	// Finally resolves friends which is a method
+-	assert.Equal(t, []bool{true, false, true}, areMethods)
++	err := c.Post(`query {
++		user(id: 1) {
++			id,
++			friends {
++				id
++			}
++		}
++		modelMethods {
++			noContext
++		}
++	}`, &resp)
++
++	assert.Equal(t, map[string]bool{
++		"user":         true,
++		"id":           false,
++		"friends":      true,
++		"modelMethods": true,
++		"noContext":    true,
++	}, areMethods)
++	assert.Equal(t, map[string]bool{
++		"user":         true,
++		"id":           false,
++		"friends":      true,
++		"modelMethods": true,
++		"noContext":    false,
++	}, areResolvers)
+ 
+ 	require.NoError(t, err)
+ 	require.True(t, called)
+diff --git a/codegen/testserver/panics_test.go b/codegen/testserver/panics_test.go
+index 68903391496..0e1cf838004 100644
+--- a/codegen/testserver/panics_test.go
++++ b/codegen/testserver/panics_test.go
+@@ -33,7 +33,7 @@ func TestPanics(t *testing.T) {
+ 	srv.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
+ 		return &gqlerror.Error{
+ 			Message: "presented: " + err.Error(),
+-			Path:    graphql.GetFieldContext(ctx).Path(),
++			Path:    graphql.GetPath(ctx),
+ 		}
+ 	})
+ 
+@@ -50,14 +50,14 @@ func TestPanics(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { argUnmarshal(u: ["aa", "bb"]) } }`, &resp)
+ 
+-		require.EqualError(t, err, "[{\"message\":\"presented: panic: BOOM\",\"path\":[\"panics\",\"argUnmarshal\"]}]")
++		require.EqualError(t, err, "[{\"message\":\"presented: input: panics.argUnmarshal panic: BOOM\",\"path\":[\"panics\",\"argUnmarshal\"]}]")
+ 	})
+ 
+ 	t.Run("panics in funcs unmarshal return errors", func(t *testing.T) {
+ 		var resp interface{}
+ 		err := c.Post(`query { panics { fieldFuncMarshal(u: ["aa", "bb"]) } }`, &resp)
+ 
+-		require.EqualError(t, err, "[{\"message\":\"presented: panic: BOOM\",\"path\":[\"panics\",\"fieldFuncMarshal\"]}]")
++		require.EqualError(t, err, "[{\"message\":\"presented: input: panics.fieldFuncMarshal panic: BOOM\",\"path\":[\"panics\",\"fieldFuncMarshal\"]}]")
+ 	})
+ 
+ 	t.Run("panics in funcs marshal return errors", func(t *testing.T) {
+diff --git a/graphql/context_field_input_test.go b/graphql/context_path_test.go
+similarity index 61%
+rename from graphql/context_field_input_test.go
+rename to graphql/context_path_test.go
+index 789ef2f7b88..085b40c7ea6 100644
+--- a/graphql/context_field_input_test.go
++++ b/graphql/context_path_test.go
+@@ -10,6 +10,6 @@ import (
+ func TestGetFieldInputContext(t *testing.T) {
+ 	require.Nil(t, GetFieldContext(context.Background()))
+ 
+-	rc := &FieldInputContext{}
+-	require.Equal(t, rc, GetFieldInputContext(WithFieldInputContext(context.Background(), rc)))
++	rc := &PathContext{}
++	require.Equal(t, rc, GetPathContext(WithPathContext(context.Background(), rc)))
+ }

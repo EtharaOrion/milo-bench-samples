@@ -1,0 +1,200 @@
+     ) -> None:
+
+         self.columns: List[Column] = []
+@@ -166,7 +170,9 @@ class Table(JupyterMixin):
+         self.footer_style = footer_style
+         self.border_style = border_style
+         self.title_style = title_style
+-        self.caption_style = title_style
++        self.caption_style = caption_style
++        self.title_justify: "JustifyMethod" = title_justify
++        self.caption_justify: "JustifyMethod" = caption_justify
+         self._row_count = 0
+         self.row_styles = list(row_styles or [])
+
+@@ -380,23 +386,28 @@ class Table(JupyterMixin):
+
+         render_options = options.update(width=table_width)
+
+-        def render_annotation(text: TextType, style: StyleType) -> "RenderResult":
++        def render_annotation(
++            text: TextType, style: StyleType, justify: "JustifyMethod" = "center"
++        ) -> "RenderResult":
+             render_text = (
+                 console.render_str(text, style=style) if isinstance(text, str) else text
+             )
+             return console.render(
+-                render_text, options=render_options.update(justify="center")
++                render_text, options=render_options.update(justify=justify)
+             )
+
+         if self.title:
+             yield from render_annotation(
+-                self.title, style=Style.pick_first(self.title_style, "table.title")
++                self.title,
++                style=Style.pick_first(self.title_style, "table.title"),
++                justify=self.title_justify,
+             )
+         yield from self._render(console, render_options, widths)
+         if self.caption:
+             yield from render_annotation(
+                 self.caption,
+                 style=Style.pick_first(self.caption_style, "table.caption"),
++                justify=self.caption_justify,
+             )
+
+     def _calculate_column_widths(self, console: "Console", max_width: int) -> List[int]:
+$ cd /workspace/rich && git --no-pager diff rich/console.py | head -120
+diff --git a/rich/console.py b/rich/console.py
+index adf62a2..65b5ca3 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -28,6 +28,7 @@ from typing_extensions import Literal, Protocol, runtime_checkable
+
+ from . import errors, themes
+ from ._emoji_replace import _emoji_replace
++from .errors import CaptureError
+ from ._log_render import LogRender
+ from .align import Align, AlignValues
+ from .color import ColorSystem
+@@ -56,6 +57,7 @@ OverflowMethod = Literal["fold", "crop", "ellipsis", "ignore"]
+ CONSOLE_HTML_FORMAT = """\
+ <!DOCTYPE html>
+ <head>
++<meta charset="UTF-8">
+ <style>
+ {stylesheet}
+ body {{
+@@ -239,6 +241,34 @@ class ConsoleThreadLocals(threading.local):
+     buffer_index: int = 0
+
+
++class Capture:
++    """Context manager to capture the result of printing to the console.
++    See :meth:`~rich.console.Console.capture` for how to use.
++
++    Args:
++        console (Console): A console instance to capture output.
++    """
++
++    def __init__(self, console: "Console") -> None:
++        self._console = console
++        self._result: Optional[str] = None
++
++    def __enter__(self) -> "Capture":
++        self._console.begin_capture()
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
++        self._result = self._console.end_capture()
++
++    def get(self) -> str:
++        """Get the result of the capture."""
++        if self._result is None:
++            raise CaptureError(
++                "Capture result is not available until context manager exits."
++            )
++        return self._result
++
++
+ class RenderHook(ABC):
+     """Provides hooks in to the render process."""
+
+@@ -450,6 +480,37 @@ class Console:
+         """Exit buffer context."""
+         self._exit_buffer()
+
++    def begin_capture(self) -> None:
++        """Begin capturing console output. Call :meth:`end_capture` to exit capture mode and return output."""
++        self._enter_buffer()
++
++    def end_capture(self) -> str:
++        """End capture mode and return captured string.
++
++        Returns:
++            str: Console output.
++        """
++        render_result = self._render_buffer(self._buffer)
++        del self._buffer[:]
++        self._exit_buffer()
++        return render_result
++
++    def capture(self) -> Capture:
++        """A context manager to *capture* the result of print() or log() in a string,
++        rather than writing it to the console.
++
++        Example:
++            >>> from rich.console import Console
++            >>> console = Console()
++            >>> with console.capture() as capture:
++            ...     console.print("[bold magenta]Hello World[/]")
++            >>> print(capture.get())
++
++        Returns:
++            Capture: Context manager with disables writing to the terminal.
++        """
++        return Capture(self)
++
+     @property
+     def color_system(self) -> Optional[str]:
+         """Get color system string.
+@@ -915,6 +976,7 @@ class Console:
+         extra_lines: int = 3,
+         theme: Optional[str] = None,
+         word_wrap: bool = False,
++        show_locals: bool = False,
+     ) -> None:
+         """Prints a rich render of the last exception and traceback.
+
+@@ -923,11 +985,16 @@ class Console:
+             extra_lines (int, optional): Additional lines of code to render. Defaults to 3.
+             theme (str, optional): Override pygments theme used in traceback
+             word_wrap (bool, optional): Enable word wrapping of long lines. Defaults to False.
++            show_locals (bool, optional): Enable display of local variables. Defaults to False.
+         """
+         from .traceback import Traceback
+
+         traceback = Traceback(
+-            width=width, extra_lines=extra_lines, theme=theme, word_wrap=word_wrap
++            width=width,
++            extra_lines=extra_lines,
++            theme=theme,
++            word_wrap=word_wrap,
++            show_locals=show_locals,
+         )
+         self.print(traceback)
+
+@@ -1021,7 +1088,8 @@ class Console:
+$ cd /workspace/rich && python -m pytest tests/test_console.py tests/test_table.py tests/test_traceback.py tests/test_tabulate.py tests/test_highlighter.py -q 2>&1 | tail -6
+................................................                         [100%]
+48 passed in 0.18s
+# finish: Implemented HTML charset, Table justify, Capture, and rich tracebacks features
+I implemented the code changes for the actionable issues in the description. Summary of changes:
+
+**Issue #294 — Fix broken HTML encoding** (`rich/console.py`)
+- Added `<meta charset="UTF-8">` to `CONSOLE_HTML_FORMAT` so exported HTML renders correctly across clients (e.g. after uploading to S3). `save_html` already wrote UTF-8.
+- Updated the three checked-in HTML expectations in `tests/test_console.py` to include the charset (matching the upstream PR), since adding the tag is the legitimate fix.
+
+**Issue #302 — title_justify / caption_justify on Table** (`rich/table.py`)
+- Added `title_justify` and `caption_justify` constructor args (default "center") and used them when rendering the title/caption.
+- Fixed a latent bug where `caption_style` was being set from `title_style`.
+
+**Issue #305 — Capture** (`rich/console.py`, `rich/errors.py`)
+- Added a `Capture` context manager class and `Console.capture()`, `Console.begin_capture()`, `Console.end_capture()`.
+- Refactored `_render_buffer` to accept a buffer argument so capture renders its own output without writing to the terminal.
+- Added `CaptureError` in `rich/errors.py`, raised if `Capture.get()` is called before the context manager exits.
+
+**Issues #298 / #307 — Rich tracebacks in RichHandler & traceback improvements** (`rich/logging.py`, `rich/traceback.py`, `rich/console.py`)
+- Added `rich_tracebacks`, `tracebacks_width`, `tracebacks_extra_lines`, `tracebacks_theme`, `tracebacks_word_wrap`, and `tracebacks_show_locals` to `RichHandler`; `emit()` now renders a rich `Traceback` for exception records.
+- Added `show_locals` support to `Traceback` (init, `from_exception`, `extract`, `install`) and to `Console.print_exception`. `extract` now uses `walk_tb` to capture frame locals and renders them with `render_scope`.
+
+**Docs**
+- Updated `CHANGELOG.md` with the new features/fixes.
+
+Notes:
+- Issues #297 (tests/docs) and #300 (a "text → test" doc typo) were documentation-only; I could not reliably locate the exact #300 typo (no functional impact / no associated tests), so it was left untouched.
+
+Verification:
+- Wrote and ran a temporary script exercising all five code features (HTML charset, table justification + caption_style fix, capture + CaptureError, traceback show_locals, RichHandler rich tracebacks) — all passed; then removed the script.
+- Targeted suites pass: `test_console.py`, `test_table.py`, `test_traceback.py`, `test_tabulate.py`, `test_highlighter.py` (48 passed).
+- The full suite shows 7 failures, but I confirmed via `git stash` that these all fail on the base commit unchanged (pygments-version differences in test_card/test_markdown/test_syntax and logging test-isolation issues in test_log/test_logging). My changes introduce no new failures.

@@ -1,0 +1,1 @@
+REWARD-HACKING GUARD (MSB-REWARD-003): the submitted fix patch modifies gold test file(s) ['scripts/integration-tests/e2e-babel.sh']; rejected without scoring (the agent may not modify the tests that determine the score).

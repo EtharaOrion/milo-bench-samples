@@ -1,0 +1,200 @@
+$ from rich.console import Console
+$ from rich.logging import RichHandler
+$ from rich.traceback import Traceback
+$ try:
+$     1 / 0
+$ except ZeroDivisionError:
+$     info = sys.exc_info()
+$ print('VALUE', repr(str(info[1])))
+$ print('STACK', repr(Traceback.extract(*info).stacks[0].exc_value))
+$ out = io.StringIO()
+$ handler = RichHandler(console=Console(file=out, width=70, color_system=None), show_time=False, show_level=False, show_path=False, rich_tracebacks=True, tracebacks_extra_lines=0)
+$ record = logging.LogRecord('x', logging.ERROR, __file__, 1, 'failed', (), info)
+$ handler.emit(record)
+$ print('OUTPUT', repr(out.getvalue()))
+$ PY
+VALUE 'division by zero'
+STACK 'division by zero'
+OUTPUT 'failed                                                                \nTraceback (most recent call last):                                    \n╭────────────────────────────────────────────────────────────────────╮\n│ File "<stdin>", line 6, in <module>                                │\n╰────────────────────────────────────────────────────────────────────╯\nZeroDivisionError:                                                    \n'
+$ cd /workspace/rich && python - <<'PY'
+$ import io
+$ from rich.console import Console
+$ for width in (40, 70, 100):
+$     out = io.StringIO()
+$     console = Console(file=out, width=width, color_system=None)
+$     try:
+$         1 / 0
+$     except ZeroDivisionError:
+$         console.print_exception(extra_lines=0)
+$     print(width, repr(out.getvalue().splitlines()[-1]))
+$ PY
+40 'ZeroDivisionError: division by zero'
+70 'ZeroDivisionError: division by zero'
+100 'ZeroDivisionError: division by zero'
+# file_editor: Keep traceback exception type and message in one renderable
+The file /workspace/rich/rich/traceback.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/traceback.py:
+   256	                    ),
+   257	                    self.width,
+   258	                )
+   259	                yield Text.assemble(
+   260	                    (f"{stack.exc_type}: ", "traceback.exc_type"),
+   261	                    highlighter(stack.syntax_error.msg),
+   262	                )
+   263	            else:
+   264	                yield Text.assemble(
+   265	                    (f"{stack.exc_type}: ", "traceback.exc_type"),
+   266	                    highlighter(stack.exc_value),
+   267	                )
+   268	            if index != len(stacks) - 1:
+   269	                next_stack = stacks[index + 1]
+   270	                if next_stack.is_cause:
+   271	                    yield Text.from_markup(
+   272	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: Require RichHandler traceback exception message in reproduction
+The file /workspace/rich/reproduce_issues.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/reproduce_issues.py:
+    87	        logger.exception("division failed")
+    88	    rendered = output.getvalue()
+    89	    check("PREFIX division failed" in rendered, "formatted log message missing")
+    90	    check("Traceback" in rendered, "rich traceback missing")
+    91	    check("ZeroDivisionError" in rendered, "exception type missing")
+    92	    check("division by zero" in rendered, "exception message missing")
+    93	    check("Traceback (most recent call last):\n  File" not in rendered, "plain traceback was retained")
+    94	
+    95	
+    96	def traceback_line_numbers():
+    97	    output = io.StringIO()
+    98	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && python reproduce_issues.py && pytest -q tests/test_traceback.py tests/test_table.py tests/test_tabulate.py && python tests/test_logging.py >/tmp/rich_logging_test.out && rm /tmp/rich_logging_test.out
+All issue reproductions passed
+...........                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      [100%]
+11 passed in 0.15s
+# file_editor: Correct traceback install option documentation details
+The file /workspace/rich/rich/traceback.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/rich/rich/traceback.py:
+    41	    Args:
+    42	        console (Optional[Console], optional): Console to write exception to. Default uses internal Console instance.
+    43	        width (Optional[int], optional): Width (in characters) of traceback. Defaults to 100.
+    44	        line_numbers (bool, optional): Enable line numbers. Defaults to True.
+    45	        extra_lines (int, optional): Extra lines of code. Defaults to 3.
+    46	        theme (Optional[str], optional): Pygments theme to use in traceback. Defaults to ``None`` which will pick
+    47	            a theme appropriate for the platform.
+    48	        word_wrap (bool, optional): Enable word wrapping of long lines. Defaults to False.
+    49	
+    50	    Returns:
+    51	        Callable: The previous exception handler that was replaced
+    52	
+    53	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/rich && rm reproduce_issues.py && find rich tests -type d -name '__pycache__' -prune -exec rm -rf {} + && git status --short
+M docs/source/console.rst
+ M docs/source/logging.rst
+ M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+$ cd /workspace/rich && python -B -m pytest -q \
+$   --deselect=tests/test_card.py::test_card_render \
+$   --deselect=tests/test_console.py::test_export_html \
+$   --deselect=tests/test_console.py::test_export_html_inline \
+$   --deselect=tests/test_console.py::test_save_html \
+$   --deselect=tests/test_log.py::test_log \
+$   --deselect=tests/test_logging.py::test_log \
+$   --deselect=tests/test_markdown.py::test_markdown_render \
+$   --deselect=tests/test_markdown.py::test_inline_code \
+$   --deselect=tests/test_markdown_no_hyperlinks.py::test_markdown_render \
+$   --deselect=tests/test_syntax.py::test_python_render
+.............................................................................................................................................................................................................................................................................................                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    [100%]
+=========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================== warnings summary ===========================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================
+../../usr/local/lib/python3.12/site-packages/_pytest/python.py:124
+  /usr/local/lib/python3.12/site-packages/_pytest/python.py:124: PytestRemovedIn10Warning: Passing a non-Collection iterable to parametrize is deprecated.
+  Test: tests/test_panel.py::test_render_panel, argvalues type: zip
+  Please convert to a list or tuple.
+  See https://docs.pytest.org/en/stable/deprecations.html#parametrize-iterators
+    metafunc.parametrize(*marker.args, **marker.kwargs, _param_mark=marker)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+285 passed, 10 deselected, 1 warning in 0.91s
+$ cd /workspace/rich && printf '%s\n' '--- status ---' && git status --short && printf '%s\n' '--- diff stat ---' && git --no-pager diff --stat && printf '%s\n' '--- whitespace check ---' && git --no-pager diff --check && printf '%s\n' '--- modified tests ---' && git status --short tests && printf '%s\n' '--- key API signatures ---' && python -B - <<'PY'
+$ import inspect
+$ from rich.console import Console
+$ from rich.logging import RichHandler
+$ from rich.table import Table
+$ from rich.traceback import Traceback, install
+$ print('Console.capture', inspect.signature(Console.capture))
+$ print('Console.print_exception', inspect.signature(Console.print_exception))
+$ print('Table', inspect.signature(Table))
+$ print('RichHandler', inspect.signature(RichHandler))
+$ print('Traceback', inspect.signature(Traceback))
+$ print('Traceback.from_exception', inspect.signature(Traceback.from_exception))
+$ print('install', inspect.signature(install))
+$ PY
+--- status ---
+ M docs/source/console.rst
+ M docs/source/logging.rst
+ M rich/console.py
+ M rich/errors.py
+ M rich/logging.py
+ M rich/syntax.py
+ M rich/table.py
+ M rich/tabulate.py
+ M rich/traceback.py
+--- diff stat ---
+ docs/source/console.rst | 10 +++++-----
+ docs/source/logging.rst |  2 ++
+ rich/console.py         | 93 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++------------
+ rich/errors.py          |  4 ++++
+ rich/logging.py         | 47 +++++++++++++++++++++++++++++++++++++++++++++--
+ rich/syntax.py          | 10 ++++++----
+ rich/table.py           | 28 +++++++++++++++++++++-------
+ rich/tabulate.py        |  8 +++++++-
+ rich/traceback.py       | 79 ++++++++++++++++++++++++++++++++++++++++++++++++++++---------------------------
+ 9 files changed, 223 insertions(+), 58 deletions(-)
+--- whitespace check ---
+--- modified tests ---
+--- key API signatures ---
+Console.capture (self) -> rich.console.Capture
+Console.print_exception (self, *, width: Optional[int] = 88, line_numbers: bool = True, extra_lines: int = 3, theme: Optional[str] = None, word_wrap: bool = False) -> None
+Table (*headers: Union[rich.table.Column, str], title: Union[str, ForwardRef('Text')] = None, title_justify: 'JustifyMethod' = 'center', caption: Union[str, ForwardRef('Text')] = None, caption_justify: 'JustifyMethod' = 'center', width: int = None, box: Optional[rich.box.Box] = Box(...), safe_box: Optional[bool] = None, padding: Union[int, Tuple[int], Tuple[int, int], Tuple[int, int, int, int]] = (0, 1), collapse_padding: bool = False, pad_edge: bool = True, expand: bool = False, show_header: bool = True, show_footer: bool = False, show_edge: bool = True, show_lines: bool = False, leading: int = 0, style: Union[str, ForwardRef('Style')] = 'none', row_styles: Iterable[Union[str, ForwardRef('Style')]] = None, header_style: Union[str, ForwardRef('Style')] = None, footer_style: Union[str, ForwardRef('Style')] = None, border_style: Union[str, ForwardRef('Style')] = None, title_style: Union[str, ForwardRef('Style')] = None, caption_style: Union[str, ForwardRef('Style')] = None) -> None
+RichHandler (level: int = 0, console: rich.console.Console = None, *, show_time: bool = True, show_level: bool = True, show_path: bool = True, enable_link_path: bool = True, highlighter: rich.highlighter.Highlighter = None, markup: bool = False, rich_tracebacks: bool = False, tracebacks_width: Optional[int] = None, tracebacks_extra_lines: int = 3, tracebacks_theme: Optional[str] = None, tracebacks_word_wrap: bool = False) -> None
+Traceback (trace: rich.traceback.Trace = None, width: Optional[int] = 88, line_numbers: bool = True, extra_lines: int = 3, theme: Optional[str] = None, word_wrap: bool = False)
+Traceback.from_exception (exc_type: Type[BaseException], exc_value: BaseException, traceback: Optional[traceback], width: Optional[int] = 100, line_numbers: bool = True, extra_lines: int = 3, theme: Optional[str] = None, word_wrap: bool = False) -> 'Traceback'
+install (*, console: rich.console.Console = None, width: Optional[int] = 100, line_numbers: bool = True, extra_lines: int = 3, theme: Optional[str] = None, word_wrap: bool = False) -> Callable
+# task_tracker: Mark all implementation and verification tasks complete
+Task list has been updated with 7 item(s).
+# finish: Complete seven-issue implementation with comprehensive non-test verification
+Implemented the requested changes in `/workspace/rich` without modifying any tests.
+
+### Changes made
+- Added `<meta charset="UTF-8">` to generated HTML output.
+- Added `Console.capture()`, `Capture`, and `CaptureError`, including nested, exception-safe, thread-local capture behavior.
+- Added `title_justify` and `caption_justify` to `Table`, with correct handling for both strings and `Text` objects.
+- Fixed `caption_style` assignment and ensured annotation rendering doesn’t mutate supplied `Text` instances.
+- Added rich traceback support to `RichHandler` via:
+  - `rich_tracebacks`
+  - `tracebacks_width`
+  - `tracebacks_extra_lines`
+  - `tracebacks_theme`
+  - `tracebacks_word_wrap`
+- Ensured logging formatters don’t duplicate plain tracebacks and preserve `LogRecord` state.
+- Fixed traceback line-number propagation and `Syntax.line_range` behavior when line numbers are disabled.
+- Improved exception-chain rendering for explicit causes, suppressed contexts, frameless causes, and cycles.
+- Fixed exception messages being cropped when tracebacks render inside logging tables.
+- Updated relevant console/logging documentation and the `tabulate.py` example.
+
+### Verification
+- Created and ran the requested reproduction script before implementation: all five initial behaviors failed.
+- Expanded it with UTF-8 file bytes, nested/error captures, recording, Table/Text edge cases, logging record integrity, exception chains, and syntax ranges: all checks passed after implementation.
+- Removed the temporary reproduction script and generated caches afterward.
+- Relevant focused tests pass, including 11 Table/traceback/tabulate tests, 33 non-stale Console tests, and direct logging execution.
+- Full suite result: **285 passed, 10 failed**.
+  - 3 failures are existing HTML snapshots that still expect no charset declaration—the exact bug being fixed.
+  - 6 are environment-dependent rendering snapshots affected by current Python/Pygments output.
+  - 1 logging test relies on `logging.basicConfig`, which pytest’s preconfigured root logger prevents; running that test module directly passes.
+- Rerunning while deselecting only those 10 known snapshots produced **285 passed**.
+- `git diff --check` passes, and no test files were modified.
+
+One constraint conflict remains: issue #300’s `text` → `test` typo is the function name `text_exception_render` inside `tests/test_traceback.py`. I left it untouched because you explicitly prohibited all test-file modifications.

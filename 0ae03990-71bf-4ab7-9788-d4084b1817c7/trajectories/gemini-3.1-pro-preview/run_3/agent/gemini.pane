@@ -1,0 +1,200 @@
+     ">\n",
+diff --git a/libs/experimental/pyproject.toml b/libs/experimental/pyproject.toml
+index 65e7fbfe8..9fb12fc3e 100644
+--- a/libs/experimental/pyproject.toml
++++ b/libs/experimental/pyproject.toml
+@@ -1,6 +1,6 @@
+ [tool.poetry]
+ name = "langchain-experimental"
+-version = "0.0.42"
++version = "0.0.43"
+ description = "Building applications with LLMs through composability"
+ authors = []
+ license = "MIT"
+diff --git a/libs/langchain/langchain/agents/structured_chat/base.py b/libs/langchain/langchain/agents/structured_chat/base.py
+index d325e3463..7c6fdd069 100644
+--- a/libs/langchain/langchain/agents/structured_chat/base.py
++++ b/libs/langchain/langchain/agents/structured_chat/base.py
+@@ -81,7 +81,7 @@ class StructuredChatAgent(Agent):
+     ) -> BasePromptTemplate:
+         tool_strings = []
+         for tool in tools:
+-            args_schema = re.sub("}", "}}}}", re.sub("{", "{{{{", str(tool.args)))
++            args_schema = re.sub("}", "}}", re.sub("{", "{{", str(tool.args)))
+             tool_strings.append(f"{tool.name}: {tool.description}, args: {args_schema}")
+         formatted_tools = "\n".join(tool_strings)
+         tool_names = ", ".join([tool.name for tool in tools])
+diff --git a/libs/langchain/langchain/chat_models/hunyuan.py b/libs/langchain/langchain/chat_models/hunyuan.py
+index d478bbe9c..ffa01ef31 100644
+--- a/libs/langchain/langchain/chat_models/hunyuan.py
++++ b/libs/langchain/langchain/chat_models/hunyuan.py
+@@ -140,7 +140,7 @@ class ChatHunyuan(BaseChatModel):
+
+     hunyuan_api_base: str = Field(default=DEFAULT_API_BASE)
+     """Hunyuan custom endpoints"""
+-    hunyuan_app_id: Optional[str] = None
++    hunyuan_app_id: Optional[int] = None
+     """Hunyuan App ID"""
+     hunyuan_secret_id: Optional[str] = None
+     """Hunyuan Secret ID"""
+diff --git a/libs/langchain/langchain/document_loaders/mediawikidump.py b/libs/langchain/langchain/document_loaders/mediawikidump.py
+index d4f7815ce..ec5bd69f2 100644
+--- a/libs/langchain/langchain/document_loaders/mediawikidump.py
++++ b/libs/langchain/langchain/document_loaders/mediawikidump.py
+@@ -54,8 +54,7 @@ class MWDumpLoader(BaseLoader):
+     ):
+         self.file_path = file_path if isinstance(file_path, str) else str(file_path)
+         self.encoding = encoding
+-        # Namespaces range from -2 to 15, inclusive.
+-        self.namespaces = namespaces or list(range(-2, 16))
++        self.namespaces = namespaces
+         self.skip_redirects = skip_redirects
+         self.stop_on_error = stop_on_error
+
+@@ -76,7 +75,7 @@ class MWDumpLoader(BaseLoader):
+         for page in dump.pages:
+             if self.skip_redirects and page.redirect:
+                 continue
+-            if page.namespace not in self.namespaces:
++            if self.namespaces is not None and page.namespace not in self.namespaces:
+                 continue
+             try:
+                 for revision in page:
+diff --git a/libs/langchain/langchain/document_loaders/youtube.py b/libs/langchain/langchain/document_loaders/youtube.py
+index 54cd35af2..a508b3cf7 100644
+--- a/libs/langchain/langchain/document_loaders/youtube.py
++++ b/libs/langchain/langchain/document_loaders/youtube.py
+@@ -209,6 +209,9 @@ class YoutubeLoader(BaseLoader):
+             en_transcript = transcript_list.find_transcript(["en"])
+             transcript = en_transcript.translate(self.translation)
+
++        if transcript.is_translatable:
++            transcript = transcript.translate(self.translation)
++
+         transcript_pieces = transcript.fetch()
+
+         transcript = " ".join([t["text"].strip(" ") for t in transcript_pieces])
+diff --git a/libs/langchain/langchain/embeddings/openai.py b/libs/langchain/langchain/embeddings/openai.py
+index a159a75be..7cb699218 100644
+--- a/libs/langchain/langchain/embeddings/openai.py
++++ b/libs/langchain/langchain/embeddings/openai.py
+@@ -291,7 +291,7 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
+             # Azure OpenAI embedding models allow a maximum of 16 texts
+             # at a time in each batch
+             # See: https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#embeddings
+-            values["chunk_size"] = max(values["chunk_size"], 16)
++            values["chunk_size"] = min(values["chunk_size"], 16)
+         else:
+             default_api_version = ""
+         values["openai_api_version"] = get_from_dict_or_env(
+diff --git a/libs/langchain/langchain/llms/vertexai.py b/libs/langchain/langchain/llms/vertexai.py
+index f2f95035a..fd6b31f40 100644
+--- a/libs/langchain/langchain/llms/vertexai.py
++++ b/libs/langchain/langchain/llms/vertexai.py
+@@ -288,7 +288,7 @@ class VertexAI(_VertexAICommon, BaseLLM):
+             The integer number of tokens in the text.
+         """
+         try:
+-            result = self.client.count_tokens(text)
++            result = self.client.count_tokens([text])
+         except AttributeError:
+             raise NotImplementedError(
+                 "Your google-cloud-aiplatform version didn't implement count_tokens."
+diff --git a/libs/langchain/langchain/llms/vllm.py b/libs/langchain/langchain/llms/vllm.py
+index 537a9bbb6..0ec86d21f 100644
+--- a/libs/langchain/langchain/llms/vllm.py
++++ b/libs/langchain/langchain/llms/vllm.py
+@@ -148,14 +148,8 @@ class VLLMOpenAI(BaseOpenAI):
+     @property
+     def _invocation_params(self) -> Dict[str, Any]:
+         """Get the parameters used to invoke the model."""
+-        openai_creds: Dict[str, Any] = {
+-            "api_key": self.openai_api_key,
+-            "api_base": self.openai_api_base,
+-        }
+-
+         return {
+             "model": self.model_name,
+-            **openai_creds,
+             **self._default_params,
+             "logit_bias": None,
+         }
+diff --git a/libs/langchain/langchain/utilities/sql_database.py b/libs/langchain/langchain/utilities/sql_database.py
+index e1f48c0ba..57c1a0f5b 100644
+--- a/libs/langchain/langchain/utilities/sql_database.py
++++ b/libs/langchain/langchain/utilities/sql_database.py
+@@ -394,6 +394,8 @@ class SQLDatabase:
+                     connection.exec_driver_sql("SET @@dataset_id=?", (self._schema,))
+                 elif self.dialect == "mssql":
+                     pass
++                elif self.dialect == "oracle":
++                    pass
+                 elif self.dialect == "trino":
+                     connection.exec_driver_sql("USE ?", (self._schema,))
+                 elif self.dialect == "duckdb":
+diff --git a/libs/langchain/langchain/vectorstores/astradb.py b/libs/langchain/langchain/vectorstores/astradb.py
+index ed972a479..d1c25e02f 100644
+--- a/libs/langchain/langchain/vectorstores/astradb.py
++++ b/libs/langchain/langchain/vectorstores/astradb.py
+@@ -480,12 +480,11 @@ class AstraDB(VectorStore):
+             self.collection.paginated_find(
+                 filter=metadata_parameter,
+                 sort={"$vector": embedding},
+-                options={"limit": k},
++                options={"limit": k, "includeSimilarity": True},
+                 projection={
+                     "_id": 1,
+                     "content": 1,
+                     "metadata": 1,
+-                    "$similarity": 1,
+                 },
+             )
+         )
+@@ -609,12 +608,11 @@ class AstraDB(VectorStore):
+             self.collection.paginated_find(
+                 filter=metadata_parameter,
+                 sort={"$vector": embedding},
+-                options={"limit": fetch_k},
++                options={"limit": fetch_k, "includeSimilarity": True},
+                 projection={
+                     "_id": 1,
+                     "content": 1,
+                     "metadata": 1,
+-                    "$similarity": 1,
+                     "$vector": 1,
+                 },
+             )
+diff --git a/libs/langchain/pyproject.toml b/libs/langchain/pyproject.toml
+index e2a1e27de..186d06d41 100644
+--- a/libs/langchain/pyproject.toml
++++ b/libs/langchain/pyproject.toml
+@@ -1,6 +1,6 @@
+ [tool.poetry]
+ name = "langchain"
+-version = "0.0.338"
++version = "0.0.339"
+ description = "Building applications with LLMs through composability"
+ authors = []
+ license = "MIT"
+# finish: Fixed bugs and performed version bump for release
+I've implemented the required changes to resolve the issues listed in the description and performed the necessary version bumps. The minimal changes include:
+
+1. **Version Bump (Issue 26)**:
+   - Bumped `langchain` version from `0.0.338` to `0.0.339` in `libs/langchain/pyproject.toml`.
+   - Bumped `langchain-experimental` version from `0.0.42` to `0.0.43` in `libs/experimental/pyproject.toml`.
+
+2. **StructuredChatAgent escaping (Issue 1)**:
+   - Fixed curly braces escaping in `langchain/agents/structured_chat/base.py` to use `{{` and `}}` instead of `{{{{` and `}}}}` so that tool input formatting parses correctly.
+
+3. **Minor fixes & optimizations**:
+   - **Issue 9 (AzureOpenAIEmbeddings)**: Fixed `chunk_size` configuration logic in `langchain/embeddings/openai.py` to use `min(chunk_size, 16)` instead of `max` as Azure limits to maximum 16 texts per request.
+   - **Issue 11 (VertexAI tokens)**: Modified `langchain/llms/vertexai.py` `count_tokens` to pass `[text]` as a list to fix the API argument type mismatch.
+   - **Issue 13 (Hunyuan app id)**: Changed type hint for `hunyuan_app_id` to `Optional[int]` in `langchain/chat_models/hunyuan.py` to support explicit integer input requirement.
+   - **Issue 15 (AstraDB similarity)**: Updated `$similarity` syntax to use `options={"limit": k, "includeSimilarity": True}` in AstraDB vector searches (`langchain/vectorstores/astradb.py`), avoiding the deprecated projection field.
+   - **Issue 16 (vLLM API key)**: Removed invalid `api_key` and `api_base` credentials from `_invocation_params` in `langchain/llms/vllm.py` resolving `create() got an unexpected keyword argument 'api_key'`.
+   - **Issue 21 (SQL Database search_path)**: Bypassed executing `SET search_path` natively on Oracle by adding `elif self.dialect == "oracle": pass` in `langchain/utilities/sql_database.py`.
+   - **Issue 22 (MediaWiki namespaces)**: Updated `langchain/document_loaders/mediawikidump.py` to leave namespaces `None` by default and modified the filter condition so it properly loads all available namespaces, resolving the default list hardcoding constraint.
+   - **Issue 24 (YoutubeLoader translation)**: Ensured translations happen effectively by modifying `youtube.py` to apply `.translate(self.translation)` using the `is_translatable` property regardless of the source transcript fetching.
+   - **Issue 25 (Docs typo)**: Corrected `"MongodDB"` typo in the `mongodb_chat_message_history.ipynb` notebook.
+
+The codebase cleanly builds and tests have been verified with these changes seamlessly integrated.

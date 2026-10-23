@@ -1,0 +1,426 @@
+diff --git a/tests/test_console.py b/tests/test_console.py
+index 62a45900ab..2094359458 100644
+--- a/tests/test_console.py
++++ b/tests/test_console.py
+@@ -5,13 +5,11 @@
+ 
+ import pytest
+ 
+-from rich.color import Color, ColorSystem
+-from rich.console import Console, ConsoleOptions
++from rich.color import ColorSystem
++from rich.console import CaptureError, Console, ConsoleOptions
+ from rich import errors
+ from rich.panel import Panel
+-from rich.segment import Segment
+ from rich.style import Style
+-from rich.theme import Theme
+ 
+ 
+ def test_dumb_terminal():
+@@ -139,6 +137,11 @@ def test_get_style():
+     console.get_style("repr.brace") == Style(bold=True)
+ 
+ 
++def test_get_style_default():
++    console = Console()
++    console.get_style("foobar", default="red") == Style(color="red")
++
++
+ def test_get_style_error():
+     console = Console()
+     with pytest.raises(errors.MissingStyle):
+@@ -160,14 +163,41 @@ def test_control():
+     assert console.file.getvalue() == "FOOBAR\n"
+ 
+ 
++def test_capture():
++    console = Console()
++    with console.capture() as capture:
++        with pytest.raises(CaptureError):
++            capture.get()
++        console.print("Hello")
++    assert capture.get() == "Hello\n"
++
++
+ def test_input(monkeypatch, capsys):
+-    monkeypatch.setattr("builtins.input", lambda: "bar")
++    def fake_input(prompt):
++        console.file.write(prompt)
++        return "bar"
++
++    monkeypatch.setattr("builtins.input", fake_input)
+     console = Console()
+     user_input = console.input(prompt="foo:")
+     assert capsys.readouterr().out == "foo:"
+     assert user_input == "bar"
+ 
+ 
++def test_input_password(monkeypatch, capsys):
++    def fake_input(prompt, stream=None):
++        console.file.write(prompt)
++        return "bar"
++
++    import rich.console
++
++    monkeypatch.setattr(rich.console, "getpass", fake_input)
++    console = Console()
++    user_input = console.input(prompt="foo:", password=True)
++    assert capsys.readouterr().out == "foo:"
++    assert user_input == "bar"
++
++
+ def test_justify_none():
+     console = Console(file=io.StringIO(), force_terminal=True, width=20)
+     console.print("FOO", justify=None)
+@@ -251,7 +281,7 @@ def test_export_html():
+     console = Console(record=True, width=100)
+     console.print("[b]foo [link=https://example.org]Click[/link]")
+     html = console.export_html()
+-    expected = '<!DOCTYPE html>\n<head>\n<style>\n.r1 {font-weight: bold}\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span class="r1">foo </span><a href="https://example.org"><span class="r1">Click</span></a>\n</pre>\n    </code>\n</body>\n</html>\n'
++    expected = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n<style>\n.r1 {font-weight: bold}\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span class="r1">foo </span><a href="https://example.org"><span class="r1">Click</span></a>\n</pre>\n    </code>\n</body>\n</html>\n'
+     assert html == expected
+ 
+ 
+@@ -259,7 +289,7 @@ def test_export_html_inline():
+     console = Console(record=True, width=100)
+     console.print("[b]foo [link=https://example.org]Click[/link]")
+     html = console.export_html(inline_styles=True)
+-    expected = '<!DOCTYPE html>\n<head>\n<style>\n\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span style="font-weight: bold">foo </span><a href="https://example.org"><span style="font-weight: bold">Click</span></a>\n</pre>\n    </code>\n</body>\n</html>\n'
++    expected = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n<style>\n\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas,\'Courier New\',monospace"><span style="font-weight: bold">foo </span><a href="https://example.org"><span style="font-weight: bold">Click</span></a>\n</pre>\n    </code>\n</body>\n</html>\n'
+     assert html == expected
+ 
+ 
+@@ -274,7 +304,7 @@ def test_save_text():
+ 
+ 
+ def test_save_html():
+-    expected = "<!DOCTYPE html>\n<head>\n<style>\n\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style=\"font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">foo\n</pre>\n    </code>\n</body>\n</html>\n"
++    expected = "<!DOCTYPE html>\n<head>\n<meta charset=\"UTF-8\">\n<style>\n\nbody {\n    color: #000000;\n    background-color: #ffffff;\n}\n</style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style=\"font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">foo\n</pre>\n    </code>\n</body>\n</html>\n"
+     console = Console(record=True, width=100)
+     console.print("foo")
+     with tempfile.TemporaryDirectory() as path:
+diff --git a/tests/test_inspect.py b/tests/test_inspect.py
+index 163cb5a825..bb117a0854 100644
+--- a/tests/test_inspect.py
++++ b/tests/test_inspect.py
+@@ -13,6 +13,18 @@
+ )
+ 
+ 
++skip_py37 = pytest.mark.skipif(
++    sys.version_info.minor == 7 and sys.version_info.major == 3,
++    reason="rendered differently on py3.7",
++)
++
++
++def render(obj, methods=False) -> str:
++    console = Console(file=io.StringIO(), width=50, legacy_windows=False)
++    inspect(obj, console=console, methods=methods)
++    return console.file.getvalue()
++
++
+ class InspectError(Exception):
+     def __str__(self) -> str:
+         return "INSPECT ERROR"
+@@ -53,3 +65,117 @@ def test_render():
+     print(repr(result))
+     expected = "╭────────────── <class 'tests.test_inspect.Foo'> ──────────────╮\n│ Foo test                                                     │\n│                                                              │\n│   broken = InspectError()                                    │\n│ __init__ = def __init__(foo: int) -> None: constructor docs. │\n│   method = def method(a, b) -> str: Multi line               │\n╰──────────────────────────────────────────────────────────────╯\n"
+     assert expected == result
++
++
++def test_inspect_text():
++
++    expected = (
++        "╭──────────────── <class 'str'> ─────────────────╮\n"
++        "│ str(object='') -> str                          │\n"
++        "│ str(bytes_or_buffer[, encoding[, errors]]) ->  │\n"
++        "│ str                                            │\n"
++        "│                                                │\n"
++        "│ 33 attribute(s) not shown. Use                 │\n"
++        "│ inspect(<OBJECT>, all=True) to see all         │\n"
++        "│ attributes.                                    │\n"
++        "╰────────────────────────────────────────────────╯\n"
++    )
++    assert expected == render("Hello")
++
++
++@skip_py36
++@skip_py37
++def test_inspect_empty_dict():
++
++    expected = (
++        "╭──────────────── <class 'dict'> ────────────────╮\n"
++        "│ dict() -> new empty dictionary                 │\n"
++        "│ dict(mapping) -> new dictionary initialized    │\n"
++        "│ from a mapping object's                        │\n"
++        "│     (key, value) pairs                         │\n"
++        "│ dict(iterable) -> new dictionary initialized   │\n"
++        "│ as if via:                                     │\n"
++        "│     d = {}                                     │\n"
++        "│     for k, v in iterable:                      │\n"
++        "│         d[k] = v                               │\n"
++        "│ dict(**kwargs) -> new dictionary initialized   │\n"
++        "│ with the name=value pairs                      │\n"
++        "│     in the keyword argument list.  For         │\n"
++        "│ example:  dict(one=1, two=2)                   │\n"
++        "│                                                │\n"
++        "│ 30 attribute(s) not shown. Use                 │\n"
++        "│ inspect(<OBJECT>, all=True) to see all         │\n"
++        "│ attributes.                                    │\n"
++        "╰────────────────────────────────────────────────╯\n"
++    )
++    assert expected == render({})
++
++
++def test_inspect_builtin_function():
++
++    expected = (
++        "╭────────── <built-in function print> ───────────╮\n"
++        "│ def print(...)                                 │\n"
++        "│                                                │\n"
++        "│ print(value, ..., sep=' ', end='\\n',           │\n"
++        "│ file=sys.stdout, flush=False)                  │\n"
++        "│                                                │\n"
++        "│ 29 attribute(s) not shown. Use                 │\n"
++        "│ inspect(<OBJECT>, all=True) to see all         │\n"
++        "│ attributes.                                    │\n"
++        "╰────────────────────────────────────────────────╯\n"
++    )
++    assert expected == render(print)
++
++
++@skip_py36
++def test_inspect_integer():
++
++    expected = (
++        "╭────── <class 'int'> ───────╮\n"
++        "│ int([x]) -> integer        │\n"
++        "│ int(x, base=10) -> integer │\n"
++        "│                            │\n"
++        "│ denominator = 1            │\n"
++        "│        imag = 0            │\n"
++        "│   numerator = 1            │\n"
++        "│        real = 1            │\n"
++        "╰────────────────────────────╯\n"
++    )
++    assert expected == render(1)
++
++
++@skip_py36
++@skip_py37
++def test_inspect_integer_with_methods():
++
++    expected = (
++        "╭──────────────── <class 'int'> ─────────────────╮\n"
++        "│ int([x]) -> integer                            │\n"
++        "│ int(x, base=10) -> integer                     │\n"
++        "│                                                │\n"
++        "│      denominator = 1                           │\n"
++        "│             imag = 0                           │\n"
++        "│        numerator = 1                           │\n"
++        "│             real = 1                           │\n"
++        "│ as_integer_ratio = def as_integer_ratio():     │\n"
++        "│                    Return integer ratio.       │\n"
++        "│       bit_length = def bit_length(): Number of │\n"
++        "│                    bits necessary to represent │\n"
++        "│                    self in binary.             │\n"
++        "│        conjugate = def conjugate(...) Returns  │\n"
++        "│                    self, the complex conjugate │\n"
++        "│                    of any int.                 │\n"
++        "│       from_bytes = def from_bytes(bytes,       │\n"
++        "│                    byteorder, *,               │\n"
++        "│                    signed=False): Return the   │\n"
++        "│                    integer represented by the  │\n"
++        "│                    given array of bytes.       │\n"
++        "│         to_bytes = def to_bytes(length,        │\n"
++        "│                    byteorder, *,               │\n"
++        "│                    signed=False): Return an    │\n"
++        "│                    array of bytes representing │\n"
++        "│                    an integer.                 │\n"
++        "╰────────────────────────────────────────────────╯\n"
++    )
++    assert expected == render(1, methods=True)
+diff --git a/tests/test_logging.py b/tests/test_logging.py
+index c16cf8818e..ee03c3c133 100644
+--- a/tests/test_logging.py
++++ b/tests/test_logging.py
+@@ -1,5 +1,8 @@
+ import io
++import sys
++import os
+ import logging
++import pytest
+ 
+ from rich.console import Console
+ from rich.logging import RichHandler
+@@ -16,6 +19,12 @@
+ log = logging.getLogger("rich")
+ 
+ 
++skip_win = pytest.mark.skipif(
++    os.name == "nt",
++    reason="rendered differently on windows",
++)
++
++
+ def make_log():
+     log.debug("foo")
+     render = handler.console.file.getvalue()
+@@ -25,10 +34,59 @@ def make_log():
+ def test_log():
+     render = make_log()
+     print(repr(render))
+-    expected = "\x1b[2;36m[DATE]\x1b[0m\x1b[2;36m \x1b[0m\x1b[32mDEBUG\x1b[0m    foo                                           \x1b[2mtest_logging.py\x1b[0m\x1b[2m:20\x1b[0m\n"
++    expected = "\x1b[2;36m[DATE]\x1b[0m\x1b[2;36m \x1b[0m\x1b[32mDEBUG\x1b[0m    foo                                           \x1b[2mtest_logging.py\x1b[0m\x1b[2m:29\x1b[0m\n"
+     assert render == expected
+ 
+ 
++@skip_win
++def test_exception():
++    console = Console(
++        file=io.StringIO(), force_terminal=True, width=140, color_system="truecolor"
++    )
++    handler_with_tracebacks = RichHandler(
++        console=console, enable_link_path=False, rich_tracebacks=True
++    )
++    log.addHandler(handler_with_tracebacks)
++
++    try:
++        1 / 0
++    except ZeroDivisionError:
++        log.exception("message")
++
++    render = handler_with_tracebacks.console.file.getvalue()
++    print(render)
++
++    assert "ZeroDivisionError" in render
++    assert "message" in render
++    assert "division by zero" in render
++
++
++def test_exception_with_extra_lines():
++    console = Console(
++        file=io.StringIO(), force_terminal=True, width=140, color_system="truecolor"
++    )
++    handler_extra_lines = RichHandler(
++        console=console,
++        enable_link_path=False,
++        markup=True,
++        rich_tracebacks=True,
++        tracebacks_extra_lines=5,
++    )
++    log.addHandler(handler_extra_lines)
++
++    try:
++        1 / 0
++    except ZeroDivisionError:
++        log.exception("message")
++
++    render = handler_extra_lines.console.file.getvalue()
++    print(render)
++
++    assert "ZeroDivisionError" in render
++    assert "message" in render
++    assert "division by zero" in render
++
++
+ if __name__ == "__main__":
+     render = make_log()
+     print(render)
+diff --git a/tests/test_progress.py b/tests/test_progress.py
+index f79b4cd9a0..34a8e8c114 100644
+--- a/tests/test_progress.py
++++ b/tests/test_progress.py
+@@ -309,8 +309,8 @@ def test_track_thread() -> None:
+ 
+     with track_thread:
+         track_thread.completed = 1
+-        sleep(0.2)
+-        assert progress.tasks[task_id].completed == 1
++        sleep(0.3)
++        assert progress.tasks[task_id].completed >= 1
+         track_thread.completed += 1
+ 
+ 
+diff --git a/tests/test_style.py b/tests/test_style.py
+index 4195f707ec..7e7b2f0e86 100644
+--- a/tests/test_style.py
++++ b/tests/test_style.py
+@@ -71,6 +71,10 @@ def test_hash():
+     assert isinstance(hash(Style()), int)
+ 
+ 
++def test_empty():
++    assert Style.empty() == Style()
++
++
+ def test_bool():
+     assert bool(Style()) is False
+     assert bool(Style(bold=True)) is True
+diff --git a/tests/test_tabulate.py b/tests/test_tabulate.py
+index a0ed94f6ae..37e86bfe2b 100644
+--- a/tests/test_tabulate.py
++++ b/tests/test_tabulate.py
+@@ -1,3 +1,4 @@
++import itertools
+ from rich.style import Style
+ from rich.table import _Cell
+ from rich.tabulate import tabulate_mapping
+@@ -9,3 +10,25 @@ def test_tabulate_mapping():
+     assert len(table.columns) == 2
+     assert len(table.columns[0]._cells) == 2
+     assert len(table.columns[1]._cells) == 2
++
++    # add tests for title and caption justification
++    test_title = "Foo v. Bar"
++    test_caption = "approximate results"
++    for title_justify, caption_justify in itertools.product(
++        [None, "left", "center", "right"], repeat=2
++    ):
++        table = tabulate_mapping(
++            {"foo": "1", "bar": "2"},
++            title=test_title,
++            caption=test_caption,
++            title_justify=title_justify,
++            caption_justify=caption_justify,
++        )
++        expected_title_justify = (
++            title_justify if title_justify is not None else "center"
++        )
++        expected_caption_justify = (
++            caption_justify if caption_justify is not None else "center"
++        )
++        assert expected_title_justify == table.title_justify
++        assert expected_caption_justify == table.caption_justify
+diff --git a/tests/test_traceback.py b/tests/test_traceback.py
+index 076cb66696..449e5f49ed 100644
+--- a/tests/test_traceback.py
++++ b/tests/test_traceback.py
+@@ -21,7 +21,7 @@ def test_handler():
+     console = Console(file=io.StringIO(), width=100, color_system=None)
+     expected_old_handler = sys.excepthook
+     try:
+-        old_handler = install(console=console, line_numbers=False)
++        old_handler = install(console=console)
+         try:
+             1 / 0
+         except Exception:
+@@ -125,7 +125,7 @@ def test_filename_with_bracket():
+     except Exception:
+         console.print_exception()
+     exception_text = console.file.getvalue()
+-    assert 'File "<string>"' in exception_text
++    assert "<string>" in exception_text
+ 
+ 
+ def test_filename_not_a_file():
+@@ -135,7 +135,7 @@ def test_filename_not_a_file():
+     except Exception:
+         console.print_exception()
+     exception_text = console.file.getvalue()
+-    assert 'File "string"' in exception_text
++    assert "string" in exception_text
+ 
+ 
+ if __name__ == "__main__":  # pragma: no cover

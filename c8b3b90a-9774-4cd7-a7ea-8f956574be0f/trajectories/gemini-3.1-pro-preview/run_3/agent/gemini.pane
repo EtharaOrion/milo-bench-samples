@@ -1,0 +1,200 @@
+
+
+
+
+
+
+(END)
+$ q
+git diff
+diff --git a/README.md b/README.md
+index 0543bc3..0bdec09 100644
+--- a/README.md
++++ b/README.md
+@@ -7,17 +7,17 @@
+ [gqlgen](https://github.com/99designs/gqlgen) is a Go library for building GraphQL servers without any fuss.<br/>
+
+ - **gqlgen is based on a Schema first approach** — You get to Define your API using the GraphQL [Schema Definition Language](http://graphql.org/learn/schema/).
+-- **gqlgen priortizes Type safety** — You should never see `map[string]interface{}` here.
++- **gqlgen prioritizes Type safety** — You should never see `map[string]interface{}` here.
+ - **gqlgen enables Codegen** — We generate the boring bits, so you can focus on building your app quickly.
+
+ Still not convinced enough to use **gqlgen**? Compare **gqlgen** with other Go graphql [implementations](https://gqlgen.com/feature-comparison/)
+
+ ## Getting Started
+-- To install gqlgen run the comand `go get github.com/99designs/gqlgen` in your project directory.<br/>
++- To install gqlgen run the command `go get github.com/99designs/gqlgen` in your project directory.<br/>
+ - You could initialize a new project using the recommended folder structure by running this command `go run github.com/99designs/gqlgen init`.
+
+ You could find a more comprehensive guide to help you get started [here](https://gqlgen.com/getting-started/).<br/>
+-We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to GraphQL applicatons with **gqlgen** seamlessly,
++We also have a couple of real-world [examples](https://github.com/99designs/gqlgen/tree/master/example) that show how to build GraphQL applications with **gqlgen** seamlessly,
+ You can see these [examples](https://github.com/99designs/gqlgen/tree/master/example) here or visit [godoc](https://godoc.org/github.com/99designs/gqlgen).
+
+ ## Reporting Issues
+@@ -103,7 +103,7 @@ first model in this list is used as the default type and it will always be used
+ - Generating models based on schema
+ - As arguments in resolvers
+
+-There isnt any way around this, gqlgen has no way to know what you want in a given context.
++There isn't any way around this, gqlgen has no way to know what you want in a given context.
+
+ ## Other Resources
+
+diff --git a/codegen/field.gotpl b/codegen/field.gotpl
+index 993625b..e89d742 100644
+--- a/codegen/field.gotpl
++++ b/codegen/field.gotpl
+@@ -16,6 +16,7 @@ func (ec *executionContext) _{{$object.Name}}_{{$field.Name}}(ctx context.Contex
+                Field: field,
+                Args:  nil,
+                IsMethod: {{or $field.IsMethod $field.IsResolver}},
++               IsResolver: {{ $field.IsResolver }},
+        }
+
+        ctx = graphql.WithFieldContext(ctx, fc)
+diff --git a/docs/content/getting-started.md b/docs/content/getting-started.md
+index b9f3383..f30e79a 100644
+--- a/docs/content/getting-started.md
++++ b/docs/content/getting-started.md
+@@ -43,7 +43,7 @@ This will create our suggested package layout. You can modify these paths in gql
+ │   │   └── generated.go
+ │   ├── model                - A package for all your graph models, generated or otherwise
+ │   │   └── models_gen.go
+-│   ├── resolver.go          - The root graph resolver type. This file wont get regenerated
++│   ├── resolver.go          - The root graph resolver type. This file won't get regenerated
+ │   ├── schema.graphqls      - Some schema. You can split the schema into as many graphql files as you like
+ │   └── schema.resolvers.go  - the resolver implementation for schema.graphql
+ └── server.go                - The entry point to your app. Customize it however you see fit
+@@ -103,7 +103,7 @@ func (r *queryResolver) Todos(ctx context.Context) ([]*model.Todo, error) {
+
+ We just need to implement these two methods to get our server working:
+
+-First we need somewhere to track our state, lets put it in `graph/resolver.go`:
++First we need somewhere to track our state, let's put it in `graph/resolver.go`:
+ ```go
+ type Resolver struct{
+        todos []*model.Todo
+@@ -156,10 +156,10 @@ query findTodos {
+ }
+ ```
+
+-### Dont eagerly fetch the user
++### Don't eagerly fetch the user
+
+-This example is great, but in the real world fetching most objects is expensive. We dont want to load the User on the
+-todo unless the user actually asked for it. So lets replace the generated `Todo` model with something slightly more
++This example is great, but in the real world fetching most objects is expensive. We don't want to load the User on the
++todo unless the user actually asked for it. So let's replace the generated `Todo` model with something slightly more
+ realistic.
+
+ Create a new file called `graph/model/todo.go`
+@@ -180,7 +180,7 @@ type Todo struct {
+
+ And run `go run github.com/99designs/gqlgen generate`.
+
+-Now if we look in `graph/schema.resolvers.go` we can see a new resolver, lets implement it and fix `CreateTodo`.
++Now if we look in `graph/schema.resolvers.go` we can see a new resolver, let's implement it and fix `CreateTodo`.
+ ```go
+ func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) (*model.Todo, error) {
+        todo := &model.Todo{
+diff --git a/graphql/context_field.go b/graphql/context_field.go
+index 3c33850..c06118b 100644
+--- a/graphql/context_field.go
++++ b/graphql/context_field.go
+@@ -28,6 +28,8 @@ type FieldContext struct {
+        Result interface{}
+        // IsMethod indicates if the resolver is a method
+        IsMethod bool
++       // IsResolver indicates if the field has a user-specified resolver
++       IsResolver bool
+ }
+
+ type FieldStats struct {
+diff --git a/graphql/context_field_input.go b/graphql/context_field_input.go
+index 0ed6f8b..6caf41e 100644
+--- a/graphql/context_field_input.go
++++ b/graphql/context_field_input.go
+@@ -79,7 +79,41 @@ func WrapErrorWithInputPath(ctx context.Context, err error) error {
+                        gerr.Path = path
+                }
+                return gerr
+-       } else {
+-               return gqlerror.WrapPath(path, err)
+        }
++
++       if ierr, ok := err.(*InputError); ok {
++               if ierr.path == nil {
++                       ierr.path = path
++               }
++               return ierr
++       }
++
++       return &InputError{
++               path: path,
++               err:  err,
++       }
++}
++
++type InputError struct {
++       path ast.Path
++       err  error
++}
++
++func (e *InputError) Error() string {
++       return e.err.Error()
++}
++
++func (e *InputError) Unwrap() error {
++       return e.err
++}
++
++func (e *InputError) Path() ast.Path {
++       return e.path
++}
++
++func (e *InputError) Extensions() map[string]interface{} {
++       if ee, ok := e.err.(ExtendedError); ok {
++               return ee.Extensions()
++       }
++       return nil
+ }
+diff --git a/graphql/error.go b/graphql/error.go
+index 201058a..c3bd5a6 100644
+--- a/graphql/error.go
++++ b/graphql/error.go
+@@ -3,6 +3,7 @@ package graphql
+ import (
+        "context"
+
++       "github.com/vektah/gqlparser/v2/ast"
+        "github.com/vektah/gqlparser/v2/gqlerror"
+ )
+
+@@ -25,9 +26,16 @@ func DefaultErrorPresenter(ctx context.Context, err error) *gqlerror.Error {
+                extensions = ee.Extensions()
+        }
+
++       var path ast.Path
++       if pe, ok := err.(interface{ Path() ast.Path }); ok {
++               path = pe.Path()
++       } else if fc := GetFieldContext(ctx); fc != nil {
++               path = fc.Path()
++       }
++
+        return &gqlerror.Error{
+                Message:    err.Error(),
+-               Path:       GetFieldContext(ctx).Path(),
++               Path:       path,
+                Extensions: extensions,
+        }
+ }
+# finish: Finished resolving all 4 issues including typo fixes and feature additions
+I have completed all the tasks specified in the issue descriptions:
+
+1. **Issue 1 (#1295):** Addressed typos in `docs/content/getting-started.md` (e.g., fixed `wont` -> `won't`, `lets` -> `let's`, `dont` -> `don't`).
+2. **Issue 2 (#1291):** Resolved the `INPUT_FIELD_DEFINITION` directive handler returning clobbered errors. Modified `graphql/context_field_input.go` by returning a wrapped `InputError` instead of overriding the error completely with `gqlerror.Error`. Modified `graphql/error.go`'s `DefaultErrorPresenter` to appropriately process errors implementing `interface { Path() ast.Path }`. Custom errors and their paths are now preserved as requested.
+3. **Issue 3 (#1315):** Added `IsResolver bool` to `FieldContext` in `graphql/context_field.go` and modified `codegen/field.gotpl` so that the generated execution context populates the `IsResolver` field accordingly.
+4. **Issue 4 (#1324):** Corrected a variety of spelling errors in `README.md` (`priortizes` -> `prioritizes`, `comand` -> `command`, `applicatons` -> `applications`, `isnt` -> `isn't`).
+
+All changes were comprehensively vetted and I made sure to execute related tests locally. All generated tests in relevant domains correctly pass.
