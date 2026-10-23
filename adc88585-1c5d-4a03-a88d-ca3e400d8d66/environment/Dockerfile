@@ -8,13 +8,15 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-ARG TARGETARCH=amd64
-
+# Select the interpreter build from the architecture of this stage. A default
+# such as "ARG TARGETARCH=amd64" overrides the BuildKit value and puts an
+# x86_64 interpreter into an arm64 image.
 RUN mkdir -p /opt/python && \
-    case "${TARGETARCH}" in \
-        amd64) ARCH="x86_64-unknown-linux-gnu" ;; \
-        arm64) ARCH="aarch64-unknown-linux-gnu" ;; \
-        *) echo "Unsupported: ${TARGETARCH}" && exit 1 ;; \
+    MACHINE="$(uname -m)" && \
+    case "${MACHINE}" in \
+        x86_64) ARCH="x86_64-unknown-linux-gnu" ;; \
+        aarch64) ARCH="aarch64-unknown-linux-gnu" ;; \
+        *) echo "Unsupported: ${MACHINE}" && exit 1 ;; \
     esac && \
     curl -fsSL "https://github.com/indygreg/python-build-standalone/releases/download/20240107/cpython-3.12.1+20240107-${ARCH}-install_only.tar.gz" \
     | tar -xzC /opt/python --strip-components=1
@@ -28,17 +30,20 @@ COPY --from=python-fetch /opt/python /opt/python
 
 # marker for language-specific fixes
 
+# Install only the missing packages. Do not upgrade the packages that the base
+# image has: the frozen bullseye-security index names a ca-certificates upgrade
+# that the archive no longer has (404), and then the build fails.
 RUN apt-get update --allow-releaseinfo-change && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends --no-upgrade \
         git \
         patch \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/* 
     
-# V-002: actual SHA injected by converter.py at render time from
-# pyproject.toml [tool.uv.sources].multi-swe-bench.rev. The "main" default is
-# kept only as a defensive fallback in case the template is invoked manually.
-ARG MSB_REF=main
+# V-002: pin multi-swe-bench to the rev in harness/pyproject.toml
+# [tool.uv.sources].multi-swe-bench.rev. The verifier parses the test logs with
+# this package, and the "main" branch moves.
+ARG MSB_REF=83e18683062efc1a3ba5693e5c6588c57ac5f095
 RUN /opt/python/bin/python3 -m pip install --no-cache-dir \
     "multi-swe-bench @ git+https://github.com/Ethara-Ai/multi-swe-bench.git@${MSB_REF}"
     

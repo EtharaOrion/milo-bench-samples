@@ -211,6 +211,54 @@ def patch_vitest_retry(
             )
 
 
+def keep_agent_changes() -> None:
+    """Remove the lines in test-run.sh that discard the agent changes.
+
+    Some images run "git reset --hard" or "git checkout <base sha>" before they
+    apply test.patch. These lines remove the oracle or agent fix, and the fix
+    stage then tests the base commit.
+    """
+    test_run_script = Path("/home/test-run.sh")
+    if not test_run_script.exists():
+        return
+    content = test_run_script.read_text()
+    pattern = re.compile(
+        r"^[ \t]*git[ \t]+(?:reset[ \t]+--hard(?:[ \t]+HEAD)?|checkout[ \t]+[0-9a-f]{7,40})"
+        r"[ \t]*(?:\|\|[ \t]*true)?[ \t]*$",
+        re.MULTILINE,
+    )
+    new_content, count = pattern.subn(": # removed by run_tests.py: keeps the agent changes", content)
+    if count:
+        test_run_script.write_text(new_content)
+        print(f"[run_tests] Removed {count} line(s) in test-run.sh that discard the agent changes")
+
+
+def wait_for_test_database() -> None:
+    """Make start_dbs.sh wait until MariaDB accepts connections.
+
+    The gorm image starts mariadbd in the background and then waits a fixed
+    3 seconds before it creates the "gorm" database. On a slow host the server
+    is not ready in 3 seconds, the database is not created, and the mysql test
+    run fails with "Unknown database 'gorm'".
+    """
+    script = Path("/home/start_dbs.sh")
+    if not script.exists():
+        return
+    content = script.read_text()
+    start = "--socket=/run/mysqld/mysqld.sock &\n  sleep 3\n"
+    if start not in content:
+        return
+    wait = (
+        "--socket=/run/mysqld/mysqld.sock &\n"
+        "  for _ in $(seq 1 300); do\n"
+        "    mariadb-admin --socket=/run/mysqld/mysqld.sock ping >/dev/null 2>&1 && break\n"
+        "    sleep 1\n"
+        "  done\n"
+    )
+    script.write_text(content.replace(start, wait, 1))
+    print("[run_tests] start_dbs.sh now waits until MariaDB is ready")
+
+
 def _install_missing_repo_shim() -> None:
     """Let ``import multi_swe_bench.harness.repos`` succeed without mutating site-packages.
 
@@ -296,24 +344,25 @@ def run_command(command: str, workdir: Path, log_path: Path) -> int:
         # verifier runs under task.toml network_mode="none" (no egress). The risk
         # is bounded and accepted. If test_cmd ever becomes untrusted, switch to an
         # argv list (shlex.split) + shell=False.
+        # The output goes to the log file, not to a pipe. A test script can start
+        # a daemon (gorm: mariadbd, postgres) that keeps a pipe open after the
+        # script stops, and then a read of the pipe does not end.
+        start = log_file.tell()
         process = subprocess.Popen(  # nosec B602 - trusted test_cmd, sandboxed verifier
             command,
             cwd=workdir,
             shell=True,
             executable="/bin/bash",
-            stdout=subprocess.PIPE,
+            stdout=log_file,
             stderr=subprocess.STDOUT,
-            text=True,
         )
 
-        if process.stdout is None:
-            raise RuntimeError("subprocess produced no stdout pipe")
-        for line in process.stdout:
-            log_file.write(line)
-            log_file.flush()
-            print(line, end="", flush=True)
-
         returncode = process.wait()
+        log_file.flush()
+        with log_path.open("r", encoding="utf-8", errors="replace") as written:
+            written.seek(start)
+            print(written.read(), end="", flush=True)
+        log_file.seek(0, 2)
         log_file.write(f"\n[exit code: {returncode}]\n")
         return returncode
 
@@ -412,7 +461,9 @@ def load_instance(cfg: dict) -> Instance:
         state="",
         title="",
         body="",
-        base=Base(label="", ref="", sha=cfg.get("base_commit", "")),
+        # The release window ("tag", for example "v10.1.0..v10.1.1") is the base
+        # label of the record. Some parsers (vueuse) select the test runner from it.
+        base=Base(label=cfg.get("tag", ""), ref="", sha=cfg.get("base_commit", "")),
         resolved_issues=[],
         fix_patch="",
         test_patch="",
@@ -421,6 +472,19 @@ def load_instance(cfg: dict) -> Instance:
         lang=cfg.get("language", ""),
     )
     config = Config(need_clone=True, global_env=None, clear_env=False)
+    # The pinned multi-swe-bench rev registers some repositories under a key that
+    # is not the number_interval of the record (for example "go-gorm/4888-5227").
+    # config.json "msb_registry_key" names that registered class. Bind the record
+    # key to it, as the multi-swe-bench repos modules do for their own aliases.
+    alias = cfg.get("msb_registry_key", "")
+    if alias:
+        if pr.number_interval:
+            key = f"{pr.org}/{pr.number_interval}"
+        elif pr.tag:
+            key = f"{pr.org}/{pr.repo}_{pr.tag.replace('.', '_')}"
+        else:
+            key = f"{pr.org}/{pr.repo}"
+        Instance._registry.setdefault(key, Instance._registry[alias])
     return Instance.create(pr, config)
 
 
@@ -449,6 +513,11 @@ def main() -> int:
         test_cmd = cfg.get("test_cmd")
         language = cfg.get("language", "")
 
+        # Keep the oracle or agent fix: remove "git reset --hard" and "git checkout <sha>"
+        keep_agent_changes()
+        # gorm: wait until MariaDB is ready before the database is created
+        wait_for_test_database()
+
         # For C language: patch test-run.sh for parallel compilation
         patch_c_parallel_build(language)
 
@@ -468,7 +537,12 @@ def main() -> int:
 
         # Evaluate results
         instance = load_instance(cfg)
-        fix_content = fix_log.read_text(encoding="utf-8") if fix_log.exists() else ""
+        # The test output can contain bytes that are not UTF-8 (the seaweedfs test
+        # TestProtoMarshal writes raw protobuf data). Replace these bytes, so
+        # that the parse of the log does not stop with UnicodeDecodeError.
+        fix_content = (
+            fix_log.read_text(encoding="utf-8", errors="replace") if fix_log.exists() else ""
+        )
 
         run_result = (
             TestResult.from_dict(cfg.get("run_result"))
@@ -495,35 +569,22 @@ def main() -> int:
         # Note: Report.__post_init__ calls check() which populates p2p_tests, f2p_tests, etc.
         valid, error_msg = report.check(force=True)
 
-        # Strict validation: check all expected test transitions (same as multi-swe-bench evaluation mode)
+        # Strict validation: every expected test must pass after the fix.
+        # The run and test stages are recorded in config.json, so the fix stage
+        # is the only stage that this run measures. The category of a test
+        # (p2p, f2p, s2p, n2p) also depends on the classifier version: the
+        # pinned multi-swe-bench puts "run PASS, test NONE, fix PASS" in p2p,
+        # but the record lists these tests as n2p. Thus compare the fix result
+        # of each expected test, not the category name.
         if valid:
-            expected_p2p = set((cfg.get("p2p_tests") or {}).keys())
-            expected_f2p = set((cfg.get("f2p_tests") or {}).keys())
-            expected_s2p = set((cfg.get("s2p_tests") or {}).keys())
-            expected_n2p = set((cfg.get("n2p_tests") or {}).keys())
-
-            for p2p in expected_p2p:
-                if p2p not in report.p2p_tests:
-                    valid, error_msg = False, f"Missing p2p test: {p2p}"
+            for kind in ("p2p", "f2p", "s2p", "n2p"):
+                for name in sorted((cfg.get(f"{kind}_tests") or {}).keys()):
+                    if name not in fix_result.passed_tests:
+                        valid = False
+                        error_msg = f"Expected {kind} test did not pass: {name}"
+                        break
+                if not valid:
                     break
-
-            if valid:
-                for f2p in expected_f2p:
-                    if f2p not in report.f2p_tests:
-                        valid, error_msg = False, f"Missing f2p test: {f2p}"
-                        break
-
-            if valid:
-                for s2p in expected_s2p:
-                    if s2p not in report.s2p_tests:
-                        valid, error_msg = False, f"Missing s2p test: {s2p}"
-                        break
-
-            if valid:
-                for n2p in expected_n2p:
-                    if n2p not in report.n2p_tests:
-                        valid, error_msg = False, f"Missing n2p test: {n2p}"
-                        break
 
         exit_status = 0 if valid else 1
 

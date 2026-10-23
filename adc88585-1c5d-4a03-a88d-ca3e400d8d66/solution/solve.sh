@@ -12,7 +12,14 @@ cd "$REPO_DIR"
 
 echo "Applying oracle patch..."
 if [ -f /solution/fix.patch ]; then
-    git apply --whitespace=nowarn /solution/fix.patch
+    # A "Binary files ... differ" hunk has no data, and git apply then rejects
+    # the whole patch. Exclude only those files (images in the documentation),
+    # as the multi-swe-bench fix-run.sh scripts also do.
+    EXCLUDES=()
+    while IFS= read -r path; do
+        EXCLUDES+=("--exclude=$path")
+    done < <(awk '/^diff --git /{p=$4; sub(/^b\//, "", p)} /^Binary files .* differ$/{print p}' /solution/fix.patch)
+    git apply --whitespace=nowarn ${EXCLUDES[@]+"${EXCLUDES[@]}"} /solution/fix.patch
     echo "Oracle patch applied."
     
     # Commit the changes to maintain clean git state
